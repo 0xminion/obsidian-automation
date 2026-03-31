@@ -91,13 +91,14 @@ DISTILLED_STRUCTURE="
 DISTILLED NOTE STRUCTURE — follow this EXACTLY for every note in '02-Distilled/':
 
 Frontmatter required:
-  - title, source (wikilink or list of wikilinks), date_distilled, status: review
+  - title, source (YAML list of wikilinks — always use list format, even for single sources), date_distilled, status: review
   - tags: minimum 5, maximum 10 topic-specific tags (not counting 'distilled')
-  - IMPORTANT: If there are multiple sources, use YAML list format:
+  - IMPORTANT: Use YAML list format for ALL multi-value fields:
       source:
         - [[source-note-1]]
         - [[source-note-2]]
     Do NOT use duplicate source: keys — that is invalid YAML.
+    Example for single source: source: [[[note]]] (list with one item)
 
 Body sections IN THIS ORDER:
 
@@ -273,7 +274,7 @@ STEP 1 — FETCH TRANSCRIPT
 Use TranscriptAPI to get the full transcript.
 TRANSCRIPT_API_KEY is set in the environment (loaded from ~/.openclaw/openclaw.json).
 Make this exact call:
-  curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=$url&format=text&include_timestamp=true&send_metadata=true' \\
+  curl -s "https://transcriptapi.com/api/v2/youtube/transcript?video_url=$url&format=text&include_timestamp=true&send_metadata=true" \\
     -H "Authorization: Bearer $TRANSCRIPT_API_KEY"
 Extract: video title, channel name, and the full transcript text.
 If the API returns a 402 (no credits) or 404 (no captions), note this in the Source
