@@ -100,10 +100,11 @@ Frontmatter required:
   - tags: minimum 5, maximum 10 topic-specific tags (not counting 'distilled')
   - IMPORTANT: Use YAML list format for ALL multi-value fields:
       source:
-        - [[source-note-1]]
-        - [[source-note-2]]
+        - "[[source-note-1]]"
+        - "[[source-note-2]]"
     Do NOT use duplicate source: keys — that is invalid YAML.
-    Example for single source: source: [[note]] (list with one item, double brackets)
+    Wikilinks MUST be quoted: YAML interprets [[ as nested list.
+    Example for single source: source: [" [[note]]"] (list with one quoted wikilink)
 
 Body sections IN THIS ORDER:
 
@@ -139,7 +140,10 @@ ATOMIC NOTE RULES for '03-Atomic/':
 - Title = the idea expressed as a concise phrase.
 - Body = 2-5 sentences. No padding.
 - Frontmatter tags: minimum 2, maximum 5 topic-specific tags (not counting 'atomic').
-- Always include a wikilink back to the Source and Distilled notes.
+- Wikilinks in frontmatter MUST be double-quoted: source: "=[[wikilink]]" and distilled: "=[[wikilink]]"
+  e.g.   source: "=[[trading-agents]]"
+  e.g.   distilled: "=[[trading-agents-distilled]]"
+  IMPORTANT: YAML interprets [[ as nested list, so wikilinks MUST be quoted.
 - Search vault for related existing notes and add wikilinks.
 - ALL prose must be humanized before writing.
 "
