@@ -52,36 +52,52 @@ For files:
 
 ### Step 3: Process Through Pipeline
 
-Use the SAME logic as `process-inbox.sh`:
+**CRITICAL routing:**
+- YouTube URLs → transcript APIs ONLY (see below). NEVER use defuddle.
+- PDFs → LiteParse (primary), Defuddle (fallback)
+- Everything else (articles, blog posts, web pages) → Defuddle (primary), LiteParse (fallback)
 
-**For URLs (Defuddle primary, LiteParse fallback):**
-```
-defuddle parse <url> --md
-```
-Create:
-1. Source note → 01-Sources/
-2. Distilled note → 02-Distilled/ (follow DISTILLED_STRUCTURE below)
-3. Atomic notes → 03-Atomic/ (follow ATOMIC_RULES below)
-4. Update MoCs → 04-MoCs/
-5. Archive original → 06-Archive/processed-inbox/
+**For YouTube URLs — direct transcript API, no defuddle:**
+See the full command block in the **YouTube URLs** section below. Extract video ID, call TranscriptAPI (primary), fall back to Supadata (with async polling), and if both fail create Source with `status: needs-transcript`.
 
-**For PDFs (LiteParse):**
-```
-lit parse <file> --format text -o /tmp/extracted.md
-```
-Same pipeline as URLs, but embed the PDF in the Source note.
+**For YouTube URLs (NEVER use Defuddle — go directly to transcript APIs):**
 
-**For YouTube:**
-Fetch transcript via TranscriptAPI (primary) or Supadata (fallback):
+Extract the video ID first:
 ```bash
-# Primary — TranscriptAPI
-curl -s "https://transcriptapi.com/api/v2/youtube/transcript?video_url=$URL&format=text&include_timestamp=true&send_metadata=true" \
-  -H "Authorization: Bearer $TRANSCRIPT_API_KEY"
-
-# Fallback — Supadata
-curl -s "https://api.supadata.ai/v1/youtube/transcript?url=$URL&text=true&lang=en" \
-  -H "x-api-key: $SUPADATA_API_KEY"
+# From youtube.com/watch?v=ID → ID
+# From youtu.be/ID → ID
+VIDEO_ID=$(echo "$URL" | grep -oE 'v=[^&]+|youtu\.be/[^?]+' | head -1 | sed 's/v=//;s/youtu\.be\///')
 ```
+
+Then fetch transcript directly — NO intermediate URL fetch:
+
+TranscriptAPI (primary):
+```bash
+TRANSCRIPT=$(curl -s "https://transcriptapi.com/api/v2/youtube/transcript?video_url=${URL}&format=text&include_timestamp=false&send_metadata=true" \
+  -H "Authorization: Bearer $TRANSCRIPT_API_KEY")
+```
+
+Supadata fallback (async for videos >20 min, polling required):
+```bash
+TRANSCRIPT=$(curl -s "https://api.supadata.ai/v1/youtube/transcript?url=${URL}&text=true&lang=en" \
+  -H "x-api-key: $SUPADATA_API_KEY")
+```
+
+If Supadata returns HTTP 202, poll the `jobId`:
+```bash
+JOB_ID=$(echo "$TRANSCRIPT" | grep -oE '"jobId":"[^"]+"' | cut -d'"' -f4)
+while true; do
+  RESULT=$(curl -s "https://api.supadata.ai/v1/youtube/transcript/${JOB_ID}" \
+    -H "x-api-key: $SUPADATA_API_KEY")
+  if echo "$RESULT" | grep -q '"status":"completed"'; then
+    TRANSCRIPT=$(echo "$RESULT" | grep -oE '"content":"[^"]+"' | cut -d'"' -f4 | sed 's/\\n/\n/g')
+    break
+  fi
+  sleep 5
+done
+```
+
+If both APIs fail, create Source note with `status: needs-transcript` and move on. Do NOT fall back to defuddle on YouTube URLs.
 
 **For other content:**
 Treat as raw content, create notes accordingly.
