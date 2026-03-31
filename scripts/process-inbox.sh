@@ -15,8 +15,9 @@ set -euo pipefail
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════
 VAULT_PATH="${VAULT_PATH:-$HOME/MyVault}"
+mkdir -p "$VAULT_PATH/Meta/Scripts"
 LOG_FILE="$VAULT_PATH/Meta/Scripts/processing.log"
-LOCK_FILE="/tmp/obsidian-inbox-processor.lock"
+LOCK_FILE="/tmp/obsidian-inbox-processor-$(echo "$VAULT_PATH" | md5sum | cut -c1-8).lock"
 MAX_RETRIES=3
 
 # Agent command — change for your agent
@@ -83,7 +84,7 @@ Be resourceful. Find a way to complete the task."
   log "GIVING UP after $MAX_RETRIES attempts: $description"
   # Move the failed file to a failed/ subfolder for manual review
   local file_arg
-  file_arg=$(echo "$description" | grep -oP '(?<=file: ).*' || true)
+  file_arg=$(echo "$description" | sed -n 's/.*file: //p' || true)
   if [ -n "$file_arg" ] && [ -f "$file_arg" ]; then
     mkdir -p "$VAULT_PATH/00-Inbox/failed"
     mv "$file_arg" "$VAULT_PATH/00-Inbox/failed/" 2>/dev/null || true
@@ -112,9 +113,14 @@ is_pdf_file() {
 }
 
 is_youtube_link() {
+  local file="$1"
+  # Only treat single-line URL files as YouTube links, not mixed-content notes
+  local line_count
+  line_count=$(wc -l < "$file" 2>/dev/null | tr -d ' ')
+  [ "$line_count" -gt 3 ] && return 1
   local content
-  content=$(cat "$1" 2>/dev/null | tr -d '[:space:]')
-  [[ "$content" =~ (youtube\.com|youtu\.be) ]]
+  content=$(cat "$file" 2>/dev/null | tr -d '[:space:]')
+  [[ "$content" =~ ^https?://(www\.)?(youtube\.com|youtu\.be)/ ]]
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -163,7 +169,9 @@ DISTILLED_STRUCTURE="
 DISTILLED NOTE STRUCTURE — follow EXACTLY for every note in 02-Distilled/:
 
 Frontmatter must include:
-  - title, source (wikilink), date_distilled, status: review
+  - title, source (quoted wikilink — YAML interprets [[ as list, so ALWAYS quote),
+    date_distilled, status: review
+    Example:  source: \"[[my-source-note]]\"
   - tags: minimum 5, maximum 10 topic-specific tags (not counting 'distilled')
   - BEFORE choosing tags: run 'obsidian tags sort=count counts' and reuse
     existing tags wherever a match exists. Only mint a new tag if nothing fits.
@@ -286,6 +294,7 @@ If both fail, create a minimal Source note with the URL and mark status: needs-m
 STEP 2 — CREATE SOURCE NOTE
 Create a Source note in '01-Sources/' with extracted markdown content.
 Frontmatter: title, source_url, source_type, author, date_captured, tags, status: processed.
+IMPORTANT: Wikilinks in YAML frontmatter MUST be quoted (e.g. source: \"[[note]]\").
 
 STEP 3 — CREATE DISTILLED NOTE
 $DISTILLED_STRUCTURE
@@ -323,16 +332,18 @@ STEP 1 — EXTRACT CONTENT
 Try Defuddle first if applicable:
   defuddle parse '$file' --md
 If Defuddle can't handle this file type or fails, FALL BACK to LiteParse:
-  lit parse '$file' --format text -o /tmp/${name_no_ext}_extracted.md
+  lit parse '$file' --format text -o '/tmp/${name_no_ext}_extracted.md'
 LiteParse handles PDFs, DOCX, PPTX, XLSX, images (with OCR), and more.
 Read the extracted text output.
 
 STEP 2 — CREATE SOURCE NOTE
-Move the original file to '01-Sources/' (keep for embedding if it's a PDF).
+If the file is a PDF: COPY it to '01-Sources/' (keep original for archiving).
+For other files: just reference the original path.
 Create a Source note in '01-Sources/' with:
   - If PDF: embed it with ![[${filename}]]
   - Include extracted text in 'Original content' section
   - Frontmatter: title, author, source_type, tags, status: processed
+  - IMPORTANT: Wikilinks in YAML frontmatter MUST be quoted (e.g. source: \"[[note]]\")
 
 STEP 3 — CREATE DISTILLED NOTE
 $DISTILLED_STRUCTURE
@@ -346,7 +357,7 @@ STEP 5 — UPDATE MoCs
 Search and update or create relevant MoCs. Humanize MoC prose.
 
 STEP 6 — ARCHIVE
-Move the inbox entry (not the file in 01-Sources/) to '06-Archive/processed-inbox/'.
+Move the original inbox file to '06-Archive/processed-inbox/'.
 "
 }
 

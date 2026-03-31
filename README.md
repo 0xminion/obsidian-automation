@@ -26,8 +26,10 @@ node --version  # >= 18
 # Node.js 22+ (for obsidian-headless sync client)
 node --version  # >= 22 if using ob sync
 
-# Hermes Agent (or Claude Code / Codex)
-curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+# AI Agent — pick one:
+# Claude Code (default):  npm install -g @anthropic-ai/claude-code
+# Hermes Agent:           curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+# Codex CLI:              npm install -g @openai/codex
 
 # Obsidian CLI (desktop app) — open Obsidian → Settings → General → Enable CLI
 obsidian help
@@ -107,25 +109,15 @@ cp scripts/Dashboard.md ~/MyVault/Meta/Dashboard.md
 ```bash
 # Primary: TranscriptAPI
 # Sign up at https://transcriptapi.com and get your API key
-# The process-inbox.sh loads it from ~/.openclaw/openclaw.json automatically
-# (installed by: clawhub install transcriptapi)
-# Or set manually:
+# Set your API key as an environment variable:
 export TRANSCRIPT_API_KEY="your-key-here"
-
-# Fallback: Supadata (used when TranscriptAPI fails or has no credits)
-# Sign up at https://supadata.ai and get your API key
-# Set in ~/.openclaw/openclaw.json under skills.entries.supadata.apiKey
-# Or set manually:
-export SUPADATA_API_KEY="your-key-here"
+# Add to your shell profile (~/.bashrc, ~/.zshrc) so it persists.
 ```
 
 ### 7. Run the pipeline
 
 ```bash
-# Dry run
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh --dry-run
-
-# Real run
+# Run the processor
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh
 ```
 
@@ -134,7 +126,7 @@ VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh
 ```bash
 # Every 30 minutes
 crontab -e
-*/30 * * * * VAULT_PATH="$HOME/MyVault" TRANSCRIPT_API_KEY="your-key" SUPADATA_API_KEY="your-key" /home/user/MyVault/Meta/Scripts/process-inbox.sh
+*/30 * * * * VAULT_PATH="$HOME/MyVault" TRANSCRIPT_API_KEY="your-key" $HOME/MyVault/Meta/Scripts/process-inbox.sh
 ```
 
 Or use Hermes Agent's built-in scheduler:
@@ -166,9 +158,9 @@ Install via Settings → Community plugins → Browse:
 
 | Input | Parser | Notes |
 |---|---|---|
-| URL (`.url` or `.md` containing URL) | Defuddle primary, LiteParse fallback | |
-| PDF / DOCX / PPTX | LiteParse | |
-| YouTube link | TranscriptAPI primary, Supadata fallback | |
+| URL (`.md`/`.txt` containing a single URL) | Defuddle primary, LiteParse fallback | |
+| PDF / DOCX / PPTX / other files | Defuddle primary, LiteParse fallback | |
+| YouTube link (single-URL file) | TranscriptAPI | |
 | Web clipper save | Direct passthrough | Already markdown |
 
 ### Note types
@@ -185,6 +177,10 @@ Install via Settings → Community plugins → Browse:
 **`03-Atomic/`** — One idea per note. 2-5 sentences, 2-5 tags. Always linked back to Source and Distilled.
 
 **`04-MoCs/`** — Topic hubs that link to related Atomic and Distilled notes.
+
+### Retry Logic
+
+Every processing call is wrapped in `run_with_retry` with exponential backoff (3 attempts, 5s/10s delays). On failure, the agent receives retry instructions suggesting alternative approaches (e.g., LiteParse fallback, different API parameters). Files that fail all retries are moved to `00-Inbox/failed/` for manual review.
 
 ### Humanization
 
@@ -216,7 +212,7 @@ obsidian-automation/
 | `defuddle: command not found` | `npm install -g defuddle` |
 | `lit: command not found` | `npm install -g @llamaindex/liteparse` |
 | TranscriptAPI 401 | Check `TRANSCRIPT_API_KEY` env var |
-| TranscriptAPI 402/404 | Falls back to Supadata automatically; check `SUPADATA_API_KEY` if both fail |
+| TranscriptAPI 402/404 | Check credits at transcriptapi.com; retry logic will attempt alternative approaches |
 | Files stuck in `00-Inbox/failed/` | Check `Meta/Scripts/processing.log` |
 | Tag sprawl | Weekly: run `obsidian tags sort=count counts` and merge with Tag Wrangler |
 | Quick notes touched | Only `raw/` and `clippings/` are processed — check script invocation |
@@ -232,6 +228,5 @@ obsidian-automation/
 | Defuddle | latest | Web content extraction |
 | LiteParse | latest | PDF/DOCX/PPTX parsing with OCR |
 | LibreOffice | latest | Office format conversion for LiteParse |
-| TranscriptAPI | — | YouTube transcript fetching (primary) |
-| Supadata | — | YouTube transcript fetching (fallback) |
+| TranscriptAPI | — | YouTube transcript fetching |
 | Humanizer | — | AI pattern removal from generated prose |
