@@ -1,49 +1,99 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Obsidian Inbox Processor — Hermes Agent + headless file operations
-# Watches 00 Inbox/raw/ and 00 Inbox/clippings/, processes each file through
-# Defuddle (URLs), LiteParse (PDFs), or direct handling (YouTube/misc),
+# Obsidian Inbox Processor — Agent-agnostic + headless file operations
+# Watches 00-Inbox/raw/ and 00-Inbox/clippings/, processes each file through
+# Defuddle (URLs, primary), LiteParse (fallback), or TranscriptAPI (YouTube),
 # creates Source → Distilled → Atomic notes, humanizes AI prose, updates MoCs.
 #
-# NOTE: obsidian CLI (obsidian create/append/search) requires the Obsidian app
-# running locally. This script uses direct file operations instead (cp, mv, cat,
-# mkdir, find) which work in any headless context.
+# Supports: Claude Code, Hermes Agent, Codex CLI, or any agentskills.io agent.
+# Includes retry logic with exponential backoff.
 # ============================================================================
 
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════
-# Configuration
+# CONFIGURATION
 # ═══════════════════════════════════════════════════════════
-VAULT_PATH="${VAULT_PATH:-$HOME/cvjji9}"
-LOG_FILE="$VAULT_PATH/Logs/processing.log"
+VAULT_PATH="${VAULT_PATH:-$HOME/MyVault}"
+LOG_FILE="$VAULT_PATH/Meta/Scripts/processing.log"
 LOCK_FILE="/tmp/obsidian-inbox-processor.lock"
-AGENT_CMD="${AGENT_CMD:-hermes chat -q}"
-SKILLS="obsidian-markdown, obsidian-cli, defuddle, humanizer, transcriptapi"
+MAX_RETRIES=3
 
-# Load TranscriptAPI key from openclaw config (set by clawhub install)
-TRANSCRIPT_API_KEY="${TRANSCRIPT_API_KEY:-$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$HOME/.openclaw/openclaw.json','utf8')).skills.entries.transcriptapi.apiKey)}catch(e){console.log('')}" 2>/dev/null)}"
-export TRANSCRIPT_API_KEY
-
-# Load Supadata API key (fallback transcript provider)
-SUPADATA_API_KEY="${SUPADATA_API_KEY:-$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$HOME/.openclaw/openclaw.json','utf8')).skills.entries.supadata.apiKey)}catch(e){console.log('')}" 2>/dev/null)}"
-export SUPADATA_API_KEY
+# Agent command — change for your agent
+# Claude Code:   AGENT_CMD="claude -p"
+# Hermes Agent:  AGENT_CMD="hermes run --prompt"
+# Codex CLI:     AGENT_CMD="codex exec"
+AGENT_CMD="${AGENT_CMD:-claude -p}"
 
 # ═══════════════════════════════════════════════════════════
-# Safety: prevent overlapping runs
+# SAFETY: prevent overlapping runs
 # ═══════════════════════════════════════════════════════════
 if [ -f "$LOCK_FILE" ]; then
-  echo "$(date): Another instance is running. Exiting." >> "$LOG_FILE"
+  echo "$(date): Another instance running. Exiting." >> "$LOG_FILE"
   exit 0
 fi
 trap 'rm -f "$LOCK_FILE"' EXIT
 touch "$LOCK_FILE"
 
 log() { echo "$(date): $1" >> "$LOG_FILE"; }
-log "Starting inbox processing..."
 
 # ═══════════════════════════════════════════════════════════
-# File type detection helpers
+# RETRY LOGIC — exponential backoff, max 3 attempts
+# On failure, instructs the agent to try alternative approaches
+# ═══════════════════════════════════════════════════════════
+run_with_retry() {
+  local description="$1"
+  local prompt="$2"
+  local attempt=1
+  local delay=5  # initial delay in seconds
+
+  while [ $attempt -le $MAX_RETRIES ]; do
+    log "Attempt $attempt/$MAX_RETRIES: $description"
+
+    if cd "$VAULT_PATH" && $AGENT_CMD "$prompt" 2>> "$LOG_FILE"; then
+      log "SUCCESS: $description"
+      return 0
+    fi
+
+    local exit_code=$?
+    log "FAILED (exit $exit_code): $description — attempt $attempt/$MAX_RETRIES"
+
+    if [ $attempt -lt $MAX_RETRIES ]; then
+      log "Waiting ${delay}s before retry (exponential backoff)..."
+      sleep $delay
+      delay=$((delay * 2))
+
+      # Augment the prompt with retry instructions
+      prompt="$prompt
+
+RETRY CONTEXT: This is attempt $((attempt + 1)) of $MAX_RETRIES.
+The previous attempt failed. Try alternative approaches:
+- If a URL failed with Defuddle, fall back to LiteParse or direct fetch.
+- If PDF parsing failed, try with --no-ocr flag or different page ranges.
+- If the TranscriptAPI call failed, try with a bare video ID instead of full URL.
+- If a file operation failed, check if the target directory exists and create it.
+- If an API call was rate-limited, use a simpler/shorter prompt.
+- If note creation failed, verify the file path and try writing to a temp location first.
+Be resourceful. Find a way to complete the task."
+    fi
+
+    attempt=$((attempt + 1))
+  done
+
+  log "GIVING UP after $MAX_RETRIES attempts: $description"
+  # Move the failed file to a failed/ subfolder for manual review
+  local file_arg
+  file_arg=$(echo "$description" | grep -oP '(?<=file: ).*' || true)
+  if [ -n "$file_arg" ] && [ -f "$file_arg" ]; then
+    mkdir -p "$VAULT_PATH/00-Inbox/failed"
+    mv "$file_arg" "$VAULT_PATH/00-Inbox/failed/" 2>/dev/null || true
+    log "Moved failed file to 00-Inbox/failed/"
+  fi
+  return 1
+}
+
+# ═══════════════════════════════════════════════════════════
+# FILE TYPE DETECTION
 # ═══════════════════════════════════════════════════════════
 is_url_file() {
   local file="$1"
@@ -58,13 +108,12 @@ is_url_file() {
 }
 
 is_pdf_file() {
-  local ext="${1##*.}"
-  [[ "${ext,,}" == "pdf" ]]
+  [[ "${1##*.}" =~ ^[Pp][Dd][Ff]$ ]]
 }
 
 is_youtube_link() {
   local content
-  content=$(cat "$1" | tr -d '[:space:]')
+  content=$(cat "$1" 2>/dev/null | tr -d '[:space:]')
   [[ "$content" =~ (youtube\.com|youtu\.be) ]]
 }
 
@@ -73,339 +122,290 @@ is_youtube_link() {
 # ═══════════════════════════════════════════════════════════
 COMMON_INSTRUCTIONS="
 VAULT LOCATION: $VAULT_PATH
-AGENT SKILLS AVAILABLE: $SKILLS
+AGENT SKILLS AVAILABLE: obsidian-markdown, obsidian-cli, defuddle, humanizer,
+  youtube-full (TranscriptAPI), liteparse
 
 CRITICAL RULES:
-1. NEVER touch anything in '00 Inbox/quick notes/'. That folder is off-limits.
-2. ALL AI-generated prose written to '02-Distilled/', '03-Atomic/', or '04-MoCs/'
+1. NEVER touch anything in '00-Inbox/quick notes/'. Off-limits.
+2. ALL AI-generated prose for 02-Distilled/, 03-Atomic/, or 04-MoCs/
    MUST be run through the Humanizer skill before writing to disk.
-   Draft the content, then humanize it, then write the final file.
-3. Use [[wikilinks]] for all internal vault links. Never use markdown links.
-4. Use Obsidian-flavored markdown (callouts, frontmatter properties, tags).
-5. File operations: use terminal with 'cp', 'mv', 'cat', 'mkdir', 'find', etc.
-   Create notes by writing .md files directly to the vault directory.
-   Search notes using 'grep -r' or 'find . -name \"*.md\" | xargs grep'.
-   No obsidian CLI commands available — use direct file I/O instead.
-6. Source notes go in '01-Sources/'. Processed originals go in '06-Archive-processed/processed-inbox/'.
+   Draft the content → humanize it → write the final file.
+3. Use [[wikilinks]] for all internal vault links.
+4. Use Obsidian-flavored markdown (callouts, frontmatter, tags).
+5. Use obsidian CLI where helpful:
+   obsidian create, obsidian search, obsidian append, obsidian property:set
+6. Source notes go in '01-Sources/'. Processed originals go in '06-Archive/processed-inbox/'.
+
+PARSER ROUTING:
+- Primary: Use Defuddle for any URLs and applicable file-to-markdown conversions.
+- Fallback: If Defuddle fails or can't handle the format, fall back to LiteParse:
+    lit parse <file> --format text
+- YouTube links: Use TranscriptAPI (youtube-full skill) exclusively.
+  API call: curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=VIDEO_URL&format=text&include_timestamp=true&send_metadata=true'
+    -H 'Authorization: Bearer \$TRANSCRIPT_API_KEY'
+  Then convert the transcript to clean markdown.
+
+TAG CONSOLIDATION:
+Before creating new tags, ALWAYS search existing tags in the vault first:
+  obsidian tags sort=count counts
+Reuse existing tags wherever possible. Only create a new tag if no existing
+tag covers the concept. This prevents tag sprawl and keeps the taxonomy clean.
+
+RETRY BEHAVIOR:
+If any step fails (API call, file operation, parsing), try an alternative
+approach before giving up. Be resourceful.
 "
 
 # ═══════════════════════════════════════════════════════════
 # DISTILLED NOTE STRUCTURE (strict)
 # ═══════════════════════════════════════════════════════════
 DISTILLED_STRUCTURE="
-DISTILLED NOTE STRUCTURE — follow this EXACTLY for every note in '02-Distilled/':
+DISTILLED NOTE STRUCTURE — follow EXACTLY for every note in 02-Distilled/:
 
-Frontmatter required:
-  - title, source (YAML list of wikilinks — always use list format, even for single sources), date_distilled, status: review
+Frontmatter must include:
+  - title, source (wikilink), date_distilled, status: review
   - tags: minimum 5, maximum 10 topic-specific tags (not counting 'distilled')
-  - IMPORTANT: Use YAML list format for ALL multi-value fields:
-      source:
-        - "[[source-note-1]]"
-        - "[[source-note-2]]"
-    Do NOT use duplicate source: keys — that is invalid YAML.
-    Wikilinks MUST be quoted: YAML interprets [[ as nested list.
-    Example for single source: source: [" [[note]]"] (list with one quoted wikilink)
+  - BEFORE choosing tags: run 'obsidian tags sort=count counts' and reuse
+    existing tags wherever a match exists. Only mint a new tag if nothing fits.
 
 Body sections IN THIS ORDER:
 
-## TL;DR
-3-5 sentence summary. Plain language, no fluff.
+## Summary
+3-5 sentence summary of what the source is about. Plain language, no fluff.
 
-## Findings
+## ELI5 insights
 
-### Core findings
-The main findings. As many bullet points as the content warrants — extract EVERYTHING
-significant. No artificial limits.
+### Core insights
+The main, most important findings. Explain each one as if to a smart
+12-year-old — simple language, no jargon, concrete examples where possible.
+Extract EVERYTHING significant. Not top 5, not top 10 — as many as exist.
+Each bullet should be a substantive point with a clear ELI5 explanation.
 
 ### Other takeaways
-Other important findings. No artificial limits.
+Other findings that are deemed important but not core. Same ELI5 treatment.
+Again, extract as many as the content warrants. No artificial limits.
 
 ## Diagrams
-If content involves processes, relationships, hierarchies, comparisons:
-include a Mermaid diagram. If no diagram would genuinely help, write 'N/A.'
+If the content involves processes, relationships, hierarchies, comparisons,
+or any concept that would be clearer as a visual: include a Mermaid diagram,
+mindmap, or flowchart using Obsidian's native mermaid code block support.
+If no diagram would genuinely help, write 'N/A — content is straightforward.'
 
 ## Open questions
-Questions, gaps, or issues raised by the content worth thinking about further.
+Questions, issues, or gaps raised by this content that are worth thinking
+about further. What doesn't the source answer? What assumptions does it make?
 
 ## Linked concepts
-Wikilinks to related Atomic notes, Distilled notes, and MoCs.
+Wikilinks to related Atomic notes, other Distilled notes, and MoCs.
+Use 'obsidian search' to find existing related notes in the vault.
 "
 
 # ═══════════════════════════════════════════════════════════
 # ATOMIC NOTE RULES
 # ═══════════════════════════════════════════════════════════
 ATOMIC_RULES="
-ATOMIC NOTE RULES for '03-Atomic/':
+ATOMIC NOTE RULES for 03-Atomic/:
 - One clear, standalone idea per note.
 - Title = the idea expressed as a concise phrase.
-- Body = 2-5 sentences. No padding.
-- Frontmatter tags: minimum 2, maximum 5 topic-specific tags (not counting 'atomic').
-- Wikilinks in frontmatter MUST be double-quoted: source: "=[[wikilink]]" and distilled: "=[[wikilink]]"
-  e.g.   source: "=[[trading-agents]]"
-  e.g.   distilled: "=[[trading-agents-distilled]]"
-  IMPORTANT: YAML interprets [[ as nested list, so wikilinks MUST be quoted.
-- Search vault for related existing notes and add wikilinks.
+- Body = 2-5 sentences explaining the idea. No padding.
+- Frontmatter tags: minimum 2, maximum 5 topic-specific tags
+  (not counting 'atomic').
+- BEFORE choosing tags: run 'obsidian tags sort=count counts' and reuse
+  existing tags. Only create new tags if nothing fits.
+- Always include a wikilink back to the Source and Distilled notes.
+- Search the vault for related Atomic notes and add wikilinks.
 - ALL prose must be humanized before writing.
 "
 
 # ═══════════════════════════════════════════════════════════
-# Process URL-based files in raw/
-# Uses: Defuddle (web content extraction)
+# PROCESS: YouTube links (TranscriptAPI → markdown)
 # ═══════════════════════════════════════════════════════════
-process_url() {
+process_youtube() {
   local file="$1"
-  log "Processing URL: $file"
-
   local url
   url=$(cat "$file" | tr -d '[:space:]')
 
-  cd "$VAULT_PATH"
-  $AGENT_CMD "
+  run_with_retry "YouTube — file: $file" "
+$COMMON_INSTRUCTIONS
+
+TASK: Process a YouTube video link.
+FILE: '$file'
+URL: $url
+
+STEP 1 — FETCH TRANSCRIPT
+Use the TranscriptAPI skill (youtube-full) to get the transcript:
+  curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=$url&format=text&include_timestamp=true&send_metadata=true' \\
+    -H 'Authorization: Bearer \$TRANSCRIPT_API_KEY'
+Extract the transcript text and metadata (title, author).
+Convert the transcript into clean, readable markdown paragraphs.
+
+STEP 2 — CREATE SOURCE NOTE
+Create a Source note in '01-Sources/' with:
+  - The YouTube URL, video title, channel name
+  - The full transcript as markdown in the 'Original content' section
+  - Frontmatter: title, source_url, source_type: youtube, author (channel), tags, status: processed
+
+STEP 3 — CREATE DISTILLED NOTE
+$DISTILLED_STRUCTURE
+Draft the full Distilled note from the transcript content.
+Humanize all prose, then write to '02-Distilled/'.
+
+STEP 4 — CREATE ATOMIC NOTES
+$ATOMIC_RULES
+Extract standalone ideas from the video content.
+Draft each, humanize, then write to '03-Atomic/'.
+
+STEP 5 — UPDATE MoCs
+Search existing MoCs: obsidian search query=\"<topic>\"
+Update relevant MoCs or create new ones if warranted. Humanize MoC prose.
+
+STEP 6 — ARCHIVE
+Move original inbox file to '06-Archive/processed-inbox/'.
+"
+}
+
+# ═══════════════════════════════════════════════════════════
+# PROCESS: URLs (Defuddle primary → LiteParse fallback)
+# ═══════════════════════════════════════════════════════════
+process_url() {
+  local file="$1"
+
+  run_with_retry "URL — file: $file" "
 $COMMON_INSTRUCTIONS
 
 TASK: Process a URL from the inbox.
 FILE: '$file'
-URL: '$url'
 
 STEP 1 — EXTRACT CONTENT
-Use Defuddle CLI to extract clean markdown:
-  defuddle parse '$url' --md
-Defuddle strips ads, navigation, and clutter, returning only the main content.
+Read the file to get the URL. Use Defuddle CLI as the PRIMARY extractor:
+  defuddle parse <the_url> --md
+If Defuddle fails or returns empty/unusable content, FALL BACK to LiteParse:
+  Download the page, then: lit parse <downloaded_file> --format text
+If both fail, create a minimal Source note with the URL and mark status: needs-manual-extraction.
 
 STEP 2 — CREATE SOURCE NOTE
-Create a Source note in '01-Sources/' — write a .md file directly.
-Frontmatter: title, source_url, source_type (article/blog/documentation/etc),
-  author (extract from content), date_captured (today), tags, status: processed
-Include the full extracted content in an 'Original content' section.
+Create a Source note in '01-Sources/' with extracted markdown content.
+Frontmatter: title, source_url, source_type, author, date_captured, tags, status: processed.
 
 STEP 3 — CREATE DISTILLED NOTE
 $DISTILLED_STRUCTURE
-Draft the full Distilled note, then HUMANIZE all prose sections before writing.
-Write the humanized version to '02-Distilled/' as a .md file.
+Draft, humanize, write to '02-Distilled/'.
 
 STEP 4 — CREATE ATOMIC NOTES
 $ATOMIC_RULES
-For each distinct, standalone idea worth preserving, create an Atomic note.
-Draft each one, humanize, then write to '03-Atomic/' as .md files.
+Draft each, humanize, write to '03-Atomic/'.
 
 STEP 5 — UPDATE MoCs
-Search existing MoCs in '04-MoCs/' using grep/find.
-If a related MoC exists: append wikilinks to the new notes in the relevant sections.
-If no matching MoC exists and the topic is substantial enough to warrant one:
-create a new MoC (humanize the prose before writing) as a .md file in '04-MoCs/'.
+Search and update or create relevant MoCs. Humanize MoC prose.
 
 STEP 6 — ARCHIVE
-Move the original inbox file to '06-Archive-processed/processed-inbox/'.
+Move original inbox file to '06-Archive/processed-inbox/'.
 "
 }
 
 # ═══════════════════════════════════════════════════════════
-# Process PDF files in raw/
-# Uses: LiteParse (PDF text extraction)
+# PROCESS: PDFs and other files (Defuddle primary → LiteParse fallback)
 # ═══════════════════════════════════════════════════════════
-process_pdf() {
+process_file() {
   local file="$1"
   local filename
-  filename=$(basename "$file" .pdf)
-  log "Processing PDF: $file"
+  filename=$(basename "$file")
+  local name_no_ext="${filename%.*}"
 
-  cd "$VAULT_PATH"
-  $AGENT_CMD "
+  run_with_retry "File — file: $file" "
 $COMMON_INSTRUCTIONS
 
-TASK: Process a PDF from the inbox.
+TASK: Process a file from the inbox.
 FILE: '$file'
 FILENAME: '$filename'
 
-STEP 1 — EXTRACT TEXT
-Use LiteParse to parse the PDF to text:
-  lit parse '$file' --format text -o /tmp/${filename}_extracted.md
+STEP 1 — EXTRACT CONTENT
+Try Defuddle first if applicable:
+  defuddle parse '$file' --md
+If Defuddle can't handle this file type or fails, FALL BACK to LiteParse:
+  lit parse '$file' --format text -o /tmp/${name_no_ext}_extracted.md
+LiteParse handles PDFs, DOCX, PPTX, XLSX, images (with OCR), and more.
 Read the extracted text output.
 
 STEP 2 — CREATE SOURCE NOTE
-Copy the PDF file to '01-Sources/' (keep it for embedding).
+Move the original file to '01-Sources/' (keep for embedding if it's a PDF).
 Create a Source note in '01-Sources/' with:
-  - Embed the PDF: ![[\${filename}.pdf]]
-  - Include extracted text in an 'Original content' section
-  - Frontmatter: title, author, source_type: pdf, tags, status: processed
-  Write as a .md file directly to '01-Sources/'.
+  - If PDF: embed it with ![[${filename}]]
+  - Include extracted text in 'Original content' section
+  - Frontmatter: title, author, source_type, tags, status: processed
 
 STEP 3 — CREATE DISTILLED NOTE
 $DISTILLED_STRUCTURE
-Draft the full Distilled note, then HUMANIZE all prose sections before writing.
-Write the humanized version to '02-Distilled/' as a .md file.
+Draft, humanize, write to '02-Distilled/'.
 
 STEP 4 — CREATE ATOMIC NOTES
 $ATOMIC_RULES
-Extract as many atomic ideas as the content warrants.
-Draft each, humanize, then write to '03-Atomic/' as .md files.
+Draft each, humanize, write to '03-Atomic/'.
 
 STEP 5 — UPDATE MoCs
-Search for and update relevant MoCs, or create new ones if warranted.
-Humanize all MoC prose before writing.
+Search and update or create relevant MoCs. Humanize MoC prose.
 
 STEP 6 — ARCHIVE
-Move the original inbox entry (not the PDF, now in 01-Sources/) to '06-Archive-processed/processed-inbox/'.
-"
-}
-# ═══════════════════════════════════════════════════════════
-# Process YouTube links in raw/
-# Uses: TranscriptAPI via curl (youtube-full skill)
-# ═══════════════════════════════════════════════════════════
-process_youtube() {
-  local file="$1"
-  log "Processing YouTube link: $file"
-
-  local url
-  url=$(cat "$file" | tr -d '[:space:]')
-
-  # Extract video ID for the API call
-  local video_id
-  video_id=$(echo "$url" | sed -E 's/.*(v=|youtu\.be\/)([a-zA-Z0-9_-]{11}).*/\2/')
-
-  if [ -z "$video_id" ]; then
-    log "ERROR: Could not extract video ID from YouTube URL: $url"
-    mkdir -p "$VAULT_PATH/00-Inbox/failed"
-    mv "$file" "$VAULT_PATH/00-Inbox/failed/"
-    return 1
-  fi
-
-  cd "$VAULT_PATH"
-  $AGENT_CMD "
-$COMMON_INSTRUCTIONS
-
-TASK: Process a YouTube video from the inbox.
-FILE: '$file'
-URL: '$url'
-VIDEO_ID: '$video_id'
-
-STEP 1 — FETCH TRANSCRIPT
-Use TranscriptAPI to get the full transcript, with Supadata as a fallback.
-Both API keys are set in the environment (loaded from ~/.openclaw/openclaw.json).
-
-**Primary — TranscriptAPI:**
-  curl -s -w '\\n%{http_code}' \"https://transcriptapi.com/api/v2/youtube/transcript?video_url=\$url&format=text&include_timestamp=true&send_metadata=true\" \\
-    -H \"Authorization: Bearer \$TRANSCRIPT_API_KEY\"
-Extract: video title, channel name, and the full transcript text.
-
-**Fallback — Supadata (use if TranscriptAPI returns 402/404/error or TRANSCRIPT_API_KEY is empty):**
-  curl -s \"https://api.supadata.ai/v1/youtube/transcript?url=\$url&text=true&lang=en\" \\
-    -H \"x-api-key: \$SUPADATA_API_KEY\"
-Supadata returns JSON with 'content' (plain text transcript when text=true),
-'lang' (language code), and 'availableLangs'. It does not return video metadata —
-if using the fallback, extract the video title from the YouTube URL/page or note it
-as unavailable.
-
-If BOTH APIs fail, note this in the Source and create Distilled/Atomic notes from
-whatever metadata is available.
-
-STEP 2 — CREATE SOURCE NOTE
-Create a Source note in '01-Sources/' as a .md file with:
-  - Frontmatter: title (video title), source_url: '$url', source_type: youtube,
-    author (channel name), date_captured (today), tags, status: processed
-  - Include the full transcript in an 'Original content' section
-  Write the file directly using terminal/file tools.
-
-STEP 3 — CREATE DISTILLED NOTE
-$DISTILLED_STRUCTURE
-Draft the full Distilled note, then HUMANIZE all prose before writing.
-Write to '02-Distilled/' as a .md file.
-
-STEP 4 — CREATE ATOMIC NOTES
-$ATOMIC_RULES
-Extract as many standalone atomic ideas as the content warrants.
-Draft each, humanize, then write to '03-Atomic/' as .md files.
-
-STEP 5 — UPDATE MoCs
-Search for and update relevant MoCs in '04-MoCs/'. Humanize any new MoC prose.
-
-STEP 6 — ARCHIVE
-Move the original inbox file to '06-Archive-processed/processed-inbox/'.
+Move the inbox entry (not the file in 01-Sources/) to '06-Archive/processed-inbox/'.
 "
 }
 
 # ═══════════════════════════════════════════════════════════
-# Process other files in raw/
-# ═══════════════════════════════════════════════════════════
-process_other_raw() {
-  local file="$1"
-  log "Processing other raw file: $file"
-
-  cd "$VAULT_PATH"
-  $AGENT_CMD "
-$COMMON_INSTRUCTIONS
-
-TASK: Process a raw inbox item.
-FILE: '$file'
-
-Read the file and determine what it is.
-
-For markdown/text content: create a Source note, then follow the standard
-Distilled → Atomic → MoC pipeline. Write all files directly as .md.
-
-$DISTILLED_STRUCTURE
-$ATOMIC_RULES
-
-HUMANIZE all prose in '02-Distilled/', '03-Atomic/', and '04-MoCs/' before writing.
-Move the processed file to '06-Archive-processed/processed-inbox/'.
-"
-}
-
-# ═══════════════════════════════════════════════════════════
-# Process clippings (web clipper saves)
+# PROCESS: Clippings (already markdown)
 # ═══════════════════════════════════════════════════════════
 process_clipping() {
   local file="$1"
-  log "Processing clipping: $file"
 
-  cd "$VAULT_PATH"
-  $AGENT_CMD "
+  run_with_retry "Clipping — file: $file" "
 $COMMON_INSTRUCTIONS
 
 TASK: Process a web clipper save.
 FILE: '$file'
 
-Read the file. It likely contains markdown content captured by Obsidian Web Clipper,
+The file likely contains markdown captured by Obsidian Web Clipper,
 possibly with frontmatter (source_url, title).
 
-STEP 1 — CREATE/UPDATE SOURCE NOTE
-If the clipping has a source_url, create a Source note in '01-Sources/'
-as a .md file with the clipped content as the original.
+STEP 1 — CREATE SOURCE NOTE
+If it has a source_url, create a Source note in '01-Sources/'.
+If a Source for this URL already exists, update it.
 
 STEP 2 — CREATE DISTILLED NOTE
 $DISTILLED_STRUCTURE
-Draft, humanize, then write to '02-Distilled/' as a .md file.
+Draft, humanize, write to '02-Distilled/'.
 
 STEP 3 — CREATE ATOMIC NOTES
 $ATOMIC_RULES
-Draft each, humanize, then write to '03-Atomic/' as .md files.
+Draft each, humanize, write to '03-Atomic/'.
 
 STEP 4 — UPDATE MoCs
-Search and update relevant MoCs. Humanize any new MoC prose.
+Search and update or create relevant MoCs. Humanize MoC prose.
 
 STEP 5 — ARCHIVE
-Move the clipping to '06-Archive-processed/processed-inbox/'.
+Move the clipping to '06-Archive/processed-inbox/'.
 "
 }
 
 # ═══════════════════════════════════════════════════════════
-# MAIN LOOP — Process raw/ and clippings/ only
-# NEVER TOUCH quick notes/
+# MAIN LOOP
+# ONLY processes raw/ and clippings/
+# NEVER touches quick notes/
 # ═══════════════════════════════════════════════════════════
+log "Starting inbox processing..."
+
+# Process everything in raw/
 for file in "$VAULT_PATH/00-Inbox/raw"/*; do
   [ -f "$file" ] || continue
 
-  if is_pdf_file "$file"; then
-    process_pdf "$file"
-  elif is_youtube_link "$file"; then
+  if is_youtube_link "$file"; then
     process_youtube "$file"
   elif is_url_file "$file"; then
     process_url "$file"
   else
-    process_other_raw "$file"
+    process_file "$file"
   fi
 done
 
+# Process everything in clippings/
 for file in "$VAULT_PATH/00-Inbox/clippings"/*.md; do
   [ -f "$file" ] || continue
   process_clipping "$file"
