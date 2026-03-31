@@ -103,7 +103,7 @@ Frontmatter required:
         - [[source-note-1]]
         - [[source-note-2]]
     Do NOT use duplicate source: keys — that is invalid YAML.
-    Example for single source: source: [[[note]]] (list with one item)
+    Example for single source: source: [[note]] (list with one item, double brackets)
 
 Body sections IN THIS ORDER:
 
