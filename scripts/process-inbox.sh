@@ -23,6 +23,7 @@ SKILLS="obsidian-markdown, obsidian-cli, defuddle, humanizer, transcriptapi"
 
 # Load TranscriptAPI key from openclaw config (set by clawhub install)
 TRANSCRIPT_API_KEY="${TRANSCRIPT_API_KEY:-$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$HOME/.openclaw/openclaw.json','utf8')).skills.entries.transcriptapi.apiKey)}catch(e){console.log('')}" 2>/dev/null)}"
+export TRANSCRIPT_API_KEY
 
 # ═══════════════════════════════════════════════════════════
 # Safety: prevent overlapping runs
