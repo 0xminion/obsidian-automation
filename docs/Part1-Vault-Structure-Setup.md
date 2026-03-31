@@ -15,7 +15,8 @@ MyVault/
 ├── 00-Inbox/
 │   ├── raw/                   # URLs, PDFs, YouTube links — anything to be auto-processed
 │   ├── quick notes/           # Personal notes — NEVER touched by automation
-│   └── clippings/             # Web clipper saves — auto-processed
+│   ├── clippings/             # Web clipper saves — auto-processed
+│   └── failed/                # Items that failed all retry attempts (manual review)
 ├── 01-Sources/                # Full original source material (stored as-is)
 ├── 02-Distilled/              # AI-generated summaries (humanized before writing)
 ├── 03-Atomic/                 # One idea per note, evergreen (humanized before writing)
@@ -23,10 +24,9 @@ MyVault/
 ├── 05-WIP/                    # Work in progress, drafts, projects
 ├── 06-Archive/                # Completed or retired content
 │   └── processed-inbox/       # Processed inbox items land here
-├── Meta/
-│   ├── Templates/             # Note templates (created in Part 2)
-│   └── Scripts/               # Automation scripts (created in Part 2)
-└── .claude/                   # Agent skills directory (rename for your agent)
+└── Meta/
+    ├── Templates/             # Note templates (created in Part 2)
+    └── Scripts/               # Automation scripts (created in Part 2)
 ```
 
 Run this from your terminal:
@@ -34,11 +34,10 @@ Run this from your terminal:
 ```bash
 cd /path/to/MyVault
 
-mkdir -p "00-Inbox/raw" "00-Inbox/quick notes" "00-Inbox/clippings"
+mkdir -p "00-Inbox/raw" "00-Inbox/quick notes" "00-Inbox/clippings" "00-Inbox/failed"
 mkdir -p 01-Sources 02-Distilled 03-Atomic 04-MoCs 05-WIP
 mkdir -p 06-Archive/processed-inbox
 mkdir -p Meta/{Templates,Scripts}
-mkdir -p .claude
 ```
 
 ## 3. Understand the folder contracts
@@ -48,6 +47,7 @@ mkdir -p .claude
 | `00-Inbox/raw/` | You (drop anything here) | **Yes** — processed and archived |
 | `00-Inbox/quick notes/` | You (personal notes) | **Never** — completely off-limits |
 | `00-Inbox/clippings/` | Web Clipper plugin | **Yes** — processed and archived |
+| `00-Inbox/failed/` | Automation (moves failed items here) | No further processing (manual review) |
 | `01-Sources/` | Automation | No further processing (stores originals) |
 | `02-Distilled/` | Automation (humanized) | No further processing |
 | `03-Atomic/` | Automation (humanized) + You | No further processing |
