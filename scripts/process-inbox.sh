@@ -274,8 +274,8 @@ STEP 1 — FETCH TRANSCRIPT
 Use TranscriptAPI to get the full transcript.
 TRANSCRIPT_API_KEY is set in the environment (loaded from ~/.openclaw/openclaw.json).
 Make this exact call:
-  curl -s "https://transcriptapi.com/api/v2/youtube/transcript?video_url=$url&format=text&include_timestamp=true&send_metadata=true" \\
-    -H "Authorization: Bearer $TRANSCRIPT_API_KEY"
+  curl -s \"https://transcriptapi.com/api/v2/youtube/transcript?video_url=\$url&format=text&include_timestamp=true&send_metadata=true\" \\
+    -H \"Authorization: Bearer \$TRANSCRIPT_API_KEY\"
 Extract: video title, channel name, and the full transcript text.
 If the API returns a 402 (no credits) or 404 (no captions), note this in the Source
 and create Distilled/Atomic notes from whatever metadata is available.
@@ -288,12 +288,12 @@ Create a Source note in '01-Sources/' as a .md file with:
   Write the file directly using terminal/file tools.
 
 STEP 3 — CREATE DISTILLED NOTE
-\$DISTILLED_STRUCTURE
+$DISTILLED_STRUCTURE
 Draft the full Distilled note, then HUMANIZE all prose before writing.
 Write to '02-Distilled/' as a .md file.
 
 STEP 4 — CREATE ATOMIC NOTES
-\$ATOMIC_RULES
+$ATOMIC_RULES
 Extract as many standalone atomic ideas as the content warrants.
 Draft each, humanize, then write to '03-Atomic/' as .md files.
 
