@@ -25,6 +25,10 @@ SKILLS="obsidian-markdown, obsidian-cli, defuddle, humanizer, transcriptapi"
 TRANSCRIPT_API_KEY="${TRANSCRIPT_API_KEY:-$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$HOME/.openclaw/openclaw.json','utf8')).skills.entries.transcriptapi.apiKey)}catch(e){console.log('')}" 2>/dev/null)}"
 export TRANSCRIPT_API_KEY
 
+# Load Supadata API key (fallback transcript provider)
+SUPADATA_API_KEY="${SUPADATA_API_KEY:-$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$HOME/.openclaw/openclaw.json','utf8')).skills.entries.supadata.apiKey)}catch(e){console.log('')}" 2>/dev/null)}"
+export SUPADATA_API_KEY
+
 # ═══════════════════════════════════════════════════════════
 # Safety: prevent overlapping runs
 # ═══════════════════════════════════════════════════════════
@@ -272,14 +276,24 @@ URL: '$url'
 VIDEO_ID: '$video_id'
 
 STEP 1 — FETCH TRANSCRIPT
-Use TranscriptAPI to get the full transcript.
-TRANSCRIPT_API_KEY is set in the environment (loaded from ~/.openclaw/openclaw.json).
-Make this exact call:
-  curl -s \"https://transcriptapi.com/api/v2/youtube/transcript?video_url=\$url&format=text&include_timestamp=true&send_metadata=true\" \\
+Use TranscriptAPI to get the full transcript, with Supadata as a fallback.
+Both API keys are set in the environment (loaded from ~/.openclaw/openclaw.json).
+
+**Primary — TranscriptAPI:**
+  curl -s -w '\\n%{http_code}' \"https://transcriptapi.com/api/v2/youtube/transcript?video_url=\$url&format=text&include_timestamp=true&send_metadata=true\" \\
     -H \"Authorization: Bearer \$TRANSCRIPT_API_KEY\"
 Extract: video title, channel name, and the full transcript text.
-If the API returns a 402 (no credits) or 404 (no captions), note this in the Source
-and create Distilled/Atomic notes from whatever metadata is available.
+
+**Fallback — Supadata (use if TranscriptAPI returns 402/404/error or TRANSCRIPT_API_KEY is empty):**
+  curl -s \"https://api.supadata.ai/v1/youtube/transcript?url=\$url&text=true&lang=en\" \\
+    -H \"x-api-key: \$SUPADATA_API_KEY\"
+Supadata returns JSON with 'content' (plain text transcript when text=true),
+'lang' (language code), and 'availableLangs'. It does not return video metadata —
+if using the fallback, extract the video title from the YouTube URL/page or note it
+as unavailable.
+
+If BOTH APIs fail, note this in the Source and create Distilled/Atomic notes from
+whatever metadata is available.
 
 STEP 2 — CREATE SOURCE NOTE
 Create a Source note in '01-Sources/' as a .md file with:
