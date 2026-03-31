@@ -91,8 +91,13 @@ DISTILLED_STRUCTURE="
 DISTILLED NOTE STRUCTURE — follow this EXACTLY for every note in '02-Distilled/':
 
 Frontmatter required:
-  - title, source (wikilink), date_distilled, status: review
+  - title, source (wikilink or list of wikilinks), date_distilled, status: review
   - tags: minimum 5, maximum 10 topic-specific tags (not counting 'distilled')
+  - IMPORTANT: If there are multiple sources, use YAML list format:
+      source:
+        - [[source-note-1]]
+        - [[source-note-2]]
+    Do NOT use duplicate source: keys — that is invalid YAML.
 
 Body sections IN THIS ORDER:
 
