@@ -58,7 +58,9 @@ mkdir -p .claude
 
 ## 4. Enable Obsidian CLI
 
-The automation needs the Obsidian CLI to create, search, and manage notes programmatically.
+The automation uses the Obsidian CLI to create, search, and manage notes programmatically. Two options:
+
+### Option A — Obsidian Desktop App (CLI requires running app)
 
 Go to **Settings → General → Enable CLI** (requires Obsidian 1.8+). Verify it works:
 
@@ -66,7 +68,42 @@ Go to **Settings → General → Enable CLI** (requires Obsidian 1.8+). Verify i
 obsidian help
 ```
 
-If the command is not found, make sure Obsidian is open — the CLI requires a running Obsidian instance.
+**Limitation:** Obsidian must remain open for CLI commands to work. Not suitable for headless/cron environments.
+
+### Option B — Obsidian Headless Client (recommended for automation)
+
+The [obsidian-headless](https://github.com/obsidianmd/obsidian-headless) client runs without the desktop app — ideal for servers and cron jobs.
+
+```bash
+# Requires Node.js 22+
+npm install -g obsidian-headless
+
+# Login to your Obsidian account
+ob login
+
+# List your remote vaults
+ob sync-list-remote
+
+# Setup sync for your vault
+cd ~/MyVault
+ob sync-setup --vault "My Vault"
+
+# Run continuous sync (keeps local vault in sync with remote)
+ob sync --continuous &
+```
+
+> **Note:** `ob` handles sync (uploading/downloading changes). The **desktop CLI** (`obsidian`) handles note operations. In a fully headless setup, use `ob sync` to keep the vault updated, then run the automation script against the local vault files directly. The `process-inbox.sh` script uses direct file operations (cp, mv, cat, mkdir) so it works entirely without Obsidian running.
+
+### Which to use?
+
+| Feature | `obsidian` CLI (desktop) | `ob` (headless) |
+|---|---|---|
+| Note creation/search | ✓ | — |
+| Headless/cron | ✗ (needs app open) | ✓ |
+| Sync with remote vault | ✗ | ✓ |
+| Works on server | ✗ | ✓ |
+
+Both can coexist. The automation script uses direct file I/O and does not depend on either CLI for core functionality.
 
 ## 5. Enable Community Plugins
 

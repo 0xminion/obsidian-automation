@@ -23,11 +23,18 @@ Meta/
 # Node.js 18+ (for Defuddle, LiteParse, TranscriptAPI)
 node --version  # >= 18
 
+# Node.js 22+ (for obsidian-headless sync client)
+node --version  # >= 22 if using ob sync
+
 # Hermes Agent (or Claude Code / Codex)
 curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
 
-# Obsidian CLI — open Obsidian → Settings → General → Enable CLI
+# Obsidian CLI (desktop app) — open Obsidian → Settings → General → Enable CLI
 obsidian help
+
+# Obsidian Headless Client (for headless/cron sync — Node 22+)
+npm install -g obsidian-headless
+ob login
 ```
 
 ### 2. Install tools
@@ -198,6 +205,7 @@ obsidian-automation/
 | Symptom | Fix |
 |---|---|
 | `obsidian: command not found` | Open Obsidian, enable CLI in Settings → General |
+| `ob: command not found` | `npm install -g obsidian-headless` (requires Node 22+) |
 | `defuddle: command not found` | `npm install -g defuddle` |
 | `lit: command not found` | `npm install -g @llamaindex/liteparse` |
 | TranscriptAPI 401 | Check `TRANSCRIPT_API_KEY` env var |
@@ -210,9 +218,11 @@ obsidian-automation/
 | Tool | Version | Purpose |
 |---|---|---|
 | Node.js | 18+ | Runtime for Defuddle, LiteParse, TranscriptAPI |
+| Node.js | 22+ | Required for obsidian-headless (`ob`) |
+| Obsidian CLI (`obsidian`) | 1.8+ | Note creation, search, tagging (desktop app needed) |
+| Obsidian Headless (`ob`) | latest | Sync + publish without desktop app |
 | Defuddle | latest | Web content extraction |
 | LiteParse | latest | PDF/DOCX/PPTX parsing with OCR |
 | LibreOffice | latest | Office format conversion for LiteParse |
-| Obsidian CLI | 1.8+ | Note creation, search, tagging |
 | TranscriptAPI | — | YouTube transcript fetching |
 | Humanizer | — | AI pattern removal from generated prose |
