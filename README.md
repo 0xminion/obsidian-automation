@@ -108,10 +108,14 @@ cp scripts/Dashboard.md ~/MyVault/Meta/Dashboard.md
 
 ```bash
 # Primary: TranscriptAPI
-# Sign up at https://transcriptapi.com and get your API key
-# Set your API key as an environment variable:
+# Sign up at https://transcriptapi.com (100 free credits, no card)
 export TRANSCRIPT_API_KEY="your-key-here"
-# Add to your shell profile (~/.bashrc, ~/.zshrc) so it persists.
+
+# Fallback: Supadata (used when TranscriptAPI fails or has no credits)
+# Sign up at https://supadata.ai and get your API key
+export SUPADATA_API_KEY="your-key-here"
+
+# Add both to your shell profile (~/.bashrc, ~/.zshrc) so they persist.
 ```
 
 ### 7. Run the pipeline
@@ -126,7 +130,7 @@ VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh
 ```bash
 # Every 30 minutes
 crontab -e
-*/30 * * * * VAULT_PATH="$HOME/MyVault" TRANSCRIPT_API_KEY="your-key" $HOME/MyVault/Meta/Scripts/process-inbox.sh
+*/30 * * * * VAULT_PATH="$HOME/MyVault" TRANSCRIPT_API_KEY="your-key" SUPADATA_API_KEY="your-key" $HOME/MyVault/Meta/Scripts/process-inbox.sh
 ```
 
 Or use Hermes Agent's built-in scheduler:
@@ -160,7 +164,7 @@ Install via Settings → Community plugins → Browse:
 |---|---|---|
 | URL (`.md`/`.txt` containing a single URL) | Defuddle primary, LiteParse fallback | |
 | PDF / DOCX / PPTX / other files | Defuddle primary, LiteParse fallback | |
-| YouTube link (single-URL file) | TranscriptAPI | |
+| YouTube link (single-URL file) | TranscriptAPI primary, Supadata fallback | |
 | Web clipper save | Direct passthrough | Already markdown |
 
 ### Note types
@@ -212,7 +216,7 @@ obsidian-automation/
 | `defuddle: command not found` | `npm install -g defuddle` |
 | `lit: command not found` | `npm install -g @llamaindex/liteparse` |
 | TranscriptAPI 401 | Check `TRANSCRIPT_API_KEY` env var |
-| TranscriptAPI 402/404 | Check credits at transcriptapi.com; retry logic will attempt alternative approaches |
+| TranscriptAPI 402/404 | Falls back to Supadata automatically; check `SUPADATA_API_KEY` if both fail |
 | Files stuck in `00-Inbox/failed/` | Check `Meta/Scripts/processing.log` |
 | Tag sprawl | Weekly: run `obsidian tags sort=count counts` and merge with Tag Wrangler |
 | Quick notes touched | Only `raw/` and `clippings/` are processed — check script invocation |
@@ -228,5 +232,6 @@ obsidian-automation/
 | Defuddle | latest | Web content extraction |
 | LiteParse | latest | PDF/DOCX/PPTX parsing with OCR |
 | LibreOffice | latest | Office format conversion for LiteParse |
-| TranscriptAPI | — | YouTube transcript fetching |
+| TranscriptAPI | — | YouTube transcript fetching (primary) |
+| Supadata | — | YouTube transcript fetching (fallback) |
 | Humanizer | — | AI pattern removal from generated prose |

@@ -146,9 +146,11 @@ PARSER ROUTING:
 - Primary: Use Defuddle for any URLs and applicable file-to-markdown conversions.
 - Fallback: If Defuddle fails or can't handle the format, fall back to LiteParse:
     lit parse <file> --format text
-- YouTube links: Use TranscriptAPI (youtube-full skill) exclusively.
-  API call: curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=VIDEO_URL&format=text&include_timestamp=true&send_metadata=true'
+- YouTube links: Use TranscriptAPI (primary) with Supadata (fallback).
+  Primary: curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=VIDEO_URL&format=text&include_timestamp=true&send_metadata=true'
     -H 'Authorization: Bearer \$TRANSCRIPT_API_KEY'
+  Fallback: curl -s 'https://api.supadata.ai/v1/youtube/transcript?url=VIDEO_URL&text=true&lang=en'
+    -H 'x-api-key: \$SUPADATA_API_KEY'
   Then convert the transcript to clean markdown.
 
 TAG CONSOLIDATION:
@@ -241,10 +243,26 @@ FILE: '$file'
 URL: $url
 
 STEP 1 — FETCH TRANSCRIPT
-Use the TranscriptAPI skill (youtube-full) to get the transcript:
+Use TranscriptAPI as the PRIMARY provider, with Supadata as FALLBACK.
+
+**Primary — TranscriptAPI:**
   curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=$url&format=text&include_timestamp=true&send_metadata=true' \\
     -H 'Authorization: Bearer \$TRANSCRIPT_API_KEY'
 Extract the transcript text and metadata (title, author).
+
+**Fallback — Supadata (use if TranscriptAPI returns 402/404/error or TRANSCRIPT_API_KEY is empty):**
+  curl -s 'https://api.supadata.ai/v1/youtube/transcript?url=$url&text=true&lang=en' \\
+    -H 'x-api-key: \$SUPADATA_API_KEY'
+Supadata returns JSON with 'content' (plain text transcript when text=true),
+'lang' (language code), and 'availableLangs'. It does NOT return video metadata —
+if using the fallback, extract the video title from the YouTube page or note it
+as unavailable. If the response is HTTP 202, the video is being processed async —
+poll the returned jobId at /v1/youtube/transcript/{jobId} every few seconds.
+
+If BOTH providers fail, create the Source note with the URL and mark
+status: needs-transcript. Still create Distilled/Atomic notes from whatever
+metadata is available.
+
 Convert the transcript into clean, readable markdown paragraphs.
 
 STEP 2 — CREATE SOURCE NOTE
