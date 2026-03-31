@@ -18,7 +18,7 @@ set -euo pipefail
 VAULT_PATH="${VAULT_PATH:-$HOME/cvjji9}"
 LOG_FILE="$VAULT_PATH/Logs/processing.log"
 LOCK_FILE="/tmp/obsidian-inbox-processor.lock"
-AGENT_CMD="${AGENT_CMD:-hermes run --prompt}"
+AGENT_CMD="${AGENT_CMD:-hermes chat -q}"
 SKILLS="obsidian-markdown, obsidian-cli, defuddle, humanizer, transcriptapi"
 
 # Load TranscriptAPI key from openclaw config (set by clawhub install)
