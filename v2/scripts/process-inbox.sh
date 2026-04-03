@@ -301,7 +301,11 @@ other Entry notes, and MoCs.
 Use 'obsidian search' to find existing related notes in the vault.
 Link to concepts in 04-Wiki/concepts/, entries in 04-Wiki/entries/, and MoCs in 04-Wiki/mocs/.
 
-CONCEPT NOTE STRUCTURE for 04-Wiki/concepts/:
+ALL prose must be humanized before writing.
+"
+
+# ═══════════════════════════════════════════════════════════
+CONCEPT_STRUCTURE="\nCONCEPT NOTE STRUCTURE for 04-Wiki/concepts/:
 - Concept notes are the wiki's vocabulary — shared across all Entries.
 - One clear, standalone idea per note.
 - CONCEPT CONVERGENCE (MANDATORY): Before creating a new concept, search
@@ -333,11 +337,7 @@ Body:
   - Entries: [[Entry1]], [[Entry2]]
   - Related Concepts: [[Concept1]], [[Concept2]] (search for these)
 
-ALL prose must be humanized before writing.
-"
-
-# ═══════════════════════════════════════════════════════════
-# MoC NOTE STRUCTURE (v2)
+"\n\n# MoC NOTE STRUCTURE (v2)
 # ═══════════════════════════════════════════════════════════
 MOC_STRUCTURE="
 MOC NOTE STRUCTURE — for 04-Wiki/mocs/:
@@ -379,8 +379,11 @@ process_youtube() {
   local file="$1"
   local url
   url=$(cat "$file" | tr -d '[:space:]')
+  ext="${file##*.}"
+  if [[ "$ext" == "url" ]]; then url=$(extract_url_from_file "$file"); fi
 
   if source_exists_for_url "$url"; then
+    skipped=$((skipped + 1))
     log "SKIP (duplicate): YouTube — file: $file"
     mkdir -p "$VAULT_PATH/08-Archive-Raw"
     mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
@@ -452,8 +455,11 @@ process_url() {
   local file="$1"
   local url
   url=$(cat "$file" | tr -d '[:space:]')
+  ext="${file##*.}"
+  if [[ "$ext" == "url" ]]; then url=$(extract_url_from_file "$file"); fi
 
   if source_exists_for_url "$url"; then
+    skipped=$((skipped + 1))
     log "SKIP (duplicate): URL — file: $file"
     mkdir -p "$VAULT_PATH/08-Archive-Raw"
     mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
@@ -516,6 +522,22 @@ process_file() {
   filename=$(basename "$file")
   local name_no_ext="${filename%.*}"
 
+  local url=""
+  url=$(extract_url_from_file "$file" 2>/dev/null || true)
+  if [ -n "$url" ] && source_exists_for_url "$url"; then
+    log "SKIP (duplicate): File — file: $file"
+    mkdir -p "$VAULT_PATH/08-Archive-Raw"
+    mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
+    return 0
+  fi
+  # Filename-based dedup for files without URLs
+  if [ -f "$VAULT_PATH/04-Wiki/sources/${name_no_ext}.md" ]; then
+    log "SKIP (duplicate file): File — file: $file"
+    mkdir -p "$VAULT_PATH/08-Archive-Raw"
+    mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
+    return 0
+  fi
+
   run_with_retry "File — file: $file" "
 $COMMON_INSTRUCTIONS
 
@@ -571,6 +593,7 @@ process_clipping() {
   source_url=$(grep -m1 'source_url:' "$file" 2>/dev/null | sed 's/.*source_url: *//; s/^"//; s/"$//' || true)
 
   if [ -n "$source_url" ] && source_exists_for_url "$source_url"; then
+    skipped=$((skipped + 1))
     log "SKIP (duplicate): Clipping — file: $file"
     mkdir -p "$VAULT_PATH/08-Archive-Raw"
     mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
@@ -677,6 +700,7 @@ processed=0
 skipped=0
 failed=0
 
+
 # Process everything in 01-Raw/
 if [ -d "$VAULT_PATH/01-Raw" ]; then
   for file in "$VAULT_PATH/01-Raw"/*; do
@@ -700,5 +724,5 @@ if [ -d "$VAULT_PATH/02-Clippings" ]; then
   done
 fi
 
-log "Inbox processing complete (v2). Processed: $processed, Failed: $failed"
+log "Inbox processing complete (v2). Processed: $processed, Skipped: $skipped, Failed: $failed"
 log "URL index now has $(wc -l < "$URL_INDEX") entries"

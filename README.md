@@ -2,13 +2,13 @@
 
 Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a self-compiling wiki — all humanized to sound natural.
 
-**v2 (Karpathy-style)** — A self-compiling wiki with numbered folder structure. Entries use numbered sections. Concepts are shared across sources. The wiki index replaces RAG. Located in `v2/`.
+**v2.1 (Karpathy-style)** — A self-compiling wiki with visual numbering (01-09). Separate workflow folders for Raw, Clippings, Queries, and Archives. Entries use numbered list items inside standard markdown headings. Concepts are shared across sources. The wiki index replaces RAG as the retrieval layer. Located in `v2/`.
 
 **v1 (linear pipeline)** — The original one-shot inbox processor. Located at the repo root (`scripts/`, `docs/`, `templates/`).
 
 ## Quick Decision Guide
 
-| | v1 (current root) | v2 (new) |
+| | v1 (current root) | v2.1 (new) |
 |---|---|---|
 | **Philosophy** | Pipeline: inbox → notes → archive | Wiki: inbox → self-compiling knowledge base |
 | **Note structure** | Source → Distilled → Atomic → MoC | Source → Entry → Concept → MoC |
@@ -21,31 +21,34 @@ Automated knowledge management system that turns raw web content, PDFs, and YouT
 
 ---
 
-## v2: Karpathy-Style Wiki (Recommended)
+## v2.1: Karpathy-Style Wiki (Recommended)
 
 ### Vault Structure
 
 ```
-00-WIP/              ←  Your drafts (untouched by automation)
-01-Raw/              →  Drop URLs, PDFs, files, queries here
-02-Wiki/
+01-Raw/              →  Drop URLs, PDFs, files here
+02-Clippings/        →  Web clipper saves (already markdown)
+03-Queries/          →  Drop .md files with questions for Q&A
+04-Wiki/
 ├── sources/         ←  Full original content (not humanized)
-├── entries/         ←  Entry notes (numbered sections, humanized)
-├── concepts/        ←  Shared vocabulary across sources (humanized)
-└── mocs/            ←  Topic hubs with synthesized summaries (humanized)
-03-Outputs/
-├── answers/         ←  Q&A responses (duplicates for quick access)
-└── visualizations/  ←  Charts, diagrams, exports
-04-Config/
+├── entries/         ←  Entry notes (numbered list items inside sections)
+├── concepts/        ←  Shared ideas across sources (cross-source vocabulary)
+└── mocs/            ←  Topic hubs with synthesized summaries
+05-Outputs/
+├── answers/         ←  Q&A responses (duplicate for quick access)
+└── visualizations/  ←  Charts, diagrams
+06-Config/
 ├── wiki-index.md    ←  Auto-maintained TOC (retrieval layer — no RAG)
 ├── url-index.tsv    ←  URL → entry mapping (dedup)
 └── tag-registry.md  ←  Canonical tag list
-05-Archive/          ←  Processed inbox items and queries
+07-WIP/              ←  Your drafts (untouched by automation)
+08-Archive-Raw/      ←  Processed inbox items
+09-Archive-Queries/  ←  Answered queries
 ```
 
-### Entry Note Structure (Numbered Sections)
+### Entry Note Structure
 
-Every Entry in `02-Wiki/entries/` follows this exact numbered structure:
+Every Entry in `04-Wiki/entries/` has numbered list **items inside** standard markdown headings:
 
 ```markdown
 ---
@@ -55,32 +58,41 @@ date_entry: YYYY-MM-DD
 tags:
   - entry
   - topic-tag-1
-  - ... (5-10 topic tags)
 status: review
 aliases: []
 ---
 
 # Title
 
-1. Summary
+## Summary
 3-5 sentence overview. Plain language, no fluff.
 
-2. ELI5 insights
+## ELI5 insights
 
-   2a. Core insights
-   Main findings explained for a smart 12-year-old. As many as exist.
+### Core insights
 
-   2b. Other takeaways
-   Other important findings. Same ELI5 treatment.
+1. First core insight — explained for a 12-year-old.
+2. Second core insight — concrete example, no jargon.
+3. Third core insight — as many as exist.
 
-3. Diagrams
+### Other takeaways
+
+4. Continues numbering from Core insights.
+5. Fourth insight — same ELI5 treatment.
+
+## Diagrams
 Mermaid diagrams if warranted, else "N/A — content is straightforward."
 
-4. Open questions
-Gaps, assumptions, what the source doesn't answer.
+## Open questions
 
-5. Linked concepts
-Wikilinks to Concept notes, other Entries, MoCs.
+1. First question or gap from the source.
+2. Second open question.
+
+## Linked concepts
+
+- [[Concept note 1]]
+- [[Concept note 2]]
+- [[Related Entry or MoC]]
 ```
 
 ### Quick Start
@@ -88,9 +100,9 @@ Wikilinks to Concept notes, other Entries, MoCs.
 ```bash
 # 1. Clone and set up vault
 git clone https://github.com/0xminion/obsidian-automation
-mkdir -p ~/MyVault/{00-WIP,01-Raw,02-Wiki/{sources,entries,concepts,mocs},03-Outputs/{answers,visualizations},04-Config,05-Archive,Meta/Scripts,Meta/Templates}
+mkdir -p ~/MyVault/{01-Raw,02-Clippings,03-Queries,04-Wiki/{sources,entries,concepts,mocs},05-Outputs/{answers,visualizations},06-Config,07-WIP,08-Archive-Raw,09-Archive-Queries,Meta/Scripts,Meta/Templates}
 
-# 2. Copy v2 scripts and templates
+# 2. Copy v2.1 scripts and templates
 chmod +x obsidian-automation/v2/scripts/*.sh
 cp obsidian-automation/v2/scripts/*.sh ~/MyVault/Meta/Scripts/
 cp obsidian-automation/v2/templates/*.md ~/MyVault/Meta/Templates/
@@ -101,8 +113,7 @@ VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh
 # 4. Recompile wiki (weekly)
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/compile-pass.sh
 
-# 5. Query the wiki
-# Drop a .md in 01-Raw/, then:
+# 5. Query the wiki (drop .md in 03-Queries/)
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/query-vault.sh
 
 # 6. Health check
@@ -132,20 +143,22 @@ The original implementation. Still functional but doesn't self-improve.
 06-Archive/         ←  Processed items
 ```
 
-See `v2/` for the Karpathy-aligned approach. See `docs/` and `scripts/` for v1 full setup.
+See `v2/` for the Karpathy-aligned approach.
 
 ---
 
 ## Humanizer Skill Usage
 
-The Humanizer skill is active in these v2 processes:
+The Humanizer skill is active in these v2.1 processes:
 
 | Process | What gets humanized | Where |
 |---|---|---|
 | `process-inbox.sh` | Entry, Concept, MoC notes | Steps 3-5 of each processor |
-| `compile-pass.sh` | MoC notes (rebuild) | Operation 2 |
-| `query-vault.sh` | Entry answers + Concepts | Step 8 |
+| `compile-pass.sh` | MoC notes + Concept notes (rebuild) | Operation 2 |
+| `query-vault.sh` | Entry answers + new Concepts | Step 8 |
 | `lint-vault.sh` | None (read-only) | — |
+
+The Humanizer is declared as available in `COMMON_INSTRUCTIONS` and every processing prompt explicitly instructs the agent to "humanize before writing." The agent's runtime loads the Humanizer skill and applies pattern removal before final file writes.
 
 ## Repository Structure
 
@@ -156,9 +169,9 @@ obsidian-automation/
 ├── scripts/                         # v1 scripts
 ├── templates/                       # v1 templates
 ├── skills/                          # Skill references
-└── v2/                              # Karpathy-style wiki (recommended)
-    ├── README.md                    # Full v2 guide
-    ├── docs/                        # v2 setup guides
-    ├── scripts/                     # v2 scripts (numbered structure)
-    └── templates/                   # v2 templates (Entry, Concept, MoC...)
+└── v2/                              # Karpathy-style wiki (v2.1 recommended)
+    ├── README.md                    # Full v2.1 guide
+    ├── docs/                        # v2 setup guides (Part1, Part2)
+    ├── scripts/                     # v2.1 scripts (numbered 01-09 structure)
+    └── templates/                   # Entry, Concept, MoC, Source...
 ```

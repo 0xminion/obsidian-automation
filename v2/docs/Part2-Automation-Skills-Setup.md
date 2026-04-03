@@ -137,13 +137,13 @@ Topic hub with synthesized summaries. Points to Concepts and Entries:
 
 ### `Meta/Templates/Query.md`
 
-Simple template for dropping questions. Place in `00-Inbox/queries/`.
+Simple template for dropping questions. Place in `03-Queries/`.
 
-### `Meta/wiki-index.md`
+### `06-Config/wiki-index.md`
 
 **Replaces RAG.** Auto-maintained index of all Entries (by date, newest first) and Concepts (alphabetical). The agent navigates the wiki by reading this index and following wikilinks — no vector embeddings needed.
 
-### `Meta/tag-registry.md`
+### `06-Config/tag-registry.md`
 
 Canonical tag registry. Prevents tag sprawl by defining the `topic/*` and `type/*` namespaces.
 
@@ -179,11 +179,11 @@ These scripts make your wiki **self-improving over time**.
 
 ### `query-vault.sh` — Q&A against the wiki
 
-Drop a `.md` file in `00-Inbox/queries/` with your question. The agent:
+Drop a `.md` file in `03-Queries/` with your question. The agent:
 1. Reads `wiki-index.md` for navigation context
 2. Follows wikilinks to relevant Entries and Concepts
 3. Synthesizes an answer with citations
-4. Writes the answer to `05-WIP/` and archives the query
+4. Writes the answer to `07-WIP/` and archives the query
 
 **No RAG needed** — the wiki structure itself is the retrieval index.
 
@@ -218,6 +218,6 @@ Drop a `.md` file in `00-Inbox/queries/` with your question. The agent:
 | **Dataview** | Live tables for MoC notes, wiki queries |
 | **Templater** | Advanced templating for manual note creation |
 | **Tag Wrangler** | Bulk tag management (use with `tag-registry.md`) |
-| **Obsidian Web Clipper** | Clip pages directly to `00-Inbox/clippings/` |
+| **Obsidian Web Clipper** | Clip pages directly to `02-Clippings/` |
 | **Auto Link Title** | Auto-fetch page titles on URL paste |
 | **Periodic Notes** | Daily/weekly journaling notes |

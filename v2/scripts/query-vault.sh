@@ -102,12 +102,12 @@ build_vault_summary() {
 }
 
 # Setup required directories
-mkdir -p "$VAULT_PATH/queries"
-mkdir -p "$VAULT_PATH/outputs/answers"
+mkdir -p "$VAULT_PATH/03-Queries"
+mkdir -p "$VAULT_PATH/05-Outputs/answers"
 mkdir -p "$VAULT_PATH/08-Archive-Raw"
 mkdir -p "$VAULT_PATH/04-Wiki/concepts"
 
-query_count=$(find "$VAULT_PATH/queries" -name '*.md' 2>/dev/null | wc -l)
+query_count=$(find "$VAULT_PATH/03-Queries" -name '*.md' 2>/dev/null | wc -l)
 if [ "$query_count" -eq 0 ]; then
   echo "No query files found in $VAULT_PATH/queries/"
   echo "Create a .md file with your question and re-run."
@@ -120,7 +120,7 @@ log "=== Starting query processing (v2) ==="
 # Build vault summary once (uses wiki-index.md for fast retrieval)
 VAULT_SUMMARY=$(build_vault_summary)
 
-for query_file in "$VAULT_PATH/queries"/*.md; do
+for query_file in "$VAULT_PATH/03-Queries"/*.md; do
   [ -f "$query_file" ] || continue
   query_text=$(cat "$query_file")
   query_name=$(basename "$query_file" .md)
@@ -216,14 +216,14 @@ INSTRUCTIONS:
    ## Linked concepts
    <Wikilinks to all Entry and Concept notes consulted.>
 
-7. ALSO write a copy to 'outputs/answers/' as:
+7. ALSO write a copy to '05-Outputs/answers/' as:
    answer-$(date +%Y%m%d)-${query_name}.md
    This is a duplicate for quick access — the canonical version is
    the Entry in 04-Wiki/entries/.
 
 8. Humanize ALL prose using the Humanizer skill (both Entry and output copy).
 
-9. Archive the query: move it from 'queries/' to '08-Archive-Raw/'.
+9. Archive the query: move it from '03-Queries/' to '08-Archive-Raw/'.
 
 CRITICAL RULES:
 - ALL YAML frontmatter: wikilinks MUST be quoted: source: \"[[note]]\"

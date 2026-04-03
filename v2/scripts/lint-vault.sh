@@ -182,9 +182,9 @@ fi
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 5. Concept Inconsistencies (same fact stated differently)
+# 5. Concept Structure Checks (same fact stated differently)
 # ═══════════════════════════════════════════════════════════
-echo "## 5. Concept Inconsistencies" >> "$REPORT_FILE"
+echo "## 5. Concept Structure Checks" >> "$REPORT_FILE"
 echo "(Facts stated differently across notes — requires LLM analysis)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 echo "This check requires reading content and comparing factual claims." >> "$REPORT_FILE"
@@ -286,7 +286,7 @@ if [ -f "$VAULT_PATH/06-Config/wiki-index.md" ]; then
   # Check for index entries that don't exist as files
   while read -r idx_note; do
     [ -z "$idx_note" ] && continue
-    if ! find "$VAULT_PATH/wiki" -name "${idx_note}.md" 2>/dev/null | grep -q .; then
+    if ! find "$VAULT_PATH/04-Wiki" -name "${idx_note}.md" 2>/dev/null | grep -q .; then
       echo "- **[$idx_note]**: Listed in index but file not found" >> "$REPORT_FILE"
       drift_count=$((drift_count + 1))
     fi
