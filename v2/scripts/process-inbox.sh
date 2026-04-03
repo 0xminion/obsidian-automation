@@ -6,7 +6,7 @@
 # creates Source note → Entry note → Concept notes → updates MoCs.
 #
 # Changes from v1:
-#   - Wiki structure: wiki/entries/, wiki/concepts/, wiki/mocs/
+#   - Wiki structure: 02-Wiki/entries/, 02-Wiki/concepts/, 02-Wiki/mocs/
 #   - Entry notes replace Distilled notes (same body structure, date_entry:)
 #   - Concept notes replace Atomic notes (shared vocabulary, not per-source)
 #   - Concept convergence: checks existing concepts before creating duplicates
@@ -47,9 +47,9 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 touch "$LOCK_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# DEDUP: URL-based idempotency via config/url-index.tsv
+# DEDUP: URL-based idempotency via 04-Config/url-index.tsv
 # ═══════════════════════════════════════════════════════════
-URL_INDEX="$VAULT_PATH/config/url-index.tsv"
+URL_INDEX="$VAULT_PATH/04-Config/url-index.tsv"
 mkdir -p "$(dirname "$URL_INDEX")"
 touch "$URL_INDEX"
 
@@ -75,7 +75,7 @@ register_url_source() {
 
 # Build index from existing Source notes if empty
 if [ ! -s "$URL_INDEX" ]; then
-  for dir in "$VAULT_PATH/01-Sources" "$VAULT_PATH/wiki/sources"; do
+  for dir in "$VAULT_PATH/01-Sources" "$VAULT_PATH/02-Wiki/sources"; do
     [ -d "$dir" ] || continue
     for f in "$dir"/*.md; do
       [ -f "$f" ] || continue
@@ -137,14 +137,14 @@ run_with_retry() {
   local file_arg
   file_arg=$(echo "$description" | sed -n 's/.*file: //p' || true)
   if [ -n "$file_arg" ] && [ -f "$file_arg" ]; then
-    # v2: use raw-archive/failed for any file that comes from raw/ or clippings/
+    # v2: use 05-Archive/failed for any file that comes from raw/ or clippings/
     # v1 compat: also check 00-Inbox for legacy vaults
     if echo "$file_arg" | grep -q "00-Inbox"; then
       mkdir -p "$VAULT_PATH/00-Inbox/failed"
       mv "$file_arg" "$VAULT_PATH/00-Inbox/failed/" 2>/dev/null || true
     else
-      mkdir -p "$VAULT_PATH/raw-archive/failed"
-      mv "$file_arg" "$VAULT_PATH/raw-archive/failed/" 2>/dev/null || true
+      mkdir -p "$VAULT_PATH/05-Archive/failed"
+      mv "$file_arg" "$VAULT_PATH/05-Archive/failed/" 2>/dev/null || true
     fi
     log "Moved failed file to failed archive"
   fi
@@ -191,30 +191,32 @@ extract_url_from_file() {
 COMMON_INSTRUCTIONS="
 VAULT LOCATION: $VAULT_PATH
 VAULT STRUCTURE (v2):
-  wiki/entries/     — Entry notes (Summary + ELI5 insights + Concepts + Links)
-  wiki/concepts/    — Shared concept notes (cross-source vocabulary)
-  wiki/mocs/        — Topic hubs with synthesized summaries
-  config/wiki-index.md — Auto-maintained table of contents
-  config/url-index.tsv  — URL → entry mapping for dedup
-  raw/              — New sources to process
-  clippings/        — Web clipper saves
-  raw-archive/      — Processed inbox items
+  01-Raw/             — New sources to process (URLs, PDFs, files)
+  02-Wiki/entries/    — Entry notes (summary + ELI5 + concepts + links)
+  02-Wiki/concepts/   — Shared concept notes (cross-source vocabulary)
+  02-Wiki/mocs/       — Topic hubs with synthesized summaries
+  02-Wiki/sources/    — Source notes (full original content)
+  04-Config/wiki-index.md — Auto-maintained table of contents
+  04-Config/url-index.tsv — URL → entry mapping for dedup
+  04-Config/tag-registry.md — Canonical tag list
+  03-Outputs/         — Q&A responses, visualizations
+  05-Archive/         — Processed inbox items
 
 AGENT AVAILABLE: obsidian-markdown, humanizer, youtube-full (TranscriptAPI), liteparse
 
 CRITICAL RULES:
-1. NEVER touch anything in '05-WIP/'. Off-limits.
-2. ALL AI-generated prose for wiki/entries/, wiki/concepts/, or wiki/mocs/
+1. NEVER touch anything in '00-WIP/'. Off-limits.
+2. ALL AI-generated prose for 02-Wiki/entries/, 02-Wiki/concepts/, or 02-Wiki/mocs/
    MUST be run through the Humanizer skill before writing to disk.
    Draft the content → humanize it → write the final file.
 3. Use [[wikilinks]] for all internal vault links.
 4. Use Obsidian-flavored markdown (callouts, frontmatter, tags).
 5. ALL YAML frontmatter: wikilinks MUST be quoted
    (e.g. source: \"[[note]]\").
-6. Entry notes go in 'wiki/entries/', Concept notes in 'wiki/concepts/',
-   MoC notes in 'wiki/mocs/'. Processed originals archived to 'raw-archive/'.
+6. Entry notes go in '02-Wiki/entries/', Concept notes in '02-Wiki/concepts/',
+   MoC notes in '02-Wiki/mocs/'. Processed originals archived to '05-Archive/'.
 7. After creating any Entry or Concept, APPEND a line to
-   'config/wiki-index.md' with a 1-sentence summary.
+   '04-Config/wiki-index.md' with a 1-sentence summary.
 
 PARSER ROUTING:
 - Primary: Use Defuddle for any URLs and applicable file-to-markdown conversions.
@@ -241,7 +243,7 @@ approach before giving up. Be resourceful.
 # ENTRY NOTE STRUCTURE (strict — preserves user's reading format)
 # ═══════════════════════════════════════════════════════════
 ENTRY_STRUCTURE="
-ENTRY NOTE STRUCTURE — follow EXACTLY for every note in wiki/entries/:
+ENTRY NOTE STRUCTURE — follow EXACTLY for every note in 02-Wiki/entries/:
 
 Frontmatter (YAML) must include:
   - title: \"<concise title>\"
@@ -259,48 +261,48 @@ Frontmatter (YAML) must include:
 BEFORE choosing tags: run 'obsidian tags sort=count counts' and reuse
 existing tags wherever a match exists. Only mint a new tag if nothing fits.
 
-Body sections IN THIS ORDER (EXACT):
+Body sections IN THIS ORDER (numbered, EXACT):
 
-## Summary
+1. Summary
 3-5 sentence summary of what the source is about. Plain language, no fluff.
 
-## ELI5 insights
+2. ELI5 insights
 
-### Core insights
-Main findings explained like to a smart 12-year-old. Simple language,
-no jargon, concrete examples. Extract EVERYTHING significant. Not top 5
-or top 10 — as many as exist. Each bullet is substantive with clear ELI5
-explanation.
+   2a. Core insights
+   Main findings explained like to a smart 12-year-old. Simple language,
+   no jargon, concrete examples. Extract EVERYTHING significant. Not top 5
+   or top 10 — as many as exist. Each bullet is substantive with clear ELI5
+   explanation.
 
-### Other takeaways
-Other important findings. Same ELI5 treatment. No artificial limits.
-Extract as many as the content warrants.
+   2b. Other takeaways
+   Other important findings. Same ELI5 treatment. No artificial limits.
+   Extract as many as the content warrants.
 
-## Diagrams
+3. Diagrams
 If the content involves processes, relationships, hierarchies, comparisons,
 or any concept that would be clearer as a visual: include a Mermaid diagram
 using Obsidian's native mermaid code block support.
 If no diagram would genuinely help, write: 'N/A — content is straightforward.'
 
-## Open questions
+4. Open questions
 Questions, gaps, assumptions raised by the source. What doesn't the source
 answer? What assumptions does it make?
 
-## Linked concepts
+5. Linked concepts
 Wikilinks to related Concept notes, other Entry notes, and MoCs.
 Use 'obsidian search' to find existing related notes in the vault.
-Link to concepts in wiki/concepts/, entries in wiki/entries/, and MoCs in wiki/mocs/.
+Link to concepts in 02-Wiki/concepts/, entries in 02-Wiki/entries/, and MoCs in 02-Wiki/mocs/.
 "
 
 # ═══════════════════════════════════════════════════════════
 # CONCEPT NOTE STRUCTURE (replaces Atomic in v2)
 # ═══════════════════════════════════════════════════════════
 CONCEPT_STRUCTURE="
-CONCEPT NOTE STRUCTURE for wiki/concepts/:
+CONCEPT NOTE STRUCTURE for 02-Wiki/concepts/:
 - Concept notes are the wiki's vocabulary — shared across all Entries.
 - One clear, standalone idea per note.
 - CONCEPT CONVERGENCE (MANDATORY): Before creating a new concept, search
-  wiki/concepts/ for existing concepts that cover the same idea.
+  02-Wiki/concepts/ for existing concepts that cover the same idea.
   - If found: UPDATE the existing concept — add this Entry to its
     entry_refs, update the body if needed. Do NOT create a duplicate.
   - If a near-duplicate exists (same concept split into two notes): MERGE
@@ -335,7 +337,7 @@ ALL prose must be humanized before writing.
 # MoC NOTE STRUCTURE (v2)
 # ═══════════════════════════════════════════════════════════
 MOC_STRUCTURE="
-MOC NOTE STRUCTURE — for wiki/mocs/:
+MOC NOTE STRUCTURE — for 02-Wiki/mocs/:
 
 Frontmatter:
   - title: \\"<Topic Name> — Map of Content\\"
@@ -377,8 +379,8 @@ process_youtube() {
 
   if source_exists_for_url "$url"; then
     log "SKIP (duplicate): YouTube — file: $file"
-    mkdir -p "$VAULT_PATH/raw-archive"
-    mv "$file" "$VAULT_PATH/raw-archive/" 2>/dev/null || true
+    mkdir -p "$VAULT_PATH/05-Archive"
+    mv "$file" "$VAULT_PATH/05-Archive/" 2>/dev/null || true
     return 0
   fi
 
@@ -405,7 +407,7 @@ If BOTH fail, create Source note with URL and status: needs-transcript.
 Convert transcript to clean markdown paragraphs.
 
 STEP 2 — CREATE SOURCE NOTE
-Create a Source note in 'wiki/sources/' with:
+Create a Source note in '02-Wiki/sources/' with:
   - YouTube URL, video title, channel name
   - Full transcript as markdown in 'Original content' section
   - Frontmatter: title, source_url, source_type: youtube, author, tags, status: processed
@@ -413,29 +415,29 @@ Create a Source note in 'wiki/sources/' with:
 STEP 3 — CREATE ENTRY NOTE
 $ENTRY_STRUCTURE
 Draft the full Entry note from the transcript.
-Humanize all prose, then write to 'wiki/entries/'.
+Humanize all prose, then write to '02-Wiki/entries/'.
 IMPORTANT: Use date_entry: (NOT date_distilled:) in frontmatter.
 
 STEP 4 — CREATE/UPDATE CONCEPT NOTES
 $CONCEPT_STRUCTURE
-MANDATORY: Search wiki/concepts/ BEFORE creating any new concept.
+MANDATORY: Search 02-Wiki/concepts/ BEFORE creating any new concept.
 Check if existing concepts cover the same idea. If yes, UPDATE existing
 concept (add entry_ref, refresh body if needed). Only create new if truly novel.
 Humanize all concept prose before writing.
 
 STEP 5 — UPDATE MoCs
-Search wiki/mocs/ for relevant topic matches. For each matching or new MoC:
+Search 02-Wiki/mocs/ for relevant topic matches. For each matching or new MoC:
 - Add wikilinks with 1-sentence summaries for new Entry and Concept notes
 - Humanize all MoC prose
 
 STEP 6 — UPDATE WIKI INDEX
-Append the new Entry and any new Concepts to 'config/wiki-index.md'
+Append the new Entry and any new Concepts to '04-Config/wiki-index.md'
 with 1-sentence summaries in this format:
   - [[EntryName]]: <1-sentence summary> (entry)
   - [[ConceptName]]: <1-sentence summary> (concept)
 
 STEP 7 — ARCHIVE
-Move original inbox file to 'raw-archive/'.
+Move original inbox file to '05-Archive/'.
 Register URL in the index: append '\$url\t<source-note-path>' to '$URL_INDEX'.
 "
 }
@@ -450,8 +452,8 @@ process_url() {
 
   if source_exists_for_url "$url"; then
     log "SKIP (duplicate): URL — file: $file"
-    mkdir -p "$VAULT_PATH/raw-archive"
-    mv "$file" "$VAULT_PATH/raw-archive/" 2>/dev/null || true
+    mkdir -p "$VAULT_PATH/05-Archive"
+    mv "$file" "$VAULT_PATH/05-Archive/" 2>/dev/null || true
     return 0
   fi
 
@@ -471,33 +473,33 @@ If both fail, create minimal Source note with URL and mark
 status: needs-manual-extraction.
 
 STEP 2 — CREATE SOURCE NOTE
-Create a Source note in 'wiki/sources/' with extracted markdown.
+Create a Source note in '02-Wiki/sources/' with extracted markdown.
 Frontmatter: title, source_url, source_type, author, date_captured, tags, status: processed.
 IMPORTANT: Wikilinks in YAML frontmatter MUST be quoted.
 
 STEP 3 — CREATE ENTRY NOTE
 $ENTRY_STRUCTURE
-Draft the full Entry note. Humanize all prose, write to 'wiki/entries/'.
+Draft the full Entry note. Humanize all prose, write to '02-Wiki/entries/'.
 IMPORTANT: Use date_entry: (NOT date_distilled:) in frontmatter.
 
 STEP 4 — CREATE/UPDATE CONCEPT NOTES
 $CONCEPT_STRUCTURE
-MANDATORY: Search wiki/concepts/ BEFORE creating any new concept.
+MANDATORY: Search 02-Wiki/concepts/ BEFORE creating any new concept.
 Check for existing concepts covering the same idea. Update existing or
 merge near-duplicates. Only create new if truly novel.
 Humanize all prose.
 
 STEP 5 — UPDATE MoCs
-Search wiki/mocs/ for matching topics. Add wikilinks with 1-sentence
+Search 02-Wiki/mocs/ for matching topics. Add wikilinks with 1-sentence
 summaries for new Entry and Concept notes. Humanize MoC prose.
 
 STEP 6 — UPDATE WIKI INDEX
-Append new Entry and Concepts to 'config/wiki-index.md':
+Append new Entry and Concepts to '04-Config/wiki-index.md':
   - [[EntryName]]: <1-sentence summary> (entry)
   - [[ConceptName]]: <1-sentence summary> (concept)
 
 STEP 7 — ARCHIVE
-Move original inbox file to 'raw-archive/'.
+Move original inbox file to '05-Archive/'.
 Register URL in the index: append '\$url\t<source-note-path>' to '$URL_INDEX'.
 "
 }
@@ -527,7 +529,7 @@ LiteParse handles PDFs, DOCX, PPTX, XLSX, images (with OCR), and more.
 Read the extracted text output.
 
 STEP 2 — CREATE SOURCE NOTE
-Create a Source note in 'wiki/sources/' with:
+Create a Source note in '02-Wiki/sources/' with:
   - If PDF: keep reference to original, embed as needed
   - Include extracted text in 'Original content' section
   - Frontmatter: title, author, source_type, tags, status: processed
@@ -535,25 +537,25 @@ Create a Source note in 'wiki/sources/' with:
 
 STEP 3 — CREATE ENTRY NOTE
 $ENTRY_STRUCTURE
-Draft the full Entry note. Humanize all prose, write to 'wiki/entries/'.
+Draft the full Entry note. Humanize all prose, write to '02-Wiki/entries/'.
 IMPORTANT: Use date_entry: (NOT date_distilled:) in frontmatter.
 
 STEP 4 — CREATE/UPDATE CONCEPT NOTES
 $CONCEPT_STRUCTURE
-MANDATORY: Search wiki/concepts/ BEFORE creating any new concept.
+MANDATORY: Search 02-Wiki/concepts/ BEFORE creating any new concept.
 Check for existing concepts covering the same idea. Update existing or
 merge near-duplicates. Only create new if truly novel.
 Humanize all prose.
 
 STEP 5 — UPDATE MoCs
-Search wiki/mocs/ for matching topics. Add wikilinks with 1-sentence
+Search 02-Wiki/mocs/ for matching topics. Add wikilinks with 1-sentence
 summaries. Humanize MoC prose.
 
 STEP 6 — UPDATE WIKI INDEX
-Append new Entry and Concepts to 'config/wiki-index.md'.
+Append new Entry and Concepts to '04-Config/wiki-index.md'.
 
 STEP 7 — ARCHIVE
-Move the original file to 'raw-archive/'.
+Move the original file to '05-Archive/'.
 "
 }
 
@@ -567,8 +569,8 @@ process_clipping() {
 
   if [ -n "$source_url" ] && source_exists_for_url "$source_url"; then
     log "SKIP (duplicate): Clipping — file: $file"
-    mkdir -p "$VAULT_PATH/raw-archive"
-    mv "$file" "$VAULT_PATH/raw-archive/" 2>/dev/null || true
+    mkdir -p "$VAULT_PATH/05-Archive"
+    mv "$file" "$VAULT_PATH/05-Archive/" 2>/dev/null || true
     return 0
   fi
 
@@ -584,55 +586,53 @@ possibly with frontmatter (source_url, title).
 STEP 1 — CREATE SOURCE NOTE
 Extract source_url from frontmatter if present.
 If it has a source_url and no Source for this URL exists, create a
-Source note in 'wiki/sources/'. If a Source already exists for this URL,
+Source note in '02-Wiki/sources/'. If a Source already exists for this URL,
 skip Source creation (do not duplicate).
 
 STEP 2 — CREATE ENTRY NOTE
 $ENTRY_STRUCTURE
-Draft the full Entry note. Humanize all prose, write to 'wiki/entries/'.
+Draft the full Entry note. Humanize all prose, write to '02-Wiki/entries/'.
 IMPORTANT: Use date_entry: (NOT date_distilled:) in frontmatter.
 
 STEP 3 — CREATE/UPDATE CONCEPT NOTES
 $CONCEPT_STRUCTURE
-MANDATORY: Search wiki/concepts/ BEFORE creating any new concept.
+MANDATORY: Search 02-Wiki/concepts/ BEFORE creating any new concept.
 Check for existing concepts covering the same idea. Update existing or
 merge near-duplicates. Only create new if truly novel.
 Humanize all prose.
 
 STEP 4 — UPDATE MoCs
-Search wiki/mocs/ for matching topics. Add wikilinks with 1-sentence
+Search 02-Wiki/mocs/ for matching topics. Add wikilinks with 1-sentence
 summaries. Humanize MoC prose.
 
 STEP 5 — UPDATE WIKI INDEX
-Append new Entry and Concepts to 'config/wiki-index.md'.
+Append new Entry and Concepts to '04-Config/wiki-index.md'.
 
 STEP 6 — ARCHIVE
-Move the clipping to 'raw-archive/'.
+Move the clipping to '05-Archive/'.
 If the clipping had a source_url, register it in '$URL_INDEX'.
 "
 }
 
 # ═══════════════════════════════════════════════════════════
 # MAIN LOOP — processes raw/ and clippings/
-# NEVER touches 05-WIP/
+# NEVER touches 00-WIP/
 # ═══════════════════════════════════════════════════════════
 setup_directory_structure() {
-  mkdir -p "$VAULT_PATH/raw"
-  mkdir -p "$VAULT_PATH/clippings"
-  mkdir -p "$VAULT_PATH/wiki/entries"
-  mkdir -p "$VAULT_PATH/wiki/concepts"
-  mkdir -p "$VAULT_PATH/wiki/mocs"
-  mkdir -p "$VAULT_PATH/outputs/answers"
-  mkdir -p "$VAULT_PATH/outputs/visualizations"
-  mkdir -p "$VAULT_PATH/queries"
-  mkdir -p "$VAULT_PATH/config"
-  mkdir -p "$VAULT_PATH/05-WIP"
-  mkdir -p "$VAULT_PATH/raw-archive"
-  mkdir -p "$VAULT_PATH/query-archive"
+  mkdir -p "$VAULT_PATH/01-Raw"
+  mkdir -p "$VAULT_PATH/02-Wiki/entries"
+  mkdir -p "$VAULT_PATH/02-Wiki/concepts"
+  mkdir -p "$VAULT_PATH/02-Wiki/mocs"
+  mkdir -p "$VAULT_PATH/02-Wiki/sources"
+  mkdir -p "$VAULT_PATH/03-Outputs/answers"
+  mkdir -p "$VAULT_PATH/03-Outputs/visualizations"
+  mkdir -p "$VAULT_PATH/04-Config"
+  mkdir -p "$VAULT_PATH/00-WIP"
+  mkdir -p "$VAULT_PATH/05-Archive"
 
   # Initialize wiki-index.md if it doesn't exist
-  if [ ! -f "$VAULT_PATH/config/wiki-index.md" ]; then
-    cat > "$VAULT_PATH/config/wiki-index.md" << 'HEADER'
+  if [ ! -f "$VAULT_PATH/04-Config/wiki-index.md" ]; then
+    cat > "$VAULT_PATH/04-Config/wiki-index.md" << 'HEADER'
 # Wiki Index
 
 Auto-maintained table of contents for the knowledge base.
@@ -646,8 +646,8 @@ HEADER
   fi
 
   # Initialize tag-registry.md if it doesn't exist
-  if [ ! -f "$VAULT_PATH/config/tag-registry.md" ]; then
-    cat > "$VAULT_PATH/config/tag-registry.md" << 'HEADER'
+  if [ ! -f "$VAULT_PATH/04-Config/tag-registry.md" ]; then
+    cat > "$VAULT_PATH/04-Config/tag-registry.md" << 'HEADER'
 # Tag Registry
 
 Canonical list of tags used in this wiki. Before minting a new tag,
@@ -663,17 +663,17 @@ HEADER
   fi
 }
 
-log "Starting inbox processing (v2)..."
-
+# Main loop — processes 01-Raw/
+# NEVER touches 00-WIP/
 setup_directory_structure
 
 processed=0
 skipped=0
 failed=0
 
-# Process everything in raw/
-if [ -d "$VAULT_PATH/raw" ]; then
-  for file in "$VAULT_PATH/raw"/*; do
+# Process everything in raw/ (v2: 01-Raw/)
+if [ -d "$VAULT_PATH/01-Raw" ]; then
+  for file in "$VAULT_PATH/01-Raw"/*; do
     [ -f "$file" ] || continue
 
     if is_youtube_link "$file"; then

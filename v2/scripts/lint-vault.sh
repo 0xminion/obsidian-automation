@@ -37,7 +37,7 @@ echo "## 1. Orphaned Notes (no incoming wikilinks)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 orphan_count=0
 
-for dir in "wiki/entries" "wiki/concepts" "wiki/mocs" "wiki/sources"; do
+for dir in "02-Wiki/entries" "02-Wiki/concepts" "02-Wiki/mocs" "02-Wiki/sources"; do
   dir_path="$VAULT_PATH/$dir"
   [ -d "$dir_path" ] || continue
 
@@ -74,7 +74,7 @@ stale_count=0
 cutoff_date=$(date -d "14 days ago" +%Y-%m-%d 2>/dev/null || date -v-14d +%Y-%m-%d 2>/dev/null || echo "")
 
 if [ -n "$cutoff_date" ]; then
-  for dir in "wiki/entries" "wiki/concepts"; do
+  for dir in "02-Wiki/entries" "02-Wiki/concepts"; do
     dir_path="$VAULT_PATH/$dir"
     [ -d "$dir_path" ] || continue
 
@@ -111,7 +111,7 @@ echo "## 3. Broken Wikilinks (link targets don't exist)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 broken_count=0
 
-for dir in "wiki/entries" "wiki/concepts" "wiki/mocs" "wiki/sources"; do
+for dir in "02-Wiki/entries" "02-Wiki/concepts" "02-Wiki/mocs" "02-Wiki/sources"; do
   dir_path="$VAULT_PATH/$dir"
   [ -d "$dir_path" ] || continue
 
@@ -154,7 +154,7 @@ echo "## 4. Empty or Near-Empty Notes (< 50 chars body)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 empty_count=0
 
-for dir in "wiki/entries" "wiki/concepts" "wiki/mocs" "wiki/sources"; do
+for dir in "02-Wiki/entries" "02-Wiki/concepts" "02-Wiki/mocs" "02-Wiki/sources"; do
   dir_path="$VAULT_PATH/$dir"
   [ -d "$dir_path" ] || continue
 
@@ -193,7 +193,7 @@ echo "" >> "$REPORT_FILE"
 
 # Quick check: look for concepts with conflicting status
 conflict_count=0
-for note in "$VAULT_PATH/wiki/concepts"/*.md; do
+for note in "$VAULT_PATH/02-Wiki/concepts"/*.md; do
   [ -f "$note" ] || continue
   note_name=$(basename "$note" .md)
   # Check if the concept references entries that disagree on source facts
@@ -221,14 +221,14 @@ echo "## 6. Orphaned Concepts (no Entry links to them)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 orphan_concept_count=0
 
-if [ -d "$VAULT_PATH/wiki/concepts" ]; then
-  for concept in "$VAULT_PATH/wiki/concepts"/*.md; do
+if [ -d "$VAULT_PATH/02-Wiki/concepts" ]; then
+  for concept in "$VAULT_PATH/02-Wiki/concepts"/*.md; do
     [ -f "$concept" ] || continue
     concept_name=$(basename "$concept" .md)
 
     # Check if any Entry links to this concept
     has_backlink=false
-    for entry in "$VAULT_PATH/wiki/entries"/*.md; do
+    for entry in "$VAULT_PATH/02-Wiki/entries"/*.md; do
       [ -f "$entry" ] || continue
       if grep -qF "[[$concept_name]]" "$entry" 2>/dev/null; then
         has_backlink=true
@@ -239,7 +239,7 @@ if [ -d "$VAULT_PATH/wiki/concepts" ]; then
     if [ "$has_backlink" = false ]; then
       # Check if the concept is self-referencing (in its own entry_refs)
       if ! grep -qF "[[$concept_name]]" "$concept" 2>/dev/null; then
-        echo "- [$concept_name](wiki/concepts/$concept_name.md)" >> "$REPORT_FILE"
+        echo "- [$concept_name](02-Wiki/concepts/$concept_name.md)" >> "$REPORT_FILE"
         orphan_concept_count=$((orphan_concept_count + 1))
       fi
     fi
@@ -264,14 +264,14 @@ echo "## 7. Wiki Index Drift (index vs actual notes)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 drift_count=0
 
-if [ -f "$VAULT_PATH/config/wiki-index.md" ]; then
+if [ -f "$VAULT_PATH/04-Config/wiki-index.md" ]; then
   # Count entries in the index
-  index_entry_count=$(grep -c '(entry)' "$VAULT_PATH/config/wiki-index.md" 2>/dev/null || echo 0)
-  index_concept_count=$(grep -c '(concept)' "$VAULT_PATH/config/wiki-index.md" 2>/dev/null || echo 0)
+  index_entry_count=$(grep -c '(entry)' "$VAULT_PATH/04-Config/wiki-index.md" 2>/dev/null || echo 0)
+  index_concept_count=$(grep -c '(concept)' "$VAULT_PATH/04-Config/wiki-index.md" 2>/dev/null || echo 0)
 
   # Count actual files
-  actual_entry_count=$(find "$VAULT_PATH/wiki/entries" -name '*.md' 2>/dev/null | wc -l)
-  actual_concept_count=$(find "$VAULT_PATH/wiki/concepts" -name '*.md' 2>/dev/null | wc -l)
+  actual_entry_count=$(find "$VAULT_PATH/02-Wiki/entries" -name '*.md' 2>/dev/null | wc -l)
+  actual_concept_count=$(find "$VAULT_PATH/02-Wiki/concepts" -name '*.md' 2>/dev/null | wc -l)
 
   if [ "$index_entry_count" -ne "$actual_entry_count" ]; then
     echo "- **Entry mismatch**: Index lists $index_entry_count, actual files: $actual_entry_count" >> "$REPORT_FILE"
@@ -290,7 +290,7 @@ if [ -f "$VAULT_PATH/config/wiki-index.md" ]; then
       echo "- **[$idx_note]**: Listed in index but file not found" >> "$REPORT_FILE"
       drift_count=$((drift_count + 1))
     fi
-  done < <(grep -oE '\[\[.+?\]\]' "$VAULT_PATH/config/wiki-index.md" 2>/dev/null | sed 's/\[\[//;s/\]\]//')
+  done < <(grep -oE '\[\[.+?\]\]' "$VAULT_PATH/04-Config/wiki-index.md" 2>/dev/null | sed 's/\[\[//;s/\]\]//')
 
   if [ $drift_count -eq 0 ]; then
     echo "Wiki index is in sync with actual notes." >> "$REPORT_FILE"
@@ -316,8 +316,8 @@ echo "" >> "$REPORT_FILE"
 missing_section_count=0
 required_sections=("## Summary" "## ELI5 insights" "### Core insights" "### Other takeaways" "## Diagrams" "## Open questions" "## Linked concepts")
 
-if [ -d "$VAULT_PATH/wiki/entries" ]; then
-  for entry in "$VAULT_PATH/wiki/entries"/*.md; do
+if [ -d "$VAULT_PATH/02-Wiki/entries" ]; then
+  for entry in "$VAULT_PATH/02-Wiki/entries"/*.md; do
     [ -f "$entry" ] || continue
     entry_name=$(basename "$entry" .md)
     missing=""
@@ -330,7 +330,7 @@ if [ -d "$VAULT_PATH/wiki/entries" ]; then
 
     if [ -n "$missing" ]; then
       missing="${missing%, }"  # Remove trailing comma
-      echo "- [$entry_name](wiki/entries/$entry_name.md) — missing: $missing" >> "$REPORT_FILE"
+      echo "- [$entry_name](02-Wiki/entries/$entry_name.md) — missing: $missing" >> "$REPORT_FILE"
       missing_section_count=$((missing_section_count + 1))
     fi
   done

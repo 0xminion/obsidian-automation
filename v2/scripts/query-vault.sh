@@ -7,9 +7,9 @@
 #
 # KEY FEATURES:
 # - Queries expand the wiki: answers filed as Entries in outputs/answers/
-# - New concepts discovered during Q&A are added to wiki/concepts/
+# - New concepts discovered during Q&A are added to 02-Wiki/concepts/
 # - wiki-index.md serves as the retrieval layer (read it first)
-# - Answered queries archived to query-archive/
+# - Answered queries archived to 05-Archive/
 #
 # Usage: VAULT_PATH="$HOME/MyVault" bash v2/scripts/query-vault.sh
 # ============================================================================
@@ -73,14 +73,14 @@ build_vault_summary() {
   echo ""
 
   # If wiki-index.md exists, use it as the retrieval layer
-  if [ -f "$VAULT_PATH/config/wiki-index.md" ]; then
+  if [ -f "$VAULT_PATH/04-Config/wiki-index.md" ]; then
     echo "## Wiki Index (primary retrieval):"
-    cat "$VAULT_PATH/config/wiki-index.md"
+    cat "$VAULT_PATH/04-Config/wiki-index.md"
     echo ""
   fi
 
   # Also provide directory counts for context
-  for dir in "wiki/entries" "wiki/concepts" "wiki/mocs" "wiki/sources"; do
+  for dir in "02-Wiki/entries" "02-Wiki/concepts" "02-Wiki/mocs" "02-Wiki/sources"; do
     dir_path="$VAULT_PATH/$dir"
     [ -d "$dir_path" ] || continue
 
@@ -104,8 +104,8 @@ build_vault_summary() {
 # Setup required directories
 mkdir -p "$VAULT_PATH/queries"
 mkdir -p "$VAULT_PATH/outputs/answers"
-mkdir -p "$VAULT_PATH/query-archive"
-mkdir -p "$VAULT_PATH/wiki/concepts"
+mkdir -p "$VAULT_PATH/05-Archive"
+mkdir -p "$VAULT_PATH/02-Wiki/concepts"
 
 query_count=$(find "$VAULT_PATH/queries" -name '*.md' 2>/dev/null | wc -l)
 if [ "$query_count" -eq 0 ]; then
@@ -138,11 +138,11 @@ QUERY: $query_text
 
 INSTRUCTIONS:
 
-1. READ THE WIKI INDEX first: consult 'config/wiki-index.md' for an overview
+1. READ THE WIKI INDEX first: consult '04-Config/wiki-index.md' for an overview
    of all Entry and Concept notes in the wiki. This is your retrieval layer.
 
 2. Use 'obsidian search <keywords>' to find relevant notes in the vault.
-   Focus on wiki/entries/, wiki/concepts/, and wiki/mocs/.
+   Focus on 02-Wiki/entries/, 02-Wiki/concepts/, and 02-Wiki/mocs/.
 
 3. Read the FULL content of each relevant note — don't just rely on titles.
 
@@ -151,7 +151,7 @@ INSTRUCTIONS:
    what additional sources could fill the gap.
 
 5. DISCOVER NEW CONCEPTS: If your research reveals important concepts not
-   already in wiki/concepts/, CREATE new Concept notes for them.
+   already in 02-Wiki/concepts/, CREATE new Concept notes for them.
    Follow this structure:
    ---
    title: \"<concept name>\"
@@ -178,11 +178,11 @@ INSTRUCTIONS:
    Before creating, check if an existing concept covers the same idea.
    If yes, UPDATE the existing concept instead.
 
-6. CREATE AN ENTRY NOTE IN wiki/entries/ — this is how the answer
+6. CREATE AN ENTRY NOTE IN 02-Wiki/entries/ — this is how the answer
    becomes part of the wiki. The answer IS a wiki entry that can be
    found by future queries and compile passes.
 
-   Create the Entry in 'wiki/entries/' following this EXACT structure:
+   Create the Entry in '02-Wiki/entries/' following this EXACT structure:
    ---
    title: \\\"Answer: <query topic>\\\"
    source: \\\"[[$query_name]]\\\"
@@ -219,16 +219,16 @@ INSTRUCTIONS:
 7. ALSO write a copy to 'outputs/answers/' as:
    answer-$(date +%Y%m%d)-${query_name}.md
    This is a duplicate for quick access — the canonical version is
-   the Entry in wiki/entries/.
+   the Entry in 02-Wiki/entries/.
 
 8. Humanize ALL prose using the Humanizer skill (both Entry and output copy).
 
-9. Archive the query: move it from 'queries/' to 'query-archive/'.
+9. Archive the query: move it from 'queries/' to '05-Archive/'.
 
 CRITICAL RULES:
 - ALL YAML frontmatter: wikilinks MUST be quoted: source: \"[[note]]\"
 - Use [[wikilinks]] for all internal vault links.
-- Do NOT modify 05-WIP/.
+- Do NOT modify 00-WIP/.
 "
 
   if run_with_retry "Query: $query_name" "$prompt"; then

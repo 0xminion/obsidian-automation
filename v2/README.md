@@ -1,99 +1,105 @@
-# Obsidian AI-Automated PKM Wiki — v2
+# v2: Obsidian AI-Automated PKM Vault — Karpathy-Style Wiki
 
-A wiki-first knowledge management system that turns raw web content, PDFs, and YouTube videos into a networked wiki of Entries, Concepts, and Maps of Content — with automatic cross-linking, shared concepts, and zero RAG.
+Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a self-compiling wiki. Inspired by Andrej Karpathy's "LLM Knowledge Bases" approach: raw data is collected, compiled by an LLM into a .md wiki, operated on for Q&A, and incrementally enhanced. You rarely ever write the wiki manually.
 
-> v2 replaces the v1 pipeline model (Inbox → Distilled → Atomic → MoC) with a **wiki model** where concepts are shared across sources, not owned by one note.
+## Vault Structure
 
-## What's New in v2
+```
+00-WIP/              ←  Your drafts (untouched by automation)
+01-Raw/              →  Drop URLs, PDFs, files, queries here
+02-Wiki/
+├── sources/         ←  Full original content (not humanized)
+├── entries/         ←  Entry notes (humanized summaries)
+├── concepts/        ←  Shared vocabulary across sources (humanized)
+└── mocs/            ←  Topic hubs with synthesized summaries (humanized)
+03-Outputs/
+├── answers/         ←  Q&A responses (duplicates for quick access)
+└── visualizations/  ←  Charts, diagrams, exports
+04-Config/
+├── wiki-index.md    ←  Auto-maintained TOC (retrieval layer — no RAG)
+├── url-index.tsv    ←  URL → entry mapping (dedup)
+└── tag-registry.md  ←  Canonical tag list
+05-Archive/          ←  Processed inbox items and queries
+```
 
-| v1 | v2 |
+## Entry Note Structure (Numbered Sections)
+
+Every Entry in `02-Wiki/entries/` follows this exact numbered structure:
+
+```markdown
+---
+title: "Title"
+source: "[[Source note]]"
+date_entry: YYYY-MM-DD
+tags:
+  - entry
+  - topic-tag-1
+  - ... (5-10 topic tags)
+status: review
+aliases: []
+---
+
+# Title
+
+1. Summary
+3-5 sentence overview. Plain language, no fluff.
+
+2. ELI5 insights
+
+   2a. Core insights
+   Main findings explained for a smart 12-year-old. As many as exist.
+
+   2b. Other takeaways
+   Other important findings. Same ELI5 treatment.
+
+3. Diagrams
+Mermaid diagrams if warranted, else "N/A — content is straightforward."
+
+4. Open questions
+Gaps, assumptions, what the source doesn't answer.
+
+5. Linked concepts
+Wikilinks to Concept notes, other Entries, MoCs.
+```
+
+## Scripts
+
+| Script | Purpose |
 |---|---|
-| `Distilled` notes | `Entry` notes — same ELI5 structure, renamed |
-| `Atomic` notes (one per source) | `Concept` notes — **shared across multiple sources** |
-| `url-index.tsv` for dedup | `wiki-index.md` — auto-maintained index replaces RAG |
-| No centralized tags | `tag-registry.md` — canonical tag namespace |
-| Concepts pipeline-owned | Concepts are **wiki citizens** — anyone can edit, compile converges |
+| `process-inbox.sh` | Ingest: Source → Entry → Concepts → MoCs + wiki index |
+| `compile-pass.sh` | Cross-link, concept convergence, MoC rebuild, index rebuild |
+| `query-vault.sh` | Q&A: drop question → answer as Entry back into wiki |
+| `lint-vault.sh` | 8 health checks: orphans, stale, broken, empty, drift, etc. |
 
-## Core Philosophy: Wiki, Not Pipeline
+## Key Features
 
-Karpathy's principle: **"Don't build a pipeline. Build a wiki."**
-
-Your knowledge should grow organically like a wiki — notes link to each other, concepts are shared and refined over time, and the system converges rather than duplicates.
-
-- **Entries** are your distilled summaries — one per source, same ELI5 structure you already know.
-- **Concepts** are ideas shared across entries. Multiple entries can reference the same concept. The compile pass converges duplicates automatically.
-- **MoCs** are topic hubs with synthesized summaries of the Concepts and Entries beneath them.
-- **wiki-index.md** replaces RAG — the entire wiki structure is your retrieval index.
+- **Numbered folder structure**: 00-WIP → 01-Raw → 02-Wiki → 03-Outputs → 04-Config → 05-Archive
+- **Numbered Entry sections**: 1. Summary → 2. ELI5 (2a/2b) → 3. Diagrams → 4. Open questions → 5. Linked concepts
+- **Concept convergence**: Searches existing concepts before creating new ones, merges near-duplicates
+- **Wiki index**: Auto-maintained TOC as retrieval layer — no RAG needed
+- **Query expansion**: Answers written as Entries back into wiki, expanding the knowledge base
+- **Humanizer**: All Entry, Concept, and MoC prose passes through the Humanizer skill before writing
 
 ## Quick Start
 
-### 1. Clone and review
-
 ```bash
-cd /path/to/obsidian-automation/v2
-ls templates/    # Source.md, Entry.md, Concept.md, MoC.md, Query.md, wiki-index.md, tag-registry.md
-ls docs/         # Part1 + Part2 setup guides
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh   # Ingest
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/compile-pass.sh    # Recompile
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/query-vault.sh     # Query
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/lint-vault.sh      # Lint
 ```
 
-### 2. Create your vault structure
+See `docs/` for full setup guides.
 
-```bash
-cd ~/MyVault
-mkdir -p wiki/{entries,concepts,mocs,sources}
-mkdir -p "00-Inbox/raw" "00-Inbox/quick notes" "00-Inbox/clippings" "00-Inbox/queries"
-mkdir -p 05-WIP 06-Archive/processed-inbox
-mkdir -p Meta/{Templates,Scripts}
-```
+## Humanizer Skill Usage
 
-### 3. Copy templates
+The Humanizer skill is active in these processes:
 
-```bash
-cp v2/templates/*.md ~/MyVault/Meta/Templates/
-cp v2/templates/wiki-index.md ~/MyVault/
-cp v2/templates/tag-registry.md ~/MyVault/Meta/
-```
+| Process | What gets humanized | Where it happens |
+|---|---|---|
+| `process-inbox.sh` | Entry notes, Concept notes, MoC notes | Steps 3-5 of each processor function |
+| `compile-pass.sh` | MoC notes (during rebuild) | OPERATION 2 |
+| `query-vault.sh` | Entry answers + Concept notes discovered during Q&A | Step 8 |
+| `lint-vault.sh` | None (read-only) | N/A |
 
-### 4. Follow setup guides
-
-- [Part 1: Vault Structure Setup](docs/Part1-Vault-Structure-Setup.md)
-- [Part 2: Automation & Skills Setup](docs/Part2-Automation-Skills-Setup.md)
-
-## Templates
-
-| Template | Purpose |
-|---|---|
-| Source.md | Full original content (never humanized) |
-| Entry.md | Distilled entry — ELI5 summary, insights, diagrams, open questions |
-| Concept.md | Shared idea across multiple sources (with `entry_refs`) |
-| MoC.md | Topic hub with synthesized summaries |
-| Query.md | Question template for Q&A against the wiki |
-| wiki-index.md | Auto-maintained index (replaces RAG) |
-| tag-registry.md | Canonical tag registry |
-
-## Key Principle: YAML Wikilinks Must Be Quoted
-
-YAML interprets `[[` as a nested list. Always quote wikilinks in frontmatter:
-
-```yaml
-source: "[[Source note name]]"        # Correct
-entry_refs:                           # Correct
-  - "[[Entry 1]]"
-  - "[[Entry 2]]"
-```
-
-## Repository Structure
-
-```
-v2/
-├── templates/
-│   ├── Source.md          # Full original content
-│   ├── Entry.md           # Distilled entry (ELI5 format)
-│   ├── Concept.md         # Shared concept across sources
-│   ├── MoC.md             # Topic hub / Map of Content
-│   ├── Query.md           # Question template
-│   ├── wiki-index.md      # Auto-maintained wiki index
-│   └── tag-registry.md    # Canonical tag registry
-└── docs/
-    ├── Part1-Vault-Structure-Setup.md    # Vault creation guide
-    └── Part2-Automation-Skills-Setup.md  # Full automation setup
-```
+The Humanizer is declared as an available skill in `COMMON_INSTRUCTIONS` and every processing prompt explicitly instructs the agent to "humanize before writing." The agent's runtime loads the Humanizer skill and applies pattern removal before final file writes.
