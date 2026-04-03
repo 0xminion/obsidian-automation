@@ -7,9 +7,10 @@
 #
 # Supports: Claude Code, Hermes Agent, Codex CLI, or any agentskills.io agent.
 # Includes retry logic with exponential backoff.
+# Includes idempotency checks and dedup detection.
 # ============================================================================
 
-set -euo pipefail
+set -uo pipefail
 
 # ═══════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -20,10 +21,15 @@ LOG_FILE="$VAULT_PATH/Meta/Scripts/processing.log"
 LOCK_FILE="/tmp/obsidian-inbox-processor-$(echo "$VAULT_PATH" | md5sum | cut -c1-8).lock"
 MAX_RETRIES=3
 
-# Agent command — change for your agent
-# Claude Code:   AGENT_CMD="claude -p"
-# Hermes Agent:  AGENT_CMD="hermes run --prompt"
-# Codex CLI:     AGENT_CMD="codex exec"
+# Agent command — change for your agent.
+# Supported values and what they do:
+#   "claude"              — Claude Code interactive (full tool execution + streaming)
+#   "claude -p"           — Claude Code print-mode (tool execution, prints final answer)
+#   "codex -p"            — Codex CLI print-mode (non-interactive, executes tools)
+#   "hermes run --prompt" — Hermes Agent prompt mode
+#
+# IMPORTANT: Do NOT use interactive-mode agents in cron. Use -p / --prompt variants.
+# For manual runs, plain "claude" is fine.
 AGENT_CMD="${AGENT_CMD:-claude -p}"
 
 # ═══════════════════════════════════════════════════════════
@@ -39,9 +45,66 @@ touch "$LOCK_FILE"
 log() { echo "$(date): $1" >> "$LOG_FILE"; }
 
 # ═══════════════════════════════════════════════════════════
-# RETRY LOGIC — exponential backoff, max 3 attempts
-# On failure, instructs the agent to try alternative approaches
+# DEDUP: Check if a Source note already exists for a URL
+# Uses a URL index file: Meta/Scripts/url-index.tsv (url \t path)
 # ═══════════════════════════════════════════════════════════
+URL_INDEX="$VAULT_PATH/Meta/Scripts/url-index.tsv"
+touch "$URL_INDEX"
+
+source_exists_for_url() {
+  local url="$1"
+  local normalized_url
+  # Strip protocol and trailing slash for comparison
+  normalized_url=$(echo "$url" | sed 's|^https\?://||; s|/$||')
+  if grep -qiF "$normalized_url" "$URL_INDEX" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+register_url_source() {
+  local url="$1"
+  local source_path="$2"
+  local normalized_url
+  normalized_url=$(echo "$url" | sed 's|^https\?://||; s|/$||')
+  # Only register if not already in index
+  if ! grep -qiF "$normalized_url" "$URL_INDEX" 2>/dev/null; then
+    echo -e "${normalized_url}\t${source_path}" >> "$URL_INDEX"
+  fi
+}
+
+# Build index from existing sources if empty
+if [ ! -s "$URL_INDEX" ]; then
+  # Extract source_url from frontmatter of existing Source notes
+  if [ -d "$VAULT_PATH/01-Sources" ]; then
+    for f in "$VAULT_PATH/01-Sources"/*.md; do
+      [ -f "$f" ] || continue
+      url=$(grep -m1 'source_url:' "$f" 2>/dev/null | sed 's/.*source_url: *//; s/^"//; s/"$//' || true)
+      if [ -n "$url" ]; then
+        register_url_source "$url" "$f"
+      fi
+    done
+    log "Built URL index from existing sources ($(wc -l < "$URL_INDEX") entries)"
+  fi
+fi
+
+# ═══════════════════════════════════════════════════════════
+# RETRY LOGIC — exponential backoff, max 3 attempts
+# FIX: Don't use set -e; capture exit codes manually
+# FIX: Don't let prompt grow unboundedly on retries
+# ═══════════════════════════════════════════════════════════
+
+# Static retry advice — appended once per retry without re-accumulating
+RETRY_ADVICE="
+RETRY CONTEXT: Previous attempt failed. Try alternatives:
+- If Defuddle failed, fall back to LiteParse (lit parse <file> --format text).
+- If PDF parsing failed, try lit with --no-ocr or different page ranges.
+- If TranscriptAPI failed, try bare video ID instead of full URL.
+- If a file operation failed, verify the target directory exists (create if needed).
+- If rate-limited, use a simpler/shorter prompt.
+- If note write failed, write to a temp location first, then mv.
+Be resourceful. Find a way."
+
 run_with_retry() {
   local description="$1"
   local prompt="$2"
@@ -51,31 +114,23 @@ run_with_retry() {
   while [ $attempt -le $MAX_RETRIES ]; do
     log "Attempt $attempt/$MAX_RETRIES: $description"
 
-    if cd "$VAULT_PATH" && $AGENT_CMD "$prompt" 2>> "$LOG_FILE"; then
+    local agent_exit=0
+    cd "$VAULT_PATH" && $AGENT_CMD "$prompt" 2>> "$LOG_FILE" || agent_exit=$?
+
+    if [ $agent_exit -eq 0 ]; then
       log "SUCCESS: $description"
       return 0
     fi
 
-    local exit_code=$?
-    log "FAILED (exit $exit_code): $description — attempt $attempt/$MAX_RETRIES"
+    log "FAILED (exit $agent_exit): $description — attempt $attempt/$MAX_RETRIES"
 
     if [ $attempt -lt $MAX_RETRIES ]; then
       log "Waiting ${delay}s before retry (exponential backoff)..."
       sleep $delay
       delay=$((delay * 2))
 
-      # Augment the prompt with retry instructions
-      prompt="$prompt
-
-RETRY CONTEXT: This is attempt $((attempt + 1)) of $MAX_RETRIES.
-The previous attempt failed. Try alternative approaches:
-- If a URL failed with Defuddle, fall back to LiteParse or direct fetch.
-- If PDF parsing failed, try with --no-ocr flag or different page ranges.
-- If the TranscriptAPI call failed, try with a bare video ID instead of full URL.
-- If a file operation failed, check if the target directory exists and create it.
-- If an API call was rate-limited, use a simpler/shorter prompt.
-- If note creation failed, verify the file path and try writing to a temp location first.
-Be resourceful. Find a way to complete the task."
+      # Append static retry advice — NOT cumulative (appended only once)
+      prompt="${prompt}${RETRY_ADVICE}"
     fi
 
     attempt=$((attempt + 1))
@@ -123,13 +178,21 @@ is_youtube_link() {
   [[ "$content" =~ ^https?://(www\.)?(youtube\.com|youtu\.be)/ ]]
 }
 
+# Extract URL from an inbox file
+extract_url_from_file() {
+  local file="$1"
+  local content
+  content=$(cat "$file" | head -1 | tr -d '[:space:]')
+  echo "$content" | grep -oE 'https?://[^[:space:]]+' || true
+}
+
 # ═══════════════════════════════════════════════════════════
 # SHARED PROMPT INSTRUCTIONS
+# FIX: Use proper env var names, not truncated cosmetic placeholders
 # ═══════════════════════════════════════════════════════════
 COMMON_INSTRUCTIONS="
 VAULT LOCATION: $VAULT_PATH
-AGENT SKILLS AVAILABLE: obsidian-markdown, obsidian-cli, defuddle, humanizer,
-  youtube-full (TranscriptAPI), liteparse
+AGENT AVAILABLE: obsidian-markdown, humanizer, youtube-full (TranscriptAPI), liteparse
 
 CRITICAL RULES:
 1. NEVER touch anything in '00-Inbox/quick notes/'. Off-limits.
@@ -140,14 +203,14 @@ CRITICAL RULES:
 4. Use Obsidian-flavored markdown (callouts, frontmatter, tags).
 5. Use obsidian CLI where helpful:
    obsidian create, obsidian search, obsidian append, obsidian property:set
-6. Source notes go in '01-Sources/'. Processed originals go in '06-Archive/processed-inbox/'.
+6. Source notes go in '01-Sources/'. Processed originals go to '06-Archive/processed-inbox/'.
 
 PARSER ROUTING:
 - Primary: Use Defuddle for any URLs and applicable file-to-markdown conversions.
-- Fallback: If Defuddle fails or can't handle the format, fall back to LiteParse:
+- Fallback: If Defuddle fails, fall back to LiteParse:
     lit parse <file> --format text
 - YouTube links: Use TranscriptAPI (primary) with Supadata (fallback).
-  Primary: curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=VIDEO_URL&format=text&include_timestamp=true&send_metadata=true'
+  Primary: curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=VIDEO_URL&format=text&include_timestamp=false&send_metadata=true'
     -H 'Authorization: Bearer \$TRANSCRIPT_API_KEY'
   Fallback: curl -s 'https://api.supadata.ai/v1/youtube/transcript?url=VIDEO_URL&text=true&lang=en'
     -H 'x-api-key: \$SUPADATA_API_KEY'
@@ -156,8 +219,8 @@ PARSER ROUTING:
 TAG CONSOLIDATION:
 Before creating new tags, ALWAYS search existing tags in the vault first:
   obsidian tags sort=count counts
-Reuse existing tags wherever possible. Only create a new tag if no existing
-tag covers the concept. This prevents tag sprawl and keeps the taxonomy clean.
+Reuse existing tags wherever possible. Only mint a new tag if nothing fits.
+This prevents tag sprawl and keeps the taxonomy clean.
 
 RETRY BEHAVIOR:
 If any step fails (API call, file operation, parsing), try an alternative
@@ -228,12 +291,55 @@ ATOMIC NOTE RULES for 03-Atomic/:
 "
 
 # ═══════════════════════════════════════════════════════════
+# MoC NOTE STRUCTURE (includes auto-summary)
+# NEW: MoCs now include synthesized summaries, not just link lists
+# ═══════════════════════════════════════════════════════════
+MOC_STRUCTURE="
+MOC NOTE STRUCTURE — for 04-MoCs/:
+
+Frontmatter:
+  - title, type: moc, status: active, created, updated
+  - tags: the topic tag repeated, plus 'map-of-content'
+
+Body:
+# <Topic Name> — Map of Content
+
+## Overview
+<2-3 sentence synthesized summary of this topic. Explain WHAT this topic
+covers and WHY it matters. This is not a list — it's a prose paragraph
+that would help someone understand the topic at a glance.>
+
+## Core Concepts
+- [[<Atomic note>]] — <1-sentence summary of the note>
+(one line per Atomic note with a brief summary, not just a wikilink)
+
+## Related Research
+- [[<Distilled note>]] — <1-sentence summary>
+
+## Open Threads
+- <Questions that remain unanswered, for future exploration>
+
+## Notes
+<Optional deeper commentary about the state of knowledge on this topic.>
+"
+
+# ═══════════════════════════════════════════════════════════
 # PROCESS: YouTube links (TranscriptAPI → markdown)
+# NEW: Checks for existing source before processing
 # ═══════════════════════════════════════════════════════════
 process_youtube() {
   local file="$1"
   local url
   url=$(cat "$file" | tr -d '[:space:]')
+
+  # Idempotency: skip if already processed
+  if source_exists_for_url "$url"; then
+    log "SKIP (duplicate): YouTube — file: $file (already in sources)"
+    # Still archive the inbox file to avoid re-processing
+    mkdir -p "$VAULT_PATH/06-Archive/processed-inbox"
+    mv "$file" "$VAULT_PATH/06-Archive/processed-inbox/" 2>/dev/null || true
+    return 0
+  fi
 
   run_with_retry "YouTube — file: $file" "
 $COMMON_INSTRUCTIONS
@@ -245,23 +351,19 @@ URL: $url
 STEP 1 — FETCH TRANSCRIPT
 Use TranscriptAPI as the PRIMARY provider, with Supadata as FALLBACK.
 
-**Primary — TranscriptAPI:**
-  curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=$url&format=text&include_timestamp=true&send_metadata=true' \\
+**Primary — TranscriptAPI (\$TRANSCRIPT_API_KEY env var):**
+  curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=$url&format=text&include_timestamp=false&send_metadata=true' \\
     -H 'Authorization: Bearer \$TRANSCRIPT_API_KEY'
 Extract the transcript text and metadata (title, author).
 
-**Fallback — Supadata (use if TranscriptAPI returns 402/404/error or TRANSCRIPT_API_KEY is empty):**
+**Fallback — Supadata (\$SUPADATA_API_KEY env var):**
   curl -s 'https://api.supadata.ai/v1/youtube/transcript?url=$url&text=true&lang=en' \\
     -H 'x-api-key: \$SUPADATA_API_KEY'
-Supadata returns JSON with 'content' (plain text transcript when text=true),
-'lang' (language code), and 'availableLangs'. It does NOT return video metadata —
-if using the fallback, extract the video title from the YouTube page or note it
-as unavailable. If the response is HTTP 202, the video is being processed async —
-poll the returned jobId at /v1/youtube/transcript/{jobId} every few seconds.
+Supadata returns JSON with 'content' (plain text transcript when text=true).
+If HTTP 202, poll the returned jobId at /v1/youtube/transcript/{jobId}.
 
 If BOTH providers fail, create the Source note with the URL and mark
-status: needs-transcript. Still create Distilled/Atomic notes from whatever
-metadata is available.
+status: needs-transcript.
 
 Convert the transcript into clean, readable markdown paragraphs.
 
@@ -282,37 +384,56 @@ Extract standalone ideas from the video content.
 Draft each, humanize, then write to '03-Atomic/'.
 
 STEP 5 — UPDATE MoCs
-Search existing MoCs: obsidian search query=\"<topic>\"
-Update relevant MoCs or create new ones if warranted. Humanize MoC prose.
+Search existing MoCs for relevant topic matches. For each matching or
+new MoC:
+- Add wikilinks to the new Distilled and Atomic notes
+- Include a 1-sentence summary for each new link (not just wikilinks)
+- Humanize all MoC prose
 
 STEP 6 — ARCHIVE
 Move original inbox file to '06-Archive/processed-inbox/'.
+Register the URL in the index: append '\$url\t<source-note-path>' to
+'$URL_INDEX'.
 "
 }
 
 # ═══════════════════════════════════════════════════════════
 # PROCESS: URLs (Defuddle primary → LiteParse fallback)
+# NEW: Checks for existing source before processing
 # ═══════════════════════════════════════════════════════════
 process_url() {
   local file="$1"
+  local url
+  url=$(cat "$file" | tr -d '[:space:]')
+
+  # Idempotency: skip if already processed
+  if source_exists_for_url "$url"; then
+    log "SKIP (duplicate): URL — file: $file (already in sources)"
+    mkdir -p "$VAULT_PATH/06-Archive/processed-inbox"
+    mv "$file" "$VAULT_PATH/06-Archive/processed-inbox/" 2>/dev/null || true
+    return 0
+  fi
 
   run_with_retry "URL — file: $file" "
 $COMMON_INSTRUCTIONS
 
 TASK: Process a URL from the inbox.
 FILE: '$file'
+URL: $url
 
 STEP 1 — EXTRACT CONTENT
-Read the file to get the URL. Use Defuddle CLI as the PRIMARY extractor:
-  defuddle parse <the_url> --md
+Use Defuddle CLI as the PRIMARY extractor:
+  defuddle parse '$url' --md
 If Defuddle fails or returns empty/unusable content, FALL BACK to LiteParse:
   Download the page, then: lit parse <downloaded_file> --format text
-If both fail, create a minimal Source note with the URL and mark status: needs-manual-extraction.
+If both fail, create a minimal Source note with the URL and
+mark status: needs-manual-extraction.
 
 STEP 2 — CREATE SOURCE NOTE
 Create a Source note in '01-Sources/' with extracted markdown content.
 Frontmatter: title, source_url, source_type, author, date_captured, tags, status: processed.
-IMPORTANT: Wikilinks in YAML frontmatter MUST be quoted (e.g. source: \"[[note]]\").
+IMPORTANT: Wikilinks in YAML frontmatter MUST be quoted
+(e.g. source: \"[[note]]\").
 
 STEP 3 — CREATE DISTILLED NOTE
 $DISTILLED_STRUCTURE
@@ -323,15 +444,19 @@ $ATOMIC_RULES
 Draft each, humanize, write to '03-Atomic/'.
 
 STEP 5 — UPDATE MoCs
-Search and update or create relevant MoCs. Humanize MoC prose.
+Search existing MoCs for relevant topics. Add wikilinks with
+1-sentence summaries for new notes. Humanize MoC prose.
 
 STEP 6 — ARCHIVE
 Move original inbox file to '06-Archive/processed-inbox/'.
+Register the URL in the index: append '\$url\t<source-note-path>' to
+'$URL_INDEX'.
 "
 }
 
 # ═══════════════════════════════════════════════════════════
 # PROCESS: PDFs and other files (Defuddle primary → LiteParse fallback)
+# NEW: Checks for existing source before processing
 # ═══════════════════════════════════════════════════════════
 process_file() {
   local file="$1"
@@ -361,7 +486,8 @@ Create a Source note in '01-Sources/' with:
   - If PDF: embed it with ![[${filename}]]
   - Include extracted text in 'Original content' section
   - Frontmatter: title, author, source_type, tags, status: processed
-  - IMPORTANT: Wikilinks in YAML frontmatter MUST be quoted (e.g. source: \"[[note]]\")
+  - IMPORTANT: Wikilinks in YAML frontmatter MUST be quoted
+    (e.g. source: \"[[note]]\")
 
 STEP 3 — CREATE DISTILLED NOTE
 $DISTILLED_STRUCTURE
@@ -372,7 +498,8 @@ $ATOMIC_RULES
 Draft each, humanize, write to '03-Atomic/'.
 
 STEP 5 — UPDATE MoCs
-Search and update or create relevant MoCs. Humanize MoC prose.
+Search existing MoCs for relevant topics. Add wikilinks with
+1-sentence summaries for new notes. Humanize MoC prose.
 
 STEP 6 — ARCHIVE
 Move the original inbox file to '06-Archive/processed-inbox/'.
@@ -384,6 +511,16 @@ Move the original inbox file to '06-Archive/processed-inbox/'.
 # ═══════════════════════════════════════════════════════════
 process_clipping() {
   local file="$1"
+  local source_url
+  source_url=$(grep -m1 'source_url:' "$file" 2>/dev/null | sed 's/.*source_url: *//; s/^"//; s/"$//' || true)
+
+  # Idempotency for clippings with source_url
+  if [ -n "$source_url" ] && source_exists_for_url "$source_url"; then
+    log "SKIP (duplicate): Clipping — file: $file (already in sources)"
+    mkdir -p "$VAULT_PATH/06-Archive/processed-inbox"
+    mv "$file" "$VAULT_PATH/06-Archive/processed-inbox/" 2>/dev/null || true
+    return 0
+  fi
 
   run_with_retry "Clipping — file: $file" "
 $COMMON_INSTRUCTIONS
@@ -395,8 +532,10 @@ The file likely contains markdown captured by Obsidian Web Clipper,
 possibly with frontmatter (source_url, title).
 
 STEP 1 — CREATE SOURCE NOTE
-If it has a source_url, create a Source note in '01-Sources/'.
-If a Source for this URL already exists, update it.
+Extract the source_url from frontmatter if present.
+If it has a source_url and no Source for this URL exists, create a
+Source note in '01-Sources/'. If a Source for this URL already exists,
+skip Source creation (don't duplicate).
 
 STEP 2 — CREATE DISTILLED NOTE
 $DISTILLED_STRUCTURE
@@ -407,10 +546,12 @@ $ATOMIC_RULES
 Draft each, humanize, write to '03-Atomic/'.
 
 STEP 4 — UPDATE MoCs
-Search and update or create relevant MoCs. Humanize MoC prose.
+Search existing MoCs for relevant topics. Add wikilinks with
+1-sentence summaries for new notes. Humanize MoC prose.
 
 STEP 5 — ARCHIVE
 Move the clipping to '06-Archive/processed-inbox/'.
+If the clipping had a source_url, register it in '$URL_INDEX'.
 "
 }
 
@@ -421,23 +562,28 @@ Move the clipping to '06-Archive/processed-inbox/'.
 # ═══════════════════════════════════════════════════════════
 log "Starting inbox processing..."
 
+processed=0
+skipped=0
+failed=0
+
 # Process everything in raw/
 for file in "$VAULT_PATH/00-Inbox/raw"/*; do
   [ -f "$file" ] || continue
 
   if is_youtube_link "$file"; then
-    process_youtube "$file"
+    process_youtube "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
   elif is_url_file "$file"; then
-    process_url "$file"
+    process_url "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
   else
-    process_file "$file"
+    process_file "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
   fi
 done
 
 # Process everything in clippings/
 for file in "$VAULT_PATH/00-Inbox/clippings"/*.md; do
   [ -f "$file" ] || continue
-  process_clipping "$file"
+  process_clipping "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
 done
 
-log "Inbox processing complete."
+log "Inbox processing complete. Processed: $processed, Failed: $failed"
+log "URL index now has $(wc -l < "$URL_INDEX") entries"

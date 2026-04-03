@@ -106,9 +106,9 @@ Set `AGENT_CMD` when running the script:
 
 | Agent | AGENT_CMD |
 |---|---|
-| Claude Code | `claude -p` (default) |
+| Claude Code | `claude -p` (default, for cron/non-interactive). For interactive: `claude` |
 | Hermes Agent | `hermes run --prompt` |
-| Codex CLI | `codex exec` |
+| Codex CLI | `codex` (with prompt on stdin) |
 
 ---
 
@@ -294,40 +294,39 @@ aliases: []
 ```markdown
 ---
 title: "{{title}}"
+type: moc
 date_created: {{date}}
 date_updated: {{date}}
+status: active
 tags:
-  - moc
-  - {{topic_tag}}
-type: moc
-aliases: []
+  - <topic-tag>
+  - map-of-content
 ---
 
-# {{title}}
+# <Topic Name> — Map of Content
 
-> [!note] Map of content
-> This note serves as a hub for everything related to **{{topic}}**.
+## Overview
+<2-3 sentence synthesized summary of this topic. Pull understanding
+from the linked notes. What does this topic cover? Why does it matter?>
 
-## Core concepts
+## Core Concepts
+- [[<Atomic note 1>]] — <1-sentence summary>
+- [[<Atomic note 2>]] — <1-sentence summary>
 
-{{atomic_links}}
+## Related Research
+- [[<Distilled note 1>]] — <1-sentence summary>
 
-## Source material
-
-{{source_links}}
-
-## Distilled notes
-
-{{distilled_links}}
-
-## Open questions
-
--
-
-## Related maps
-
-{{related_mocs}}
+## Open Threads
+- <Question or gap for future exploration>
 ```
+
+### `Meta/Templates/Query.md`
+
+```markdown
+# What is the question you want to explore against the vault?
+```
+
+Place question files in `00-Inbox/queries/` and run `query-vault.sh`.
 
 ---
 
@@ -442,6 +441,56 @@ hermes schedule add \
   --interval "30m" \
   --command "Process all files in 00-Inbox/raw/ and 00-Inbox/clippings/" \
   --workdir "$HOME/MyVault"
+```
+
+---
+
+## Phase 5.5: Additional Scripts (compile, query, lint)
+
+These scripts extend the pipeline beyond one-shot ingestion — they make your vault self-improving over time.
+
+### `compile-pass.sh` — Incremental wiki recompilation
+
+Ingesting content is step one. The compile pass runs periodically to:
+- **Cross-link**: finds Atomic/Distilled notes sharing Sources or tags, adds missing wikilinks
+- **MoC refresh**: rebuilds MoCs with current summaries from linked notes, not stale link lists
+- **Duplicate detection**: finds semantically similar Atomic notes and reports them for merge review
+- **Outputs**: `Meta/Scripts/compile-report.md` with stats
+
+```bash
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/compile-pass.sh
+```
+
+### `query-vault.sh` — Q&A against the knowledge base
+
+Drop a `.md` file in `00-Inbox/queries/` with your question, then run:
+
+```bash
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/query-vault.sh
+```
+
+The agent searches the vault, reads relevant notes, synthesizes an answer with citations, writes it to `05-WIP/`, and archives the query. No RAG needed — it uses the vault structure itself as the retrieval index.
+
+### `lint-vault.sh` — Wiki health checks
+
+Non-LLM static analysis that finds:
+- Orphaned notes (zero incoming wikilinks)
+- Stale reviews (`status: review` older than 14 days)
+- Broken wikilinks (links to notes that don't exist)
+- Near-empty notes (<50 chars body)
+
+```bash
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/lint-vault.sh
+```
+
+Report written to `Meta/Scripts/lint-report-YYYY-MM-DD.md`.
+
+**Recommended cron schedule:**
+```bash
+# Weekly compile pass (Sundays 2 AM)
+0 2 * * 0 VAULT_PATH="$HOME/MyVault" $HOME/MyVault/Meta/Scripts/compile-pass.sh
+# Bi-weekly lint
+0 2 * * 1,4 VAULT_PATH="$HOME/MyVault" $HOME/MyVault/Meta/Scripts/lint-vault.sh
 ```
 
 ---
@@ -619,15 +668,15 @@ Wait for the next scheduled run. Check `Meta/Scripts/processing.log`.
 
 ---
 
-## Phase 9: Ongoing Maintenance
-
 ### Daily workflow
 
 1. Drop links, PDFs, YouTube URLs into `00-Inbox/raw/`
-2. Use `00-Inbox/quick notes/` for your own thinking (safe from automation)
-3. Cron picks up `raw/` and `clippings/` automatically
-4. Check Dashboard; review Distilled and Atomic notes
-5. Check `00-Inbox/failed/` for items that need manual attention
+2. Drop questions in `00-Inbox/queries/` for Q&A against the vault
+3. Use `00-Inbox/quick notes/` for your own thinking (safe from automation)
+4. Cron picks up `raw/` and `clippings/` automatically
+5. Check Dashboard; review Distilled and Atomic notes
+6. Check `00-Inbox/failed/` for items that need manual attention
+7. Run `lint-vault.sh` periodically to check wiki health
 
 ### Weekly review
 

@@ -1,233 +1,204 @@
 # Obsidian AI-Automated PKM Vault
 
-Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a structured vault of Source, Distilled, and Atomic notes — all humanized to sound natural.
+Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a structured wiki — all humanized to sound natural. Supports incremental compilation, Q&A, and linting for wiki health.
+
+**v2 (Karpathy-style)** — A self-compiling wiki that grows and improves itself over time. Entries preserve the Distilled structure you know. Concepts are shared across sources. The wiki index replaces RAG as the retrieval layer. Located in `v2/`.
+
+**v1 (linear pipeline)** — The original one-shot inbox processor. Mature, well-tested. Located at the repo root (`scripts/`, `docs/`, `templates/`).
+
+## Quick Decision Guide
+
+| | v1 (current root) | v2 (new) |
+|---|---|---|
+| **Philosophy** | Pipeline: inbox → notes → archive | Wiki: inbox → self-compiling knowledge base |
+| **Note structure** | Source → Distilled → Atomic → MoC | Source → Entry → Concept → MoC |
+| **Concepts** | Per-source (one Atomic per idea) | Shared vocabulary across all sources |
+| **Retrieval** | Manual search | wiki-index.md (auto-maintained TOC with summaries) |
+| **Self-improves** | No — one-shot processing | Yes — compile pass cross-links, merges, rebuilds |
+| **Q&A** | Answers → WIP (dead-ended) | Answers → Entries back into wiki (expands knowledge) |
+| **Linting** | Basic (orphans, broken links) | 8 checks including concept consistency + drift |
+| **Who** | Start here, it works | Want Karpathy's "living wiki" vision |
+
+---
+
+## v2: Karpathy-Style Wiki (Recommended)
+
+Based on Andrej Karpathy's "LLM Knowledge Bases" approach: raw data is collected, compiled by an LLM into a .md wiki, operated on for Q&A, and incrementally enhanced. You rarely ever write the wiki manually.
 
 ```
-00-Inbox/          →  You drop URLs, PDFs, YouTube links here
-01-Sources/        ←  Full original content stored here (not humanized)
-02-Distilled/      ←  AI summaries with ELI5 insights (humanized)
-03-Atomic/         ←  One idea per evergreen note (humanized)
-04-MoCs/           ←  Topic hub notes (humanized)
-05-WIP/            ←  Your drafts (never touched by automation)
-06-Archive/        ←  Processed inbox items
-Meta/
-├── Scripts/           process-inbox.sh + Dashboard.md
-└── Templates/         Source.md, Distilled.md, Atomic.md, MoC.md
+vault/
+├── raw/                 →  Drop URLs, PDFs, files here
+├── clippings/           →  Web clipper saves
+├── wiki/
+│   ├── entries/         ←  Entry notes (Summary + ELI5 + Diagrams + Links)
+│   ├── concepts/        ←  Shared ideas across sources (cross-source vocabulary)
+│   └── mocs/            ←  Topic hubs with synthesized summaries
+├── outputs/
+│   ├── answers/         ←  Q&A responses (duplicate for quick access)
+│   └── visualizations/  ←  Charts, diagrams
+├── queries/             →  Drop .md files with questions
+├── config/
+│   ├── wiki-index.md    ←  Auto-maintained TOC (retrieval layer — no RAG)
+│   ├── url-index.tsv    ←  URL → entry mapping (dedup)
+│   └── tag-registry.md  ←  Canonical tag list
+├── 05-WIP/              ←  Your drafts (untouched by automation)
+├── raw-archive/         ←  Processed inbox items
+└── query-archive/       ←  Answered queries
 ```
 
-## Quick Start
+### Entry Note Structure (preserves your Distilled format)
 
-### 1. Prerequisites
+Every Entry in `wiki/entries/` follows this exact structure:
+
+```markdown
+---
+title: "Title"
+source: "[[Source note]]"
+date_entry: 2026-04-03
+tags:
+  - entry
+  - topic-tag-1
+  - topic-tag-2
+status: review
+aliases: []
+---
+
+# Title
+
+## Summary
+3-5 sentence overview. Plain language, no fluff.
+
+## ELI5 insights
+
+### Core insights
+Main findings explained for a smart 12-year-old. As many as exist.
+
+### Other takeaways
+Other important findings. Same ELI5 treatment.
+
+## Diagrams
+Mermaid diagrams if warranted, else "N/A — content is straightforward."
+
+## Open questions
+Gaps, assumptions, what the source doesn't answer.
+
+## Linked concepts
+Wikilinks to Concept notes, other Entries, MoCs.
+```
+
+### Quick Start
 
 ```bash
-# Node.js 18+ (for Defuddle, LiteParse, TranscriptAPI)
-node --version  # >= 18
+# 1. Clone and set up vault
+cd obsidian-automation
+mkdir -p ~/MyVault
+cd ~/MyVault
+mkdir -p raw clippings wiki/entries wiki/concepts wiki/mocs
+mkdir -p outputs/answers outputs/visualizations
+mkdir -p queries config 05-WIP raw-archive query-archive
 
-# Node.js 22+ (for obsidian-headless sync client)
-node --version  # >= 22 if using ob sync
+# 2. Copy v2 scripts and templates
+chmod +x /path/to/obsidian-automation/v2/scripts/*.sh
+cp /path/to/obsidian-automation/v2/scripts/*.sh ~/MyVault/Meta/Scripts/
+cp /path/to/obsidian-automation/v2/templates/*.md ~/MyVault/Meta/Templates/
 
-# AI Agent — pick one:
-# Claude Code (default):  npm install -g @anthropic-ai/claude-code
-# Hermes Agent:           curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
-# Codex CLI:              npm install -g @openai/codex
+# 3. Install tools
+npm install -g defuddle @llamaindex/liteparse
 
-# Obsidian CLI (desktop app) — open Obsidian → Settings → General → Enable CLI
-obsidian help
+# 4. Set API keys
+export TRANSCRIPT_API_KEY="***"
+export SUPADATA_API_KEY="***"
+export ANTHROPIC_API_KEY="***"
 
-# Obsidian Headless Client (for headless/cron sync — Node 22+)
-npm install -g obsidian-headless
-ob login
+# 5. Process inbox
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh
+
+# 6. Recompile wiki (weekly)
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/compile-pass.sh
+
+# 7. Query the wiki
+# Drop a .md in queries/, then:
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/query-vault.sh
+
+# 8. Health check
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/lint-vault.sh
 ```
 
-### 2. Install tools
+See `v2/README.md` for the full setup guide.
 
-```bash
-# Defuddle (web content extraction)
-npm install -g defuddle
+---
 
-# LiteParse (PDF/DOCX fallback)
-npm install -g @llamaindex/liteparse
+## v1: Linear Pipeline (Current Root)
 
-# LibreOffice (office document conversion for LiteParse)
-# macOS
-brew install --cask libreoffice
-# Ubuntu/Debian
-sudo apt-get install libreoffice
+The original implementation. Still fully functional but doesn't self-improve.
+
+```
+00-Inbox/
+├── raw/                 →  Drop URLs, PDFs, files here
+├── clippings/           →  Web clipper saves
+├── quick notes/         →  Your manual notes (untouched by automation)
+├── queries/             →  Drop .md files with questions for Q&A
+└── failed/              →  Processing failures for manual review
+01-Sources/              ←  Full original content (not humanized)
+02-Distilled/            ←  AI summaries with ELI5 insights (humanized)
+03-Atomic/               ←  One idea per note (humanized)
+04-MoCs/                 ←  Topic hubs with synthesized summaries
+05-WIP/                  ←  Your drafts (untouched by automation)
+06-Archive/              ←  Processed items
+Meta/Scripts/            ←  All scripts
+Meta/Templates/          ←  Note templates
 ```
 
-### 3. Install agent skills
-
-```bash
-mkdir -p ~/.hermes/skills
-
-# Humanizer
-git clone https://github.com/blader/humanizer.git ~/.hermes/skills/humanizer
-
-# Obsidian skills
-git clone https://github.com/kepano/obsidian-skills.git ~/.hermes/skills/obsidian-kepano
-
-# TranscriptAPI (YouTube transcripts)
-# 1. Sign up at https://transcriptapi.com (100 free credits, no card)
-# 2. Install the skill
-cd ~/.hermes/skills && clawhub install transcriptapi
-# Or manually: git clone https://github.com/ZeroPointRepo/youtube-skills.git
-```
-
-### 4. Set up your vault
+### Quick Start
 
 ```bash
 # Create vault structure
 mkdir -p ~/MyVault
 cd ~/MyVault
-mkdir -p "00-Inbox/raw" "00-Inbox/quick notes" "00-Inbox/clippings"
+mkdir -p "00-Inbox/raw" "00-Inbox/quick notes" "00-Inbox/clippings" "00-Inbox/queries"
 mkdir -p 01-Sources 02-Distilled 03-Atomic 04-MoCs 05-WIP
-mkdir -p 06-Archive/processed-inbox
+mkdir -p 06-Archive/processed-inbox 06-Archive/processed-queries
 mkdir -p Meta/Templates Meta/Scripts
-mkdir -p .claude
 
-# Enable CLI: Obsidian → Settings → General → Enable CLI
-obsidian help
-```
+# Copy scripts and templates
+chmod +x scripts/*.sh
+cp scripts/*.sh ~/MyVault/Meta/Scripts/
+cp templates/*.md ~/MyVault/Meta/Templates/
 
-### 5. Install templates and the processor script
-
-Copy the files from this repo into your vault:
-
-```bash
-# Templates
-cp docs/Part2-Automation-Skills-Setup.md ~/MyVault/
-# (The templates are embedded in Part2 — extract them to Meta/Templates/)
-
-# Processor script
-chmod +x scripts/process-inbox.sh
-cp scripts/process-inbox.sh ~/MyVault/Meta/Scripts/
-cp scripts/Dashboard.md ~/MyVault/Meta/Dashboard.md
-```
-
-### 6. Configure transcript providers
-
-```bash
-# Primary: TranscriptAPI
-# Sign up at https://transcriptapi.com (100 free credits, no card)
-export TRANSCRIPT_API_KEY="your-key-here"
-
-# Fallback: Supadata (used when TranscriptAPI fails or has no credits)
-# Sign up at https://supadata.ai and get your API key
-export SUPADATA_API_KEY="your-key-here"
-
-# Add both to your shell profile (~/.bashrc, ~/.zshrc) so they persist.
-```
-
-### 7. Run the pipeline
-
-```bash
-# Run the processor
+# Process
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh
 ```
 
-### 8. Automate with cron
+### Note Types
 
-```bash
-# Every 30 minutes
-crontab -e
-*/30 * * * * VAULT_PATH="$HOME/MyVault" TRANSCRIPT_API_KEY="your-key" SUPADATA_API_KEY="your-key" $HOME/MyVault/Meta/Scripts/process-inbox.sh
-```
-
-Or use Hermes Agent's built-in scheduler:
-
-```bash
-hermes schedule add \
-  --name "inbox-processor" \
-  --interval "30m" \
-  --command "Process all files in 00-Inbox/raw/ and 00-Inbox/clippings/" \
-  --workdir "$HOME/MyVault"
-```
-
-## Obsidian Plugins
-
-Install via Settings → Community plugins → Browse:
-
-| Plugin | Purpose |
-|---|---|
-| **Dataview** | Live tables for the Dashboard |
-| **Templater** | Advanced templating for manual note creation |
-| **Tag Wrangler** | Bulk tag management to prevent tag sprawl |
-| **Obsidian Web Clipper** | Clip pages directly to `00-Inbox/clippings/` |
-| **Auto Link Title** | Auto-fetch page titles on URL paste |
-| **Periodic Notes** | Daily/weekly journaling notes |
-
-## How the Pipeline Works
-
-### File routing
-
-| Input | Parser | Notes |
+| Folder | Content | Humanized? |
 |---|---|---|
-| URL (`.md`/`.txt` containing a single URL) | Defuddle primary, LiteParse fallback | |
-| PDF / DOCX / PPTX / other files | Defuddle primary, LiteParse fallback | |
-| YouTube link (single-URL file) | TranscriptAPI primary, Supadata fallback | |
-| Web clipper save | Direct passthrough | Already markdown |
+| `01-Sources/` | Full original content | No |
+| `02-Distilled/` | AI summary (Summary → ELI5 → Diagrams → Questions → Links) | Yes |
+| `03-Atomic/` | One idea per note, 2-5 sentences | Yes |
+| `04-MoCs/` | Topic hubs with synthesized summaries | Yes |
+| `05-WIP/` | Your drafts + query answers | Never touched |
 
-### Note types
+### Scripts
 
-**`01-Sources/`** — Full original content. Never humanized.
-
-**`02-Distilled/`** — AI summary with exact structure:
-1. `## Summary` — 3-5 sentence plain-language overview
-2. `## ELI5 insights` — Core + Other takeaways, explained like you're 12
-3. `## Diagrams` — Mermaid diagrams if content warrants them, else `N/A`
-4. `## Open questions` — Gaps and assumptions
-5. `## Linked concepts` — Wikilinks to related notes
-
-**`03-Atomic/`** — One idea per note. 2-5 sentences, 2-5 tags. Always linked back to Source and Distilled.
-
-**`04-MoCs/`** — Topic hubs that link to related Atomic and Distilled notes.
-
-### Retry Logic
-
-Every processing call is wrapped in `run_with_retry` with exponential backoff (3 attempts, 5s/10s delays). On failure, the agent receives retry instructions suggesting alternative approaches (e.g., LiteParse fallback, different API parameters). Files that fail all retries are moved to `00-Inbox/failed/` for manual review.
-
-### Humanization
-
-All prose in `02-Distilled/`, `03-Atomic/`, and `04-MoCs/` passes through the Humanizer skill before writing. This removes AI patterns: inflated significance, em dash overuse, rule of three, AI vocabulary, etc.
-
-## Repository Structure
-
-```
-obsidian-automation/
-├── docs/
-│   ├── Part1-Vault-Structure-Setup.md    # Step-by-step vault creation
-│   └── Part2-Automation-Skills-Setup.md  # Full setup guide (tools, skills, cron)
-├── scripts/
-│   ├── process-inbox.sh                  # Main automation script
-│   └── Dashboard.md                      # Dataview dashboard template
-└── skills/                               # Skill references
-    ├── obsidian-markdown.md
-    ├── obsidian-cli.md
-    ├── humanizer.md
-    └── transcriptapi.md
-```
-
-## Troubleshooting
-
-| Symptom | Fix |
+| Script | Purpose |
 |---|---|
-| `obsidian: command not found` | Open Obsidian, enable CLI in Settings → General |
-| `ob: command not found` | `npm install -g obsidian-headless` (requires Node 22+) |
-| `defuddle: command not found` | `npm install -g defuddle` |
-| `lit: command not found` | `npm install -g @llamaindex/liteparse` |
-| TranscriptAPI 401 | Check `TRANSCRIPT_API_KEY` env var |
-| TranscriptAPI 402/404 | Falls back to Supadata automatically; check `SUPADATA_API_KEY` if both fail |
-| Files stuck in `00-Inbox/failed/` | Check `Meta/Scripts/processing.log` |
-| Tag sprawl | Weekly: run `obsidian tags sort=count counts` and merge with Tag Wrangler |
-| Quick notes touched | Only `raw/` and `clippings/` are processed — check script invocation |
+| `process-inbox.sh` | Main ingestion: Source → Distilled → Atomic → MoC |
+| `compile-pass.sh` | Cross-link, MoC rebuild, duplicate detection |
+| `query-vault.sh` | Q&A: drop question → get answer in 05-WIP/ |
+| `lint-vault.sh` | Health check: orphans, stale, broken links, empty notes |
 
-## Dependencies Summary
+See `docs/Part1-Vault-Structure-Setup.md` and `docs/Part2-Automation-Skills-Setup.md` for full guides.
+
+---
+
+## Shared Dependencies
 
 | Tool | Version | Purpose |
 |---|---|---|
 | Node.js | 18+ | Runtime for Defuddle, LiteParse, TranscriptAPI |
 | Node.js | 22+ | Required for obsidian-headless (`ob`) |
-| Obsidian CLI (`obsidian`) | 1.8+ | Note creation, search, tagging (desktop app needed) |
+| Obsidian CLI (`obsidian`) | 1.8+ | Note creation, search, tagging |
 | Obsidian Headless (`ob`) | latest | Sync + publish without desktop app |
 | Defuddle | latest | Web content extraction |
 | LiteParse | latest | PDF/DOCX/PPTX parsing with OCR |
@@ -235,3 +206,42 @@ obsidian-automation/
 | TranscriptAPI | — | YouTube transcript fetching (primary) |
 | Supadata | — | YouTube transcript fetching (fallback) |
 | Humanizer | — | AI pattern removal from generated prose |
+
+## Repository Structure
+
+```
+obsidian-automation/
+├── README.md                        # This file
+├── docs/
+│   ├── Part1-Vault-Structure-Setup.md    # v1 vault setup
+│   └── Part2-Automation-Skills-Setup.md  # v1 full setup guide
+├── scripts/
+│   ├── process-inbox.sh                  # v1 inbox processor
+│   ├── compile-pass.sh                   # v1 wiki recompile
+│   ├── query-vault.sh                    # v1 Q&A
+│   ├── lint-vault.sh                     # v1 health checks
+│   ├── Dashboard.md                      # v1 Dataview dashboard
+│   └── Process-Query.md                  # v1 sample query
+├── templates/
+│   ├── MoC.md                            # v1 Map of Content
+│   └── Query.md                          # v1 Query template
+├── skills/                               # Skill references
+│   ├── obsidian-markdown.md
+│   ├── obsidian-cli.md
+│   ├── humanizer.md
+│   ├── transcriptapi.md
+│   └── ...
+└── v2/                                   # Karpathy-style wiki
+    ├── README.md                         # Full v2 guide
+    ├── docs/
+    │   ├── Part1-Vault-Structure-Setup.md
+    │   └── Part2-Automation-Skills-Setup.md
+    ├── scripts/
+    │   ├── process-inbox.sh              # v2: Entry + Concept + wiki-index
+    │   ├── compile-pass.sh               # v2: cross-link + concept merge
+    │   ├── query-vault.sh                # v2: Q&A → Entry
+    │   └── lint-vault.sh                 # v2: 8 health checks
+    └── templates/
+        ├── Source.md, Entry.md, Concept.md, MoC.md
+        ├── Query.md, wiki-index.md, tag-registry.md
+```
