@@ -5,7 +5,6 @@ date_entry: YYYY-MM-DD
 tags:
   - entry
   - topic-tag-1
-  - topic-tag-2
 status: review
 aliases: []
 ---
@@ -13,21 +12,33 @@ aliases: []
 # Title
 
 ## Summary
-3-5 sentence summary. Plain language, no fluff.
+
+<3-5 sentence plain-language summary of what this source is about>
 
 ## ELI5 insights
 
 ### Core insights
-Main findings explained like to a smart 12-year-old. As many as exist.
+
+1. <First core insight — explained in simple terms a 12-year-old would understand>
+2. <Second core insight — concrete example where possible, no jargon>
+3. <Third core insight — as many as the content warrants>
 
 ### Other takeaways
-Other important findings. Same ELI5 treatment. No artificial limits.
+
+4. <First additional insight — continues numbering from Core insights>
+5. <Second additional insight>
 
 ## Diagrams
-N/A — content is straightforward.
+
+<Mermaid diagrams if warranted, else "N/A — content is straightforward.">
 
 ## Open questions
-Questions, gaps, assumptions from the source.
+
+1. <First question or gap raised by the source>
+2. <Second open question>
 
 ## Linked concepts
-Wikilinks to related Concept notes, other Entries, and MoCs.
+
+- [[<Concept note 1>]]
+- [[<Concept note 2>]]
+- [[<Related Entry or MoC>]]

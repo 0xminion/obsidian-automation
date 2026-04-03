@@ -246,8 +246,8 @@ ENTRY_STRUCTURE="
 ENTRY NOTE STRUCTURE — follow EXACTLY for every note in 02-Wiki/entries/:
 
 Frontmatter (YAML) must include:
-  - title: \"<concise title>\"
-  - source: \"[[<source-note-name>]]\"  (MUST be quoted wikilink)
+  - title: "<concise title>"
+  - source: "[[<source-note-name>]]"  (MUST be quoted wikilink)
   - date_entry: YYYY-MM-DD
   - status: review
   - aliases: []
@@ -261,43 +261,40 @@ Frontmatter (YAML) must include:
 BEFORE choosing tags: run 'obsidian tags sort=count counts' and reuse
 existing tags wherever a match exists. Only mint a new tag if nothing fits.
 
-Body sections IN THIS ORDER (numbered, EXACT):
+Body sections IN THIS ORDER (use ## and ### markdown headings):
 
-1. Summary
+## Summary
 3-5 sentence summary of what the source is about. Plain language, no fluff.
 
-2. ELI5 insights
+## ELI5 insights
 
-   2a. Core insights
-   Main findings explained like to a smart 12-year-old. Simple language,
-   no jargon, concrete examples. Extract EVERYTHING significant. Not top 5
-   or top 10 — as many as exist. Each bullet is substantive with clear ELI5
-   explanation.
+### Core insights
+Main findings explained like to a smart 12-year-old. Simple language,
+no jargon, concrete examples. Use a numbered list (1., 2., 3., etc.).
+Extract EVERYTHING significant. Not top 5 or top 10 — as many as exist.
+Each numbered item is substantive with a clear ELI5 explanation.
 
-   2b. Other takeaways
-   Other important findings. Same ELI5 treatment. No artificial limits.
-   Extract as many as the content warrants.
+### Other takeaways
+Other important findings. Same ELI5 treatment. Use a numbered list that
+CONTINUES from Core insights numbering (e.g., if Core ends at 4, start
+Other at 5). No artificial limits.
 
-3. Diagrams
+## Diagrams
 If the content involves processes, relationships, hierarchies, comparisons,
 or any concept that would be clearer as a visual: include a Mermaid diagram
 using Obsidian's native mermaid code block support.
 If no diagram would genuinely help, write: 'N/A — content is straightforward.'
 
-4. Open questions
-Questions, gaps, assumptions raised by the source. What doesn't the source
-answer? What assumptions does it make?
+## Open questions
+Use a numbered list (1., 2., 3.). Questions, gaps, assumptions raised by
+the source. What doesn't the source answer? What assumptions does it make?
 
-5. Linked concepts
-Wikilinks to related Concept notes, other Entry notes, and MoCs.
+## Linked concepts
+Use a bullet-point list (dash-prefixed). Wikilinks to related Concept notes,
+other Entry notes, and MoCs.
 Use 'obsidian search' to find existing related notes in the vault.
 Link to concepts in 02-Wiki/concepts/, entries in 02-Wiki/entries/, and MoCs in 02-Wiki/mocs/.
-"
 
-# ═══════════════════════════════════════════════════════════
-# CONCEPT NOTE STRUCTURE (replaces Atomic in v2)
-# ═══════════════════════════════════════════════════════════
-CONCEPT_STRUCTURE="
 CONCEPT NOTE STRUCTURE for 02-Wiki/concepts/:
 - Concept notes are the wiki's vocabulary — shared across all Entries.
 - One clear, standalone idea per note.
