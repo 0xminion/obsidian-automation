@@ -2,7 +2,7 @@
 # ============================================================================
 # v2: Compile Pass — Incremental wiki improvement (Karpathy-style)
 # ============================================================================
-# Scans 02-Wiki/entries/, 02-Wiki/concepts/, 02-Wiki/mocs/ and performs a
+# Scans 04-Wiki/entries/, 04-Wiki/concepts/, 04-Wiki/mocs/ and performs a
 # re-compilation to improve the wiki over time.
 #
 # What this does:
@@ -10,7 +10,7 @@
 #    or share tags, adds missing wikilinks between them.
 # 2. Concept convergence: checks for near-duplicate Concepts and merges them.
 # 3. MoC refresh: rebuilds MoC notes with updated summaries from linked notes.
-# 4. Wiki index: rebuilds 04-Config/wiki-index.md from scratch.
+# 4. Wiki index: rebuilds 06-Config/wiki-index.md from scratch.
 # 5. Duplicate detection: finds similar Concept/Entry notes and suggests merges.
 # ============================================================================
 
@@ -36,9 +36,9 @@ touch "$LOCK_FILE"
 log "=== Starting compile pass (v2) ==="
 
 # Count notes for reporting
-entry_count=$(find "$VAULT_PATH/02-Wiki/entries" -name '*.md' 2>/dev/null | wc -l)
-concept_count=$(find "$VAULT_PATH/02-Wiki/concepts" -name '*.md' 2>/dev/null | wc -l)
-moc_count=$(find "$VAULT_PATH/02-Wiki/mocs" -name '*.md' 2>/dev/null | wc -l)
+entry_count=$(find "$VAULT_PATH/04-Wiki/entries" -name '*.md' 2>/dev/null | wc -l)
+concept_count=$(find "$VAULT_PATH/04-Wiki/concepts" -name '*.md' 2>/dev/null | wc -l)
+moc_count=$(find "$VAULT_PATH/04-Wiki/mocs" -name '*.md' 2>/dev/null | wc -l)
 
 log "Vault snapshot: $entry_count entries, $concept_count concepts, $moc_count MoCs"
 
@@ -92,7 +92,7 @@ VAULT LOCATION: $VAULT_PATH
 VAULT SNAPSHOT: $entry_count Entry notes, $concept_count Concept notes, $moc_count MoCs.
 
 TASK: Perform a wiki compile pass — incremental improvement of the knowledge base.
-You are working with notes in 02-Wiki/entries/, 02-Wiki/concepts/, and 02-Wiki/mocs/.
+You are working with notes in 04-Wiki/entries/, 04-Wiki/concepts/, and 04-Wiki/mocs/.
 Do NOT reprocess the inbox.
 
 Perform these operations in order:
@@ -114,7 +114,7 @@ Use 'obsidian search' to verify the link doesn't already exist in the note.
 
 This is critical for maintaining a clean wiki vocabulary.
 
-Scan 02-Wiki/concepts/ for concepts that:
+Scan 04-Wiki/concepts/ for concepts that:
 - Have very similar titles or body content (fuzzy match, shared key terms)
 - Cover the same idea from different Entry sources
 
@@ -133,7 +133,7 @@ This keeps the wiki vocabulary clean — one concept, one note.
 
 ## OPERATION 3: MoC Rebuild
 
-For each existing MoC in 02-Wiki/mocs/:
+For each existing MoC in 04-Wiki/mocs/:
 1. Find all Concept and Entry notes that are tagged with the MoC's topic
    or mention it in their content.
 2. Rebuild the MoC with this structure:
@@ -157,11 +157,11 @@ For each existing MoC in 02-Wiki/mocs/:
 
 ## OPERATION 4: Rebuild Wiki Index
 
-Rebuild '04-Config/wiki-index.md' from scratch:
+Rebuild '06-Config/wiki-index.md' from scratch:
 - Start with the header (keep the existing intro text)
-- List every Entry note from 02-Wiki/entries/ with a 1-sentence summary
+- List every Entry note from 04-Wiki/entries/ with a 1-sentence summary
   Format: - [[EntryName]]: <1-sentence summary> (entry)
-- List every Concept note from 02-Wiki/concepts/ with a 1-sentence summary
+- List every Concept note from 04-Wiki/concepts/ with a 1-sentence summary
   Format: - [[ConceptName]]: <1-sentence summary> (concept)
 - Group under clear section headers: '## Entries' and '## Concepts'
 
@@ -187,7 +187,7 @@ Write a compile report at 'Meta/Scripts/compile-report.md':
 IMPORTANT:
 - ALL MoC and Concept prose must be humanized before writing.
 - Use [[wikilinks]] for all internal links.
-- Do NOT modify files in 00-WIP/.
+- Do NOT modify files in 07-WIP/.
 - Do NOT delete Entry notes — only Concept duplicates are auto-merged.
 "
 

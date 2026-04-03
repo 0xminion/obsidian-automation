@@ -5,26 +5,31 @@ Automated knowledge management system that turns raw web content, PDFs, and YouT
 ## Vault Structure
 
 ```
-00-WIP/              ←  Your drafts (untouched by automation)
-01-Raw/              →  Drop URLs, PDFs, files, queries here
-02-Wiki/
+01-Raw/             →  Drop URLs, PDFs, files here
+02-Clippings/        →  Web clipper saves (already markdown)
+03-Queries/          →  Drop .md files with questions for Q&A
+04-Wiki/
 ├── sources/         ←  Full original content (not humanized)
-├── entries/         ←  Entry notes (humanized summaries)
+├── entries/         ←  Entry notes (humanized, numbered list items)
 ├── concepts/        ←  Shared vocabulary across sources (humanized)
 └── mocs/            ←  Topic hubs with synthesized summaries (humanized)
-03-Outputs/
-├── answers/         ←  Q&A responses (duplicates for quick access)
+05-Outputs/
+├── answers/         ←  Q&A responses (duplicate for quick access)
 └── visualizations/  ←  Charts, diagrams, exports
-04-Config/
+06-Config/
 ├── wiki-index.md    ←  Auto-maintained TOC (retrieval layer — no RAG)
 ├── url-index.tsv    ←  URL → entry mapping (dedup)
 └── tag-registry.md  ←  Canonical tag list
-05-Archive/          ←  Processed inbox items and queries
+07-WIP/              ←  Your drafts (untouched by automation)
+08-Archive-Raw/      ←  Processed inbox items
+09-Archive-Queries/  ←  Answered queries
 ```
 
-## Entry Note Structure (Numbered Sections)
+Numbering gives visual ordering in Obsidian's file tree while keeping different workflow types separate (Raw vs Clippings vs Queries, Archive-Raw vs Archive-Queries).
 
-Every Entry in `02-Wiki/entries/` follows this exact numbered structure:
+## Entry Note Structure
+
+Every Entry in `04-Wiki/entries/` has numbered list items **inside** standard markdown headings:
 
 ```markdown
 ---
@@ -34,32 +39,41 @@ date_entry: YYYY-MM-DD
 tags:
   - entry
   - topic-tag-1
-  - ... (5-10 topic tags)
 status: review
 aliases: []
 ---
 
 # Title
 
-1. Summary
+## Summary
 3-5 sentence overview. Plain language, no fluff.
 
-2. ELI5 insights
+## ELI5 insights
 
-   2a. Core insights
-   Main findings explained for a smart 12-year-old. As many as exist.
+### Core insights
 
-   2b. Other takeaways
-   Other important findings. Same ELI5 treatment.
+1. First core insight — explained for a 12-year-old.
+2. Second core insight — concrete example, no jargon.
+3. Third core insight — as many as exist.
 
-3. Diagrams
+### Other takeaways
+
+4. Continues numbering from Core insights.
+5. Fourth insight — same ELI5 treatment.
+
+## Diagrams
 Mermaid diagrams if warranted, else "N/A — content is straightforward."
 
-4. Open questions
-Gaps, assumptions, what the source doesn't answer.
+## Open questions
 
-5. Linked concepts
-Wikilinks to Concept notes, other Entries, MoCs.
+1. First question or gap from the source.
+2. Second open question.
+
+## Linked concepts
+
+- [[Concept note 1]]
+- [[Concept note 2]]
+- [[Related Entry or MoC]]
 ```
 
 ## Scripts
@@ -68,14 +82,15 @@ Wikilinks to Concept notes, other Entries, MoCs.
 |---|---|
 | `process-inbox.sh` | Ingest: Source → Entry → Concepts → MoCs + wiki index |
 | `compile-pass.sh` | Cross-link, concept convergence, MoC rebuild, index rebuild |
-| `query-vault.sh` | Q&A: drop question → answer as Entry back into wiki |
-| `lint-vault.sh` | 8 health checks: orphans, stale, broken, empty, drift, etc. |
+| `query-vault.sh` | Q&A: drop question in 03-Queries/ → answer as Entry back into wiki |
+| `lint-vault.sh` | 8 health checks: orphans, stale, broken links, empty, drift, etc. |
 
 ## Key Features
 
-- **Numbered folder structure**: 00-WIP → 01-Raw → 02-Wiki → 03-Outputs → 04-Config → 05-Archive
-- **Numbered Entry sections**: 1. Summary → 2. ELI5 (2a/2b) → 3. Diagrams → 4. Open questions → 5. Linked concepts
-- **Concept convergence**: Searches existing concepts before creating new ones, merges near-duplicates
+- **Visual ordering**: 01 through 09 gives clear workflow progression in file tree
+- **Separate workflows**: Raw vs Clippings vs Queries have distinct folders
+- **Numbered list content**: ELI5 insights and Open questions use ordered lists (1. 2. 3.)
+- **Concept convergence**: Searches existing concepts before creating, merges near-duplicates
 - **Wiki index**: Auto-maintained TOC as retrieval layer — no RAG needed
 - **Query expansion**: Answers written as Entries back into wiki, expanding the knowledge base
 - **Humanizer**: All Entry, Concept, and MoC prose passes through the Humanizer skill before writing
@@ -83,23 +98,34 @@ Wikilinks to Concept notes, other Entries, MoCs.
 ## Quick Start
 
 ```bash
+# 1. Set up vault
+mkdir -p ~/MyVault/{01-Raw,02-Clippings,03-Queries,04-Wiki/{sources,entries,concepts,mocs},05-Outputs/{answers,visualizations},06-Config,07-WIP,08-Archive-Raw,09-Archive-Queries,Meta/Scripts,Meta/Templates}
+
+# 2. Copy scripts and templates
+chmod +x v2/scripts/*.sh
+cp v2/scripts/*.sh ~/MyVault/Meta/Scripts/
+cp v2/templates/*.md ~/MyVault/Meta/Templates/
+
+# 3. Process
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh   # Ingest
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/compile-pass.sh    # Recompile
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/query-vault.sh     # Query
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/lint-vault.sh      # Lint
 ```
 
-See `docs/` for full setup guides.
-
 ## Humanizer Skill Usage
 
-The Humanizer skill is active in these processes:
-
-| Process | What gets humanized | Where it happens |
+| Process | What gets humanized | Where |
 |---|---|---|
-| `process-inbox.sh` | Entry notes, Concept notes, MoC notes | Steps 3-5 of each processor function |
-| `compile-pass.sh` | MoC notes (during rebuild) | OPERATION 2 |
-| `query-vault.sh` | Entry answers + Concept notes discovered during Q&A | Step 8 |
-| `lint-vault.sh` | None (read-only) | N/A |
+| `process-inbox.sh` | Entry, Concept, MoC notes | Steps 3-5 of each processor |
+| `compile-pass.sh` | MoC notes (rebuild) | Operation 2 |
+| `query-vault.sh` | Entry answers + new Concepts | Step 8 |
+| `lint-vault.sh` | None (read-only) | — |
 
-The Humanizer is declared as an available skill in `COMMON_INSTRUCTIONS` and every processing prompt explicitly instructs the agent to "humanize before writing." The agent's runtime loads the Humanizer skill and applies pattern removal before final file writes.
+<!--
+  Note: Humanizer MUST be run before any content goes into:
+  - 04-Wiki/entries/
+  - 04-Wiki/concepts/
+  - 04-Wiki/mocs/
+  - 05-Outputs/answers/
+-->
