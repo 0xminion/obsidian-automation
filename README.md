@@ -38,9 +38,11 @@ Automated knowledge management system that turns raw web content, PDFs, and YouT
 ├── answers/         ←  Q&A responses (duplicate for quick access)
 └── visualizations/  ←  Charts, diagrams
 06-Config/
-├── wiki-index.md    ←  Auto-maintained TOC (retrieval layer — no RAG)
-├── url-index.tsv    ←  URL → entry mapping (dedup)
-└── tag-registry.md  ←  Canonical tag list
+├── wiki-index.md     — Auto-maintained table of contents
+├── url-index.tsv     — URL → entry mapping for dedup
+├── tag-registry.md   — Canonical tag list
+├── log.md            — Structured activity log ([YYYY-MM-DD] format, parseable)
+└── agents.md         — Schema: tells any LLM agent how to maintain the wiki
 07-WIP/              ←  Your drafts (untouched by automation)
 08-Archive-Raw/      ←  Processed inbox items
 09-Archive-Queries/  ←  Answered queries

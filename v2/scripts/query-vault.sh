@@ -107,6 +107,19 @@ mkdir -p "$VAULT_PATH/05-Outputs/answers"
 mkdir -p "$VAULT_PATH/08-Archive-Raw"
 mkdir -p "$VAULT_PATH/04-Wiki/concepts"
 
+# Initialize log.md if it doesn't exist (Karpathy-style structured log)
+if [ ! -f "$VAULT_PATH/06-Config/log.md" ]; then
+  cat > "$VAULT_PATH/06-Config/log.md" << 'HEADER'
+# Wiki Activity Log
+
+Chronological record of all operations on the knowledge base.
+Use `grep "^## \[" log.md | tail -N` to see the last N operations.
+
+---
+
+HEADER
+fi
+
 query_count=$(find "$VAULT_PATH/03-Queries" -name '*.md' 2>/dev/null | wc -l)
 if [ "$query_count" -eq 0 ]; then
   echo "No query files found in $VAULT_PATH/queries/"
@@ -223,7 +236,14 @@ INSTRUCTIONS:
 
 8. Humanize ALL prose using the Humanizer skill (both Entry and output copy).
 
-9. Archive the query: move it from '03-Queries/' to '08-Archive-Raw/'.
+9. LOG THE QUERY: Append a structured entry to '06-Config/log.md':
+   ## [YYYY-MM-DD] query | "<question>"
+   - Consulted: [[Entry1]], [[Concept1]], [[MoC Name]]
+   - Created Entry: [[Answer: ...]]
+   - New concepts: [[NewConcept1]] (if any)
+   - Logged in: 06-Config/log.md
+
+10. Archive the query: move it from '03-Queries/' to '08-Archive-Raw/'.
 
 CRITICAL RULES:
 - ALL YAML frontmatter: wikilinks MUST be quoted: source: \"[[note]]\"

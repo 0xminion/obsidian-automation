@@ -367,5 +367,26 @@ echo "| **TOTAL** | **$total_issues** |" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 echo "*Run lint-vault.sh (v2) to regenerate this report.*" >> "$REPORT_FILE"
 
+# ═══════════════════════════════════════════════════════════
+# LOG ENTRY: Append structured header to log.md (Karpathy-style)
+# ═══════════════════════════════════════════════════════════
+LOG_MD="$VAULT_PATH/06-Config/log.md"
+if [ -f "$LOG_MD" ]; then
+  cat >> "$LOG_MD" << ENTRY
+
+## [$(date +%Y-%m-%d)] lint | Health check
+- Orphaned notes: $orphan_count
+- Stale reviews: $stale_count
+- Broken wikilinks: $broken_count
+- Near-empty notes: $empty_count
+- Concept structure issues: $conflict_count
+- Orphaned concepts: $orphan_concept_count
+- Wiki index drift: $drift_count
+- Missing entry sections: $missing_section_count
+- Total issues: $total_issues
+- Full report: Meta/Scripts/lint-report.md
+ENTRY
+fi
+
 echo "Lint report (v2) written to $REPORT_FILE"
 echo "Summary: $orphan_count orphaned, $stale_count stale reviews, $broken_count broken links, $empty_count near-empty, $total_issues total issues"

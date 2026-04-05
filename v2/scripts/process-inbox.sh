@@ -223,6 +223,15 @@ CRITICAL RULES:
    MoC notes in '04-Wiki/mocs/'. Processed originals archived to '08-Archive-Raw/'.
 7. After creating any Entry or Concept, APPEND a line to
    '06-Config/wiki-index.md' with a 1-sentence summary.
+8. APPEND a structured entry to '06-Config/log.md' after every ingest.
+   Format:
+     ## [YYYY-MM-DD] ingest | <source-title>
+     - Created Source: [[Source Name]]
+     - Created Entry: [[Entry Name]]
+     - Created/Updated Concepts: [[Concept1]], [[Concept2]]
+     - Updated MoCs: [[MoC Name]]
+     - Updated wiki-index.md
+   Each heading must start with `## [YYYY-MM-DD]` for parseability.
 
 PARSER ROUTING:
 - Primary: Use Defuddle for any URLs and applicable file-to-markdown conversions.
@@ -445,7 +454,18 @@ with 1-sentence summaries in this format:
 STEP 7 — ARCHIVE
 Move original inbox file to '08-Archive-Raw/'.
 Register URL in the index: append '\$url\t<source-note-path>' to '$URL_INDEX'.
-"
+
+STEP 8 — LOG ENTRY
+Append a structured header to '06-Config/log.md':
+  ## [YYYY-MM-DD] ingest | <source-title>
+  - Created Source: [[Source Name]]
+  - Created Entry: [[Entry Name]]
+  - Created/Updated Concepts: [[Concept1]], [[Concept2]]
+  - Updated MoCs: [[MoC Name]]
+  - Updated wiki-index.md
+  - Archived: <filename>
+  - Registered URL: <url or \"N/A\">
+\"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -510,7 +530,18 @@ Append new Entry and Concepts to '06-Config/wiki-index.md':
 STEP 7 — ARCHIVE
 Move original inbox file to '08-Archive-Raw/'.
 Register URL in the index: append '\$url\t<source-note-path>' to '$URL_INDEX'.
-"
+
+STEP 8 — LOG ENTRY
+Append a structured header to '06-Config/log.md':
+  ## [YYYY-MM-DD] ingest | <source-title>
+  - Created Source: [[Source Name]]
+  - Created Entry: [[Entry Name]]
+  - Created/Updated Concepts: [[Concept1]], [[Concept2]]
+  - Updated MoCs: [[MoC Name]]
+  - Updated wiki-index.md, url-index.tsv
+  - Archived: <filename>
+  - Registered URL: <url or \"N/A\">
+\"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -581,7 +612,17 @@ Append new Entry and Concepts to '06-Config/wiki-index.md'.
 
 STEP 7 — ARCHIVE
 Move the original file to '08-Archive-Raw/'.
-"
+
+STEP 8 — LOG ENTRY
+Append a structured header to '06-Config/log.md':
+  ## [YYYY-MM-DD] ingest | <source-title>
+  - Created Source: [[Source Name]]
+  - Created Entry: [[Entry Name]]
+  - Created/Updated Concepts: [[Concept1]], [[Concept2]]
+  - Updated MoCs: [[MoC Name]]
+  - Updated wiki-index.md
+  - Archived: <filename>
+\"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -637,7 +678,17 @@ Append new Entry and Concepts to '06-Config/wiki-index.md'.
 STEP 6 — ARCHIVE
 Move the clipping to '08-Archive-Raw/'.
 If the clipping had a source_url, register it in '$URL_INDEX'.
-"
+
+STEP 7 — LOG ENTRY
+Append a structured header to '06-Config/log.md':
+  ## [YYYY-MM-DD] ingest | <source-title>
+  - Created Source: [[Source Name]]
+  - Created Entry: [[Entry Name]]
+  - Created/Updated Concepts: [[Concept1]], [[Concept2]]
+  - Updated MoCs: [[MoC Name]]
+  - Updated wiki-index.md
+  - Archived: <filename>
+\"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -668,6 +719,19 @@ Auto-maintained table of contents for the knowledge base.
 Each entry and concept has a 1-sentence summary for retrieval.
 This index is the primary retrieval layer — the LLM reads this
 to find relevant notes instead of using RAG.
+
+---
+
+HEADER
+  fi
+
+  # Initialize log.md if it doesn't exist (Karpathy-style structured log)
+  if [ ! -f "$VAULT_PATH/06-Config/log.md" ]; then
+    cat > "$VAULT_PATH/06-Config/log.md" << 'HEADER'
+# Wiki Activity Log
+
+Chronological record of all operations on the knowledge base.
+Use `grep "^## \[" log.md | tail -N` to see the last N operations.
 
 ---
 

@@ -19,7 +19,9 @@ Automated knowledge management system that turns raw web content, PDFs, and YouT
 06-Config/
 ├── wiki-index.md    ←  Auto-maintained TOC (retrieval layer — no RAG)
 ├── url-index.tsv    ←  URL → entry mapping (dedup)
-└── tag-registry.md  ←  Canonical tag list
+├── tag-registry.md  ←  Canonical tag list
+├── log.md           ←  Structured activity log ([YYYY-MM-DD] format, parseable)
+└── agents.md        ←  Schema: tells any LLM agent how to maintain the wiki
 07-WIP/              ←  Your drafts (untouched by automation)
 08-Archive-Raw/      ←  Processed inbox items
 09-Archive-Queries/  ←  Answered queries
@@ -92,6 +94,8 @@ Mermaid diagrams if warranted, else "N/A — content is straightforward."
 - **Numbered list content**: ELI5 insights and Open questions use ordered lists (1. 2. 3.)
 - **Concept convergence**: Searches existing concepts before creating, merges near-duplicates
 - **Wiki index**: Auto-maintained TOC as retrieval layer — no RAG needed
+- **Wiki activity log**: Structured `log.md` (Karpathy-style) records all ingests, compiles, queries, and lints with `[YYYY-MM-DD]` headers for parseable history
+- **Agent schema**: `06-Config/agents.md` instructs any LLM agent on vault structure, note formats, and workflows — makes the agent a disciplined wiki maintainer
 - **Query expansion**: Answers written as Entries back into wiki, expanding the knowledge base
 - **Humanizer**: All Entry, Concept, and MoC prose passes through the Humanizer skill before writing
 

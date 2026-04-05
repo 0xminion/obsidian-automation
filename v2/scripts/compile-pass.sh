@@ -174,7 +174,7 @@ Create a report at 'Meta/Scripts/compile-duplicate-report.md':
 - DO NOT auto-merge entries — only merge concepts (done in Operation 2)
 - Leave entries for human review.
 
-## OPERATION 6: Write Summary
+## OPERATION 6: Write Compile Report + Log Entry
 
 Write a compile report at 'Meta/Scripts/compile-report.md':
 - Number of cross-links added
@@ -183,6 +183,23 @@ Write a compile report at 'Meta/Scripts/compile-report.md':
 - Number of potential duplicates found (not merged)
 - Wiki index rebuilt: yes/no
 - Timestamp
+
+After the report, APPEND a structured entry to '06-Config/log.md':
+  ## [YYYY-MM-DD] compile | Weekly compile pass
+  - Cross-links added: N
+  - Concept merges: N ([[ConceptA]] merged into [[ConceptB]])
+  - MoCs rebuilt: N ([[Topic1]], [[Topic2]])
+  - Wiki index rebuilt: yes
+  - Duplicate entries flagged: N
+
+## OPERATION 7: Duplicate Detection Report
+
+Find Entry or Concept notes with very similar titles or content.
+Create a report at 'Meta/Scripts/compile-duplicate-report.md':
+- List pairs of potentially duplicate notes with their paths
+- Include a brief reason (shared title terms, similar body)
+- DO NOT auto-merge entries — only merge concepts (done in Operation 2)
+- Leave entries for human review.
 
 IMPORTANT:
 - ALL MoC and Concept prose must be humanized before writing.
