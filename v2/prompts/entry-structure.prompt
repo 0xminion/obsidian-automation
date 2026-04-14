@@ -1,0 +1,110 @@
+ENTRY NOTE STRUCTURE — follow EXACTLY for every note in 04-Wiki/entries/:
+
+Check the `template:` field in frontmatter. Default is `standard`.
+
+=== TEMPLATE: standard (default) ===
+
+Frontmatter (YAML) must include:
+  - title: "<concise title>"
+  - source: "[[<source-note-name>]]"  (MUST be quoted wikilink)
+  - date_entry: YYYY-MM-DD
+  - status: review
+  - reviewed: null
+  - review_notes: null
+  - template: standard
+  - aliases: []
+  - tags: minimum 5, maximum 10 topic-specific tags, always start with:
+      tags:
+        - entry
+        - topic-tag-1
+        - topic-tag-2
+        ...
+
+BEFORE choosing tags: run 'obsidian tags sort=count counts' and reuse
+existing tags wherever a match exists. Only mint a new tag if nothing fits.
+
+Body sections IN THIS ORDER (use ## and ### markdown headings):
+
+## Summary
+3-5 sentence summary of what the source is about. Plain language, no fluff.
+
+## ELI5 insights
+
+### Core insights
+Main findings explained like to a smart 12-year-old. Simple language,
+no jargon, concrete examples. Use a numbered list (1., 2., 3., etc.).
+Extract EVERYTHING significant. Not top 5 or top 10 — as many as exist.
+Each numbered item is substantive with a clear ELI5 explanation.
+
+### Other takeaways
+Other important findings. Same ELI5 treatment. Use a numbered list that
+CONTINUES from Core insights numbering (e.g., if Core ends at 4, start
+Other at 5). No artificial limits.
+
+## Diagrams
+If the content involves processes, relationships, hierarchies, comparisons,
+or any concept that would be clearer as a visual: include a Mermaid diagram
+using Obsidian's native mermaid code block support.
+If no diagram would genuinely help, write: 'N/A — content is straightforward.'
+
+## Open questions
+Use a numbered list (1., 2., 3.). Questions, gaps, assumptions raised by
+the source. What doesn't the source answer? What assumptions does it make?
+
+## Linked concepts
+Use a bullet-point list (dash-prefixed). Wikilinks to related Concept notes,
+other Entry notes, and MoCs.
+Use 'obsidian search' to find existing related notes in the vault.
+Link to concepts in 04-Wiki/concepts/, entries in 04-Wiki/entries/, and MoCs in 04-Wiki/mocs/.
+
+=== TEMPLATE: technical ===
+
+Frontmatter: same as standard, but `template: technical`
+
+Body sections:
+## Summary
+3-5 sentence overview.
+## Key Findings
+Numbered list of findings with evidence and data points.
+## Data/Evidence
+Tables, metrics, specific numbers from the source.
+## Methodology
+How was this research conducted? What approach was used?
+## Limitations
+What are the caveats, biases, or gaps in this source?
+## Linked concepts
+Wikilinks to related notes.
+
+=== TEMPLATE: comparison ===
+
+Frontmatter: same as standard, but `template: comparison`
+
+Body sections:
+## Summary
+3-5 sentence overview of what's being compared.
+## Side-by-Side Comparison
+Table or structured comparison of the items.
+## Pros and Cons
+For each item being compared.
+## Verdict
+Which option wins and why, with caveats.
+## Linked concepts
+Wikilinks to related notes.
+
+=== TEMPLATE: procedural ===
+
+Frontmatter: same as standard, but `template: procedural`
+
+Body sections:
+## Summary
+What this procedure achieves.
+## Prerequisites
+What you need before starting.
+## Steps
+Numbered step-by-step instructions.
+## Gotchas
+Common mistakes, edge cases, things that break.
+## Linked concepts
+Wikilinks to related notes.
+
+ALL prose must be humanized before writing.

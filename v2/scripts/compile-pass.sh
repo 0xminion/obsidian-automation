@@ -1,39 +1,24 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2: Compile Pass — Incremental wiki improvement (Karpathy-style)
+# v2.2: Compile Pass — Incremental wiki improvement (Karpathy-style)
 # ============================================================================
-# Scans 04-Wiki/entries/, 04-Wiki/concepts/, 04-Wiki/mocs/ and performs a
-# re-compilation to improve the wiki over time.
-#
-# What this does:
-# 1. Cross-links: finds Entry/Concept notes that reference the same Source
-#    or share tags, adds missing wikilinks between them.
-# 2. Concept convergence: checks for near-duplicate Concepts and merges them.
-# 3. MoC refresh: rebuilds MoC notes with updated summaries from linked notes.
-# 4. Wiki index: rebuilds 06-Config/wiki-index.md from scratch.
-# 5. Duplicate detection: finds similar Concept/Entry notes and suggests merges.
+# Changes from v2.1:
+#   - Sources common library (lib/common.sh)
+#   - Fixed duplicate Operation 5/7 bug
+#   - Added Operation 7: Typed edges construction (edges.tsv)
+#   - Added Operation 8: Schema co-evolution (review agents.md)
+#   - Git auto-commit after compile
 # ============================================================================
 
 set -uo pipefail
 
-VAULT_PATH="${VAULT_PATH:-$HOME/MyVault}"
-LOG_FILE="$VAULT_PATH/Meta/Scripts/processing.log"
-LOCK_FILE="/tmp/obsidian-compile-pass-v2-$(echo "$VAULT_PATH" | md5sum | cut -c1-8).lock"
-AGENT_CMD="${AGENT_CMD:-claude -p}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/common.sh"
 
-mkdir -p "$VAULT_PATH/Meta/Scripts"
+acquire_lock "compile-pass" || exit 1
+setup_directory_structure
 
-log() { echo "$(date): $1" >> "$LOG_FILE"; }
-
-# Prevent overlapping runs
-if [ -f "$LOCK_FILE" ]; then
-  echo "$(date): Compile pass already running. Exiting." >> "$LOG_FILE"
-  exit 0
-fi
-trap 'rm -f "$LOCK_FILE"' EXIT
-touch "$LOCK_FILE"
-
-log "=== Starting compile pass (v2) ==="
+log "=== Starting compile pass (v2.2) ==="
 
 # Count notes for reporting
 entry_count=$(find "$VAULT_PATH/04-Wiki/entries" -name '*.md' 2>/dev/null | wc -l)
@@ -41,50 +26,6 @@ concept_count=$(find "$VAULT_PATH/04-Wiki/concepts" -name '*.md' 2>/dev/null | w
 moc_count=$(find "$VAULT_PATH/04-Wiki/mocs" -name '*.md' 2>/dev/null | wc -l)
 
 log "Vault snapshot: $entry_count entries, $concept_count concepts, $moc_count MoCs"
-
-# Retry with exponential backoff (same pattern as process-inbox.sh)
-MAX_RETRIES=3
-
-RETRY_ADVICE="
-RETRY CONTEXT: Previous attempt failed. Try alternatives:
-- If note operations failed, verify the target directory exists.
-- If search failed, try simpler keywords.
-- If rate-limited, use a shorter prompt.
-- If file write failed, write to /tmp first, then mv.
-Be resourceful. Find a way."
-
-run_with_retry() {
-  local description="$1"
-  local prompt="$2"
-  local attempt=1
-  local delay=5
-
-  while [ $attempt -le $MAX_RETRIES ]; do
-    log "Attempt $attempt/$MAX_RETRIES: $description"
-
-    local result=0
-    cd "$VAULT_PATH" && $AGENT_CMD "$prompt" 2>> "$LOG_FILE" || result=$?
-
-    if [ $result -eq 0 ]; then
-      log "SUCCESS: $description"
-      return 0
-    fi
-
-    log "FAILED (exit $result): $description — attempt $attempt/$MAX_RETRIES"
-
-    if [ $attempt -lt $MAX_RETRIES ]; then
-      log "Waiting ${delay}s before retry..."
-      sleep $delay
-      delay=$((delay * 2))
-      prompt="${prompt}${RETRY_ADVICE}"
-    fi
-
-    attempt=$((attempt + 1))
-  done
-
-  log "GIVING UP after $MAX_RETRIES attempts: $description"
-  return 1
-}
 
 # Build the compile pass prompt
 prompt="
@@ -101,14 +42,14 @@ Perform these operations in order:
 
 Scan all Entry and Concept notes. Find notes that:
 - Share the same source (check source: and entry_refs frontmatter)
-- Share tags (use 'obsidian tags sort=count counts')
+- Share tags (scan tag frontmatter fields)
 - Mention related concepts (scan headings and first paragraphs)
 
 For each pair of related notes that don't already link to each other,
 add a wikilink in the appropriate section:
 - Entry notes: add to 'Linked concepts' section
 - Concept notes: add to 'References' section (Related Concepts or Entries)
-Use 'obsidian search' to verify the link doesn't already exist in the note.
+Search the note content to verify the link doesn't already exist.
 
 ## OPERATION 2: Concept Convergence (MERGE near-duplicates)
 
@@ -128,8 +69,6 @@ For near-duplicates found:
 
 For truly duplicate concepts (identical): merge and delete.
 For concepts that overlap partially: keep both but add cross-references.
-
-This keeps the wiki vocabulary clean — one concept, one note.
 
 ## OPERATION 3: MoC Rebuild
 
@@ -163,7 +102,9 @@ Rebuild '06-Config/wiki-index.md' from scratch:
   Format: - [[EntryName]]: <1-sentence summary> (entry)
 - List every Concept note from 04-Wiki/concepts/ with a 1-sentence summary
   Format: - [[ConceptName]]: <1-sentence summary> (concept)
-- Group under clear section headers: '## Entries' and '## Concepts'
+- List every MoC from 04-Wiki/mocs/ with a 1-sentence summary
+  Format: - [[MoCName]]: <1-sentence summary> (moc)
+- Group under clear section headers: '## Entries', '## Concepts', '## Maps of Content'
 
 ## OPERATION 5: Duplicate Detection Report
 
@@ -174,7 +115,19 @@ Create a report at 'Meta/Scripts/compile-duplicate-report.md':
 - DO NOT auto-merge entries — only merge concepts (done in Operation 2)
 - Leave entries for human review.
 
-## OPERATION 6: Write Compile Report + Log Entry
+## OPERATION 6: Entry Template Assessment
+
+Review Entry notes and check if any should use a non-standard template.
+The `template:` frontmatter field selects the body structure:
+- standard (default): Summary, ELI5 insights, Diagrams, Open questions, Linked concepts
+- technical: Summary, Key Findings, Data/Evidence, Methodology, Limitations, Linked concepts
+- comparison: Summary, Side-by-Side, Pros/Cons, Verdict, Linked concepts
+- procedural: Summary, Prerequisites, Steps, Gotchas, Linked concepts
+
+If an Entry's content clearly fits a different template better than 'standard',
+note it in the compile report for human review. Do NOT auto-change templates.
+
+## OPERATION 7: Write Compile Report + Log Entry
 
 Write a compile report at 'Meta/Scripts/compile-report.md':
 - Number of cross-links added
@@ -192,14 +145,43 @@ After the report, APPEND a structured entry to '06-Config/log.md':
   - Wiki index rebuilt: yes
   - Duplicate entries flagged: N
 
-## OPERATION 7: Duplicate Detection Report
+## OPERATION 8: Typed Edges Construction
 
-Find Entry or Concept notes with very similar titles or content.
-Create a report at 'Meta/Scripts/compile-duplicate-report.md':
-- List pairs of potentially duplicate notes with their paths
-- Include a brief reason (shared title terms, similar body)
-- DO NOT auto-merge entries — only merge concepts (done in Operation 2)
-- Leave entries for human review.
+Scan all Entry, Concept, and MoC notes for relationships that should be
+captured as typed edges in '06-Config/edges.tsv'.
+
+Look for:
+- Concepts that extend or build on other concepts (type: extends)
+- Entries that contradict each other (type: contradicts)
+- Concepts that support or provide evidence for other concepts (type: supports)
+- Entries where one supersedes another with newer information (type: supersedes)
+- Concepts tested or validated by specific entries (type: tested_by)
+- Dependencies between concepts (type: depends_on)
+- Inspiration chains (type: inspired_by)
+
+For each relationship found, append a TSV line to '06-Config/edges.tsv':
+  source<tab>target<tab>type<tab>description
+
+Check for duplicates before appending. Each edge should be specific and evidence-based.
+
+## OPERATION 9: Schema Co-Evolution
+
+Read '06-Config/agents.md' and evaluate whether it still serves the wiki well.
+
+Check:
+1. Are the note structure templates still appropriate for the content in the vault?
+2. Are the lint checks catching the right things? Missing anything?
+3. Are there new patterns emerging in the vault that the schema should codify?
+4. Should any workflows be added or modified?
+
+Write a brief evaluation to 'Meta/Scripts/schema-review.md':
+- Current schema strengths
+- Suggested improvements (be specific)
+- Any new patterns to codify
+- Whether the schema should be updated
+
+Do NOT modify agents.md directly — write the review for human approval.
+This preserves the co-evolution principle: human and LLM collaborate on the schema.
 
 IMPORTANT:
 - ALL MoC and Concept prose must be humanized before writing.
@@ -209,9 +191,12 @@ IMPORTANT:
 "
 
 log "Running compile pass with agent..."
-if run_with_retry "Wiki compile pass (v2)" "$prompt"; then
-  log "=== Compile pass completed successfully (v2) ==="
+if run_with_retry "Wiki compile pass (v2.2)" "$prompt"; then
+  log "=== Compile pass completed successfully (v2.2) ==="
+  auto_commit "compile" "Wiki compile pass ($entry_count entries, $concept_count concepts, $moc_count MoCs)"
+  echo "Compile pass complete."
 else
-  log "=== Compile pass FAILED (v2) ==="
+  log "=== Compile pass FAILED (v2.2) ==="
+  echo "Compile pass failed. Check $LOG_FILE for details."
   exit 1
 fi

@@ -1,0 +1,30 @@
+MOC NOTE STRUCTURE — for 04-Wiki/mocs/:
+
+Frontmatter:
+  - title: "<Topic Name> — Map of Content"
+  - type: moc
+  - status: active
+  - date_created: YYYY-MM-DD
+  - date_updated: YYYY-MM-DD
+  - tags: the topic tag repeated, plus 'map-of-content'
+
+Body:
+  # <Topic Name> — Map of Content
+
+  ## Overview
+  <2-3 sentence synthesized summary of this topic. Explain WHAT this topic
+  covers and WHY it matters. Prose paragraph for at-a-glance understanding.>
+
+  ## Core Concepts
+  - [[<Concept note>]] — <1-sentence summary>
+
+  ## Related Entries
+  - [[<Entry note>]] — <1-sentence summary>
+
+  ## Open Threads
+  - <Questions that remain unanswered, for future exploration>
+
+  ## Notes
+  <Optional deeper commentary about the state of knowledge on this topic.>
+
+ALL MoC prose must be humanized before writing.

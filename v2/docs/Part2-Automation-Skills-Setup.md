@@ -160,7 +160,7 @@ The pipeline follows the same proven approach as v1: route input through the cor
 - **Concepts are shared across sources** — not owned by one Entry. Multiple entries can reference the same Concept via `entry_refs`.
 - **Idempotency and concept convergence** — running the processor multiple times converges on the same set of Concepts. Duplicate concepts are merged by the compile pass.
 - **Agent-agnostic** — defaults to `claude -p`, configurable via `AGENT_CMD` env var.
-- **Retry logic** — exponential backoff (3 attempts). Failures go to `00-Inbox/failed/`.
+- **Retry logic** — exponential backoff (3 attempts). Failures go to `08-Archive-Raw/failed/`.
 - **Humanization** — all prose in Entries, Concepts, and MoCs passes through the Humanizer skill.
 - **Quoted wikilinks in YAML frontmatter** — all templates enforce this: `source: "[[note-name]]"`.
 
@@ -183,7 +183,7 @@ Drop a `.md` file in `03-Queries/` with your question. The agent:
 1. Reads `wiki-index.md` for navigation context
 2. Follows wikilinks to relevant Entries and Concepts
 3. Synthesizes an answer with citations
-4. Writes the answer to `07-WIP/` and archives the query
+4. Writes the answer as an Entry in `04-Wiki/entries/` (compound-back: updates existing pages with discovered connections), archives the query
 
 **No RAG needed** — the wiki structure itself is the retrieval index.
 

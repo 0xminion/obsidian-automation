@@ -1,136 +1,80 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2: Query Vault — Q&A against the wiki knowledge base (Karpathy-style)
+# v2.2: Query Vault — Q&A against the wiki knowledge base (Karpathy-style)
 # ============================================================================
-# Drop a question file in queries/, run this script, get an answer.
-# The query file should contain a single question or topic.
+# Changes from v2.1:
+#   - Sources common library (lib/common.sh)
+#   - Query-compound-back: after creating answer Entry, LLM also updates
+#     existing wiki pages with newly-discovered connections
+#   - Git auto-commit after queries
 #
-# KEY FEATURES:
-# - Queries expand the wiki: answers filed as Entries in outputs/answers/
-# - New concepts discovered during Q&A are added to 04-Wiki/concepts/
-# - wiki-index.md serves as the retrieval layer (read it first)
-# - Answered queries archived to 08-Archive-Raw/
-#
-# Usage: VAULT_PATH="$HOME/MyVault" bash v2/scripts/query-vault.sh
+# Usage: VAULT_PATH="$HOME/MyVault" bash query-vault.sh
 # ============================================================================
 
 set -uo pipefail
 
-VAULT_PATH="${VAULT_PATH:-$HOME/MyVault}"
-LOG_FILE="$VAULT_PATH/Meta/Scripts/processing.log"
-AGENT_CMD="${AGENT_CMD:-claude -p}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/common.sh"
 
-mkdir -p "$VAULT_PATH/Meta/Scripts"
+setup_directory_structure
 
-log() { echo "$(date): $1" >> "$LOG_FILE"; }
+mkdir -p "$VAULT_PATH/03-Queries"
+mkdir -p "$VAULT_PATH/05-Outputs/answers"
+mkdir -p "$VAULT_PATH/08-Archive-Raw"
+mkdir -p "$VAULT_PATH/04-Wiki/concepts"
 
-# Retry with exponential backoff
-MAX_RETRIES=3
+query_count=$(find "$VAULT_PATH/03-Queries" -name '*.md' 2>/dev/null | wc -l)
+if [ "$query_count" -eq 0 ]; then
+  echo "No query files found in $VAULT_PATH/03-Queries/"
+  echo "Create a .md file with your question and re-run."
+  log "Query (v2.2): No queries found"
+  exit 0
+fi
 
-RETRY_ADVICE="
-RETRY CONTEXT: Previous attempt failed. Try alternatives:
-- If search failed, try simpler or different keywords.
-- If file write failed, write to /tmp first, then mv.
-- If rate-limited, simplify the prompt.
-Be resourceful. Find a way."
-
-run_with_retry() {
-  local description="$1"
-  local prompt="$2"
-  local attempt=1
-  local delay=5
-
-  while [ $attempt -le $MAX_RETRIES ]; do
-    log "Attempt $attempt/$MAX_RETRIES: $description"
-
-    local result=0
-    cd "$VAULT_PATH" && $AGENT_CMD "$prompt" 2>> "$LOG_FILE" || result=$?
-
-    if [ $result -eq 0 ]; then
-      log "SUCCESS: $description"
-      return 0
-    fi
-
-    log "FAILED (exit $result): $description — attempt $attempt/$MAX_RETRIES"
-
-    if [ $attempt -lt $MAX_RETRIES ]; then
-      log "Waiting ${delay}s before retry..."
-      sleep $delay
-      delay=$((delay * 2))
-      prompt="${prompt}${RETRY_ADVICE}"
-    fi
-
-    attempt=$((attempt + 1))
-  done
-
-  log "GIVING UP after $MAX_RETRIES attempts: $description"
-  return 1
-}
+log "=== Starting query processing (v2.2) ==="
 
 # Build vault summary from wiki-index.md (fast retrieval layer)
 build_vault_summary() {
-  echo "VAULT STRUCTURE OVERVIEW (v2):"
+  echo "VAULT STRUCTURE OVERVIEW (v2.2):"
   echo ""
 
-  # If wiki-index.md exists, use it as the retrieval layer
   if [ -f "$VAULT_PATH/06-Config/wiki-index.md" ]; then
     echo "## Wiki Index (primary retrieval):"
     cat "$VAULT_PATH/06-Config/wiki-index.md"
     echo ""
   fi
 
-  # Also provide directory counts for context
+  # Also provide directory counts
   for dir in "04-Wiki/entries" "04-Wiki/concepts" "04-Wiki/mocs" "04-Wiki/sources"; do
     dir_path="$VAULT_PATH/$dir"
     [ -d "$dir_path" ] || continue
-
     count=$(find "$dir_path" -name '*.md' 2>/dev/null | wc -l)
     echo "## $dir/ ($count notes):"
-
-    if [ "$count" -gt 0 ]; then
+    if [ "$count" -gt 0 ] && [ "$count" -le 20 ]; then
       for note in "$dir_path"/*.md; do
         [ -f "$note" ] || continue
         note_name=$(basename "$note" .md)
         heading=$(grep -m1 '^# ' "$note" 2>/dev/null | sed 's/^# //' || echo "<no heading>")
-        tags=$(grep -A10 '^tags:' "$note" 2>/dev/null | grep '^ *-' | head -5 | sed 's/^ *- *//' | tr '\n' ', ' || true)
         echo "  - [[$note_name]]: $heading"
-        [ -n "$tags" ] && echo "    Tags: $tags"
       done
+    elif [ "$count" -gt 20 ]; then
+      echo "  ($count notes — too many to list, use wiki-index.md)"
     fi
     echo ""
   done
+
+  # Include typed edges summary
+  if [ -f "$VAULT_PATH/06-Config/edges.tsv" ]; then
+    local edge_count
+    edge_count=$(( $(wc -l < "$VAULT_PATH/06-Config/edges.tsv") - 1 ))
+    if [ "$edge_count" -gt 0 ]; then
+      echo "## Typed Edges ($edge_count relationships):"
+      head -20 "$VAULT_PATH/06-Config/edges.tsv"
+      echo ""
+    fi
+  fi
 }
 
-# Setup required directories
-mkdir -p "$VAULT_PATH/03-Queries"
-mkdir -p "$VAULT_PATH/05-Outputs/answers"
-mkdir -p "$VAULT_PATH/08-Archive-Raw"
-mkdir -p "$VAULT_PATH/04-Wiki/concepts"
-
-# Initialize log.md if it doesn't exist (Karpathy-style structured log)
-if [ ! -f "$VAULT_PATH/06-Config/log.md" ]; then
-  cat > "$VAULT_PATH/06-Config/log.md" << 'HEADER'
-# Wiki Activity Log
-
-Chronological record of all operations on the knowledge base.
-Use `grep "^## \[" log.md | tail -N` to see the last N operations.
-
----
-
-HEADER
-fi
-
-query_count=$(find "$VAULT_PATH/03-Queries" -name '*.md' 2>/dev/null | wc -l)
-if [ "$query_count" -eq 0 ]; then
-  echo "No query files found in $VAULT_PATH/queries/"
-  echo "Create a .md file with your question and re-run."
-  log "Query (v2): No queries found"
-  exit 0
-fi
-
-log "=== Starting query processing (v2) ==="
-
-# Build vault summary once (uses wiki-index.md for fast retrieval)
 VAULT_SUMMARY=$(build_vault_summary)
 
 for query_file in "$VAULT_PATH/03-Queries"/*.md; do
@@ -156,6 +100,7 @@ INSTRUCTIONS:
 
 2. Use 'obsidian search <keywords>' to find relevant notes in the vault.
    Focus on 04-Wiki/entries/, 04-Wiki/concepts/, and 04-Wiki/mocs/.
+   Also check '06-Config/edges.tsv' for typed relationships between notes.
 
 3. Read the FULL content of each relevant note — don't just rely on titles.
 
@@ -165,41 +110,19 @@ INSTRUCTIONS:
 
 5. DISCOVER NEW CONCEPTS: If your research reveals important concepts not
    already in 04-Wiki/concepts/, CREATE new Concept notes for them.
-   Follow this structure:
-   ---
-   title: \"<concept name>\"
-   date_created: $(date +%Y-%m-%d)
-   updated: $(date +%Y-%m-%d)
-   tags:
-     - concept
-     - relevant-tag-1
-     - relevant-tag-2
-   entry_refs:
-     - \"[[Relevant Entry]]\"
-   status: seed
-   aliases: []
-   ---
-
-   # Concept Name
-
-   <2-5 sentences explaining the idea.>
-
-   ## References
-   - Entries: [[Entry1]]
-   - Related Concepts: [[Concept1]], [[Concept2]]
-
    Before creating, check if an existing concept covers the same idea.
    If yes, UPDATE the existing concept instead.
 
 6. CREATE AN ENTRY NOTE IN 04-Wiki/entries/ — this is how the answer
-   becomes part of the wiki. The answer IS a wiki entry that can be
-   found by future queries and compile passes.
+   becomes part of the wiki.
 
-   Create the Entry in '04-Wiki/entries/' following this EXACT structure:
+   Create the Entry following this EXACT structure:
    ---
-   title: \\\"Answer: <query topic>\\\"
-   source: \\\"[[$query_name]]\\\"
+   title: \"Answer: <query topic>\"
+   source: \"[[$query_name]]\"
    date_entry: $(date +%Y-%m-%d)
+   reviewed: null
+   review_notes: null
    tags:
      - entry
      - topic-tag-1
@@ -229,33 +152,49 @@ INSTRUCTIONS:
    ## Linked concepts
    <Wikilinks to all Entry and Concept notes consulted.>
 
-7. ALSO write a copy to '05-Outputs/answers/' as:
+7. COMPOUND-BACK: This is critical. After creating the answer Entry, review
+   existing wiki pages for connections your research revealed:
+   - If you found that Entry X contradicts Entry Y, update BOTH entries'
+     'Open questions' or 'Linked concepts' sections to note the contradiction.
+   - If you discovered that Concept A is related to Entry B, add a wikilink
+     in Entry B's 'Linked concepts' and Concept A's 'References'.
+   - If a new connection exists between two previously-unrelated notes,
+     add typed edges to '06-Config/edges.tsv':
+       NoteA<tab>NoteB<tab>type<tab>description
+   - Do NOT just create a standalone answer — UPDATE the broader wiki.
+   - Humanize all updated prose.
+
+8. ALSO write a copy to '05-Outputs/answers/' as:
    answer-$(date +%Y%m%d)-${query_name}.md
    This is a duplicate for quick access — the canonical version is
    the Entry in 04-Wiki/entries/.
 
-8. Humanize ALL prose using the Humanizer skill (both Entry and output copy).
+9. Humanize ALL prose using the Humanizer skill (Entry, output copy, and any updated notes).
 
-9. LOG THE QUERY: Append a structured entry to '06-Config/log.md':
-   ## [YYYY-MM-DD] query | "<question>"
+10. LOG THE QUERY: Append a structured entry to '06-Config/log.md':
+   ## [YYYY-MM-DD] query | \"<question>\"
    - Consulted: [[Entry1]], [[Concept1]], [[MoC Name]]
    - Created Entry: [[Answer: ...]]
    - New concepts: [[NewConcept1]] (if any)
-   - Logged in: 06-Config/log.md
+   - Updated existing notes: [[Note1]], [[Note2]] (compound-back connections)
+   - New edges: N (in edges.tsv)
 
-10. Archive the query: move it from '03-Queries/' to '08-Archive-Raw/'.
+11. Archive the query: move it from '03-Queries/' to '08-Archive-Raw/'.
 
 CRITICAL RULES:
 - ALL YAML frontmatter: wikilinks MUST be quoted: source: \"[[note]]\"
 - Use [[wikilinks]] for all internal vault links.
 - Do NOT modify 07-WIP/.
+- The compound-back step (7) is MANDATORY — queries must improve the wiki.
 "
 
   if run_with_retry "Query: $query_name" "$prompt"; then
-    log "Query answered (v2): $query_name"
+    log "Query answered (v2.2): $query_name"
   else
-    log "Query FAILED (v2): $query_name"
+    log "Query FAILED (v2.2): $query_name"
   fi
 done
 
-log "=== All queries processed (v2) ==="
+log "=== All queries processed (v2.2) ==="
+auto_commit "query" "Processed $query_count queries"
+echo "Done. Processed $query_count queries."

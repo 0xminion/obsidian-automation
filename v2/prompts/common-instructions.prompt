@@ -1,0 +1,50 @@
+VAULT LOCATION: {VAULT_PATH}
+VAULT STRUCTURE (v2.2):
+  01-Raw/             — New sources to process (URLs, PDFs, files)
+  02-Clippings/       — Web clipper saves (already markdown)
+  03-Queries/         — Q&A questions (drop .md files here)
+  04-Wiki/
+  ├── sources/    — Source notes (full original content)
+  ├── entries/    — Entry notes (summary + ELI5 + concepts + links)
+  ├── concepts/   — Shared concept notes (cross-source vocabulary)
+  └── mocs/        — Topic hubs with synthesized summaries
+  05-Outputs/         — Q&A responses, visualizations
+  06-Config/
+  ├── wiki-index.md     — Auto-maintained table of contents
+  ├── url-index.tsv     — URL → entry mapping for dedup
+  ├── edges.tsv         — Typed relationships between notes
+  ├── tag-registry.md   — Canonical tag list
+  ├── log.md            — Structured activity log
+  └── agents.md         — Schema: how to maintain the wiki
+  07-WIP/               — User drafts (untouched by automation)
+  08-Archive-Raw/       — Processed inbox items
+  09-Archive-Queries/   — Answered queries
+
+AGENT AVAILABLE: obsidian-markdown, humanizer, youtube-full (TranscriptAPI), liteparse
+
+CRITICAL RULES:
+1. NEVER touch anything in '07-WIP/'. Off-limits.
+2. ALL AI-generated prose for 04-Wiki/entries/, 04-Wiki/concepts/, or 04-Wiki/mocs/
+   MUST be run through the Humanizer skill before writing to disk.
+   Draft the content → humanize it → write the final file.
+3. Use [[wikilinks]] for all internal vault links.
+4. Use Obsidian-flavored markdown (callouts, frontmatter, tags).
+5. ALL YAML frontmatter: wikilinks MUST be quoted
+   (e.g. source: "[[note]]").
+6. Entry notes go in '04-Wiki/entries/', Concept notes in '04-Wiki/concepts/',
+   MoC notes in '04-Wiki/mocs/'. Processed originals archived to '08-Archive-Raw/'.
+7. After creating any Entry or Concept, APPEND a line to
+   '06-Config/wiki-index.md' with a 1-sentence summary.
+8. APPEND a structured entry to '06-Config/log.md' after every ingest.
+9. When content reveals relationships between notes, APPEND to '06-Config/edges.tsv':
+   source<tab>target<tab>type<tab>description
+   Types: extends, contradicts, supports, supersedes, tested_by, depends_on, inspired_by
+
+TAG CONSOLIDATION:
+Before creating new tags, ALWAYS search existing tags in the vault first:
+  obsidian tags sort=count counts
+Reuse existing tags wherever possible. Only mint a new tag if nothing fits.
+
+RETRY BEHAVIOR:
+If any step fails (API call, file operation, parsing), try an alternative
+approach before giving up. Be resourceful.

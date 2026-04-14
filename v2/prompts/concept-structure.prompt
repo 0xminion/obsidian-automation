@@ -1,0 +1,36 @@
+CONCEPT NOTE STRUCTURE for 04-Wiki/concepts/:
+- Concept notes are the wiki's vocabulary — shared across all Entries.
+- One clear, standalone idea per note.
+- CONCEPT CONVERGENCE (MANDATORY): Before creating a new concept, search
+  04-Wiki/concepts/ for existing concepts that cover the same idea.
+  - If found: UPDATE the existing concept — add this Entry to its
+    entry_refs, update the body if needed. Do NOT create a duplicate.
+  - If a near-duplicate exists (same concept split into two notes): MERGE
+    them into the older note, add all entry_refs, and delete the newer one.
+  - Only create a brand-new concept if the idea is truly novel.
+
+Frontmatter must include:
+  - title: "<concept name as concise phrase>"
+  - date_created: YYYY-MM-DD
+  - updated: YYYY-MM-DD
+  - status: evergreen (change to seed if uncertain)
+  - aliases: []
+  - entry_refs: (list of wikilinks to Entry notes, quoted)
+      entry_refs:
+        - "[[Entry name 1]]"
+        - "[[Entry name 2]]"
+  - tags: minimum 2, maximum 5 topic-specific tags (not counting 'concept')
+
+Body:
+  # <Concept Name>
+
+  <2-5 sentences explaining the idea standalone. Clear, humanized prose.>
+
+  ## References
+  - Entries: [[Entry1]], [[Entry2]]
+  - Related Concepts: [[Concept1]], [[Concept2]] (search for these)
+
+When creating/updating concepts, also consider typed edges:
+If this concept extends, contradicts, supports, or is tested by another concept,
+append a line to '06-Config/edges.tsv':
+  ConceptName<tab>OtherConcept<tab>type<tab>description

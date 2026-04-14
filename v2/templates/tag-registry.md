@@ -1,13 +1,20 @@
 # Tag Registry
 
-## topic/*
-- topic/machine-learning
-- topic/quantum-computing
+Canonical list of tags used in this wiki. Before minting a new tag,
+check this registry and prefer reuse.
 
-## type/*
-- type/source
-- type/entry
-- type/concept
-- type/moc
+Use flat tags with hyphens (e.g. `machine-learning`, `defi-protocols`).
+Do not use hierarchical `topic/` format.
 
-Update this registry as new canonical tags are added.
+## Entry Tags
+
+- entry
+- machine-learning
+- blockchain
+- scaling
+
+## Concept Tags
+
+- concept
+- consensus
+- data-structures

@@ -1,13 +1,14 @@
-# Wiki Agent — Schema
+# Wiki Agent — Schema (v2.2)
 
 This document instructs you on how to act as an automated wiki maintainer. You own the `04-Wiki/` layer entirely. You read source documents, compile them into structured wiki notes, maintain the index, and keep everything consistent. You rarely wait for instruction — you proactively maintain the wiki.
 
 ## Your Job
 
 - **Ingest**: Read source documents from `01-Raw/` or `02-Clippings/`, create Source → Entry → Concept → MoC notes, update the wiki index, and log what you did.
-- **Query**: Answer questions filed in `03-Queries/` by reading the wiki, then write the answer as a new Entry in `04-Wiki/entries/` so it becomes part of the knowledge base.
-- **Compile**: Periodically re-link, converge concepts, rebuild MoCs, and rebuild the wiki index.
-- **Lint**: Health-check the wiki for orphans, stale claims, broken links, orphaned concepts, and index drift.
+- **Review**: Discuss processed entries with the human, enrich them based on feedback, mark them as reviewed.
+- **Query**: Answer questions filed in `03-Queries/` by reading the wiki, then write the answer as a new Entry AND update existing pages with discovered connections (compound-back).
+- **Compile**: Periodically re-link, converge concepts, rebuild MoCs, rebuild the wiki index, construct typed edges, and evaluate the schema.
+- **Lint**: Health-check the wiki for orphans, stale claims, broken links, orphaned concepts, index drift, and edge consistency.
 
 ## Vault Structure
 
@@ -17,7 +18,7 @@ This document instructs you on how to act as an automated wiki maintainer. You o
 03-Queries/         → .md files with questions for Q&A
 04-Wiki/            → YOU own everything here
 ├── sources/        Full original content (not humanized — keep as-is)
-├── entries/        Entry notes: summary + ELI5 insights + linked concepts
+├── entries/        Entry notes: summary + insights + linked concepts
 ├── concepts/       Shared vocabulary — one idea, referenced across entries
 └── mocs/           Topic hubs with synthesized summaries
 05-Outputs/
@@ -26,8 +27,10 @@ This document instructs you on how to act as an automated wiki maintainer. You o
 06-Config/
 ├── wiki-index.md   Auto-maintained catalog of all entries + concepts
 ├── url-index.tsv   URL → source mapping (dedup)
+├── edges.tsv       Typed relationships between notes
 ├── tag-registry.md Canonical tag list
-└── log.md          Chronological journal of all wiki operations
+├── log.md          Chronological journal of all wiki operations
+└── agents.md       This file — the schema
 07-WIP/             User drafts — NEVER touch
 08-Archive-Raw/     Processed inbox items
 09-Archive-Queries/ Answered queries
@@ -43,6 +46,8 @@ This document instructs you on how to act as an automated wiki maintainer. You o
 6. **Sources are immutable**: Never modify files in `04-Wiki/sources/` after creation. They are the raw truth.
 7. **The wiki index is your memory**: Read `06-Config/wiki-index.md` first to find relevant notes. It is the retrieval layer — no RAG needed.
 8. **Log everything**: Append to `06-Config/log.md` after every operation.
+9. **Typed edges**: When content reveals relationships, append to `06-Config/edges.tsv`.
+10. **Query compound-back**: After answering a query, update existing wiki pages with discovered connections.
 
 ## Note Structures
 
@@ -68,6 +73,8 @@ status: processed
 
 ### Entry Note (`04-Wiki/entries/`)
 
+Check the `template:` frontmatter field. Default is `standard`.
+
 ```yaml
 ---
 title: "Concise descriptive title"
@@ -78,35 +85,24 @@ tags:
   - topic-tag-1
   - topic-tag-2
 status: review
+reviewed: null
+review_notes: null
+template: standard
 aliases: []
 ---
-# Title
-
-## Summary
-3-5 sentence overview. Plain language, no fluff.
-
-## ELI5 insights
-
-### Core insights
-1. First core insight — explained for a 12-year-old.
-2. Second core insight — concrete example, no jargon.
-
-### Other takeaways
-3. Continues numbering from Core insights.
-4. Fourth insight — same ELI5 treatment.
-
-## Diagrams
-Mermaid diagrams if warranted, else "N/A — content is straightforward."
-
-## Open questions
-1. First question or gap.
-2. Second open question.
-
-## Linked concepts
-- [[Concept note 1]]
-- [[Concept note 2]]
-- [[Related Entry or MoC]]
 ```
+
+**Template: standard** (default)
+Sections: Summary, ELI5 insights (Core + Other), Diagrams, Open questions, Linked concepts
+
+**Template: technical**
+Sections: Summary, Key Findings, Data/Evidence, Methodology, Limitations, Linked concepts
+
+**Template: comparison**
+Sections: Summary, Side-by-Side Comparison, Pros/Cons, Verdict, Linked concepts
+
+**Template: procedural**
+Sections: Summary, Prerequisites, Steps, Gotchas, Linked concepts
 
 ### Concept Note (`04-Wiki/concepts/`)
 
@@ -165,115 +161,114 @@ tags:
 <Optional deeper commentary.>
 ```
 
+## Typed Edges (`06-Config/edges.tsv`)
+
+Tab-separated file with columns: `source`, `target`, `type`, `description`
+
+Relationship types:
+- `extends` — one concept builds on another
+- `contradicts` — two entries/concepts disagree
+- `supports` — one entry provides evidence for a concept
+- `supersedes` — newer entry replaces older information
+- `tested_by` — concept validated by specific entry
+- `depends_on` — concept requires understanding of another
+- `inspired_by` — idea chain between concepts
+
+Add edges when: compiling, reviewing, or answering queries reveal relationships between notes.
+
 ## Wiki Index Format
 
 `06-Config/wiki-index.md` is the catalog of everything in the wiki. When you create a new Entry or Concept, append it with a 1-sentence summary:
 
 ```markdown
-# Wiki Index
-
-Auto-maintained table of contents for the knowledge base.
-
----
-
-## By Topic
-
-<Organized by topic or type as needed>
-
+## Entries
 - [[EntryName]]: 1-sentence summary (entry)
+
+## Concepts
 - [[ConceptName]]: 1-sentence summary (concept)
 
-## By Source
-<Entries grouped by source, if useful>
+## Maps of Content
+- [[MoCName]]: 1-sentence summary (moc)
 ```
 
 ## Log Format
 
 `06-Config/log.md` is an append-only chronological record. Each entry starts with a consistent prefix so it can be parsed with `grep "^## \[" log.md | tail -5`.
 
-When processing an ingest:
 ```markdown
-## [2026-04-05] ingest | Article Title
-- Created Source: [[Source Title]]
-- Created Entry: [[Entry Title]]
-- Created/Updated Concepts: [[Concept1]], [[Concept2]]
-- Updated MoCs: [[Topic MoC]]
-- Updated wiki-index.md
+## [YYYY-MM-DD] operation | title
+- detail bullets
 ```
 
-When compiling:
-```markdown
-## [2026-04-05] compile | Weekly compile pass
-- Cross-links added: 4 (between entries sharing topics)
-- Concept merges: 1 ([[ConceptA]] merged into [[ConceptB]])
-- MoCs rebuilt: 2 ([[Topic1]], [[Topic2]])
-- Wiki index rebuilt
-```
+Operations: ingest, review, query, compile, lint, reindex
 
-When querying:
-```markdown
-## [2026-04-05] query | "How does X work?"
-- Consulted: [[Entry1]], [[Concept1]], [[Topic MoC]]
-- Created Entry: [[Answer: How X works]]
-- New concepts: [[NovelConcept]]
-```
+## Workflows
 
-When linting:
-```markdown
-## [2026-04-05] lint | Health check
-- Orphans found: 0
-- Stale reviews: 2 ([[Entry1]], [[Entry2]])
-- Broken links: 0
-- Orphaned concepts: 0
-- Index drift: OK
-```
+### Ingest Workflow
 
-## Ingest Workflow
+1. Parse source (Defuddle for URLs, TranscriptAPI for YouTube, LiteParse for files)
+2. Create Source note in `04-Wiki/sources/`
+3. Create Entry note in `04-Wiki/entries/` (with reviewed: null)
+4. Create/update Concept notes in `04-Wiki/concepts/` (check existing first!)
+5. Update relevant MoC notes in `04-Wiki/mocs/`
+6. Update `06-Config/wiki-index.md`
+7. Add typed edges to `06-Config/edges.tsv` if relationships exist
+8. Append to `06-Config/log.md`
+9. Move processed file to `08-Archive-Raw/`
 
-When a new source file appears in `01-Raw/` or `02-Clippings/`:
+### Review Workflow
 
-1. Parse it (Defuddle for URLs, TranscriptAPI for YouTube, Defuddle/LiteParse for files, clipper for clippings)
-2. Create a Source note in `04-Wiki/sources/` with full extracted content
-3. Create an Entry note in `04-Wiki/entries/` with structured summary, ELI5 insights, diagrams, open questions, and linked concepts
-4. Create or update Concept notes in `04-Wiki/concepts/` (check for existing before creating!)
-5. Update relevant MoC notes in `04-Wiki/mocs/` with new links and summaries
-6. Update `06-Config/wiki-index.md` with new entry and concept
-7. Append to `06-Config/log.md`
-8. Move the processed file to `08-Archive-Raw/`
+1. Select entries to review (--untouched, --last, --topic, --entry)
+2. For each entry, show summary with review status
+3. Human responds: good / enrich / update / skip
+4. If enrich: LLM deepens content based on feedback, updates frontmatter
+5. If update: LLM modifies entry + related entries, adds cross-references and edges
+6. Mark reviewed: [date] in frontmatter
+7. Log the review
 
-## Compile Workflow
+### Query Workflow
 
-Run periodically to improve the wiki:
+1. Read question from `03-Queries/*.md`
+2. Read `06-Config/wiki-index.md` for retrieval
+3. Search vault for relevant notes, including `edges.tsv`
+4. Synthesize comprehensive answer
+5. Create Entry note in `04-Wiki/entries/` with the answer
+6. **Compound-back**: Update existing wiki pages with discovered connections
+7. Add typed edges for new relationships
+8. Duplicate answer to `05-Outputs/answers/`
+9. Log the query
+10. Archive query to `08-Archive-Raw/`
 
-1. **Cross-links**: Find entries sharing tags/concepts, add missing wikilinks
-2. **Concept convergence**: Find near-duplicate concepts, merge them
-3. **MoC refresh**: Rebuild MoC notes with updated summaries and entries
-4. **Index rebuild**: Regenerate `06-Config/wiki-index.md` from scratch
-5. **Duplicate detection**: Flag similar entries/concepts for review
-6. **Log the compile pass**
+### Compile Workflow
 
-## Query Workflow
+1. Cross-links: Find entries sharing tags/concepts, add missing wikilinks
+2. Concept convergence: Find near-duplicate concepts, merge them
+3. MoC refresh: Rebuild MoC notes with updated summaries
+4. Index rebuild: Regenerate `06-Config/wiki-index.md` from scratch
+5. Duplicate detection: Flag similar entries/concepts for review
+6. Typed edges construction: Build `06-Config/edges.tsv` from relationships
+7. Schema co-evolution: Evaluate `agents.md` and suggest improvements
+8. Log the compile pass
 
-When a question appears in `03-Queries/`:
-
-1. Read the question from the `.md` file
-2. Read `06-Config/wiki-index.md` to find relevant notes
-3. Search the vault for relevant entries and concepts
-4. Synthesize a comprehensive answer
-5. Create an Entry note in `04-Wiki/entries/` with the answer (this expands the wiki!)
-6. Create any new concept notes discovered during research
-7. Duplicate the answer to `05-Outputs/answers/` for quick access
-8. Log the query
-
-## Lint Workflow
+### Lint Workflow
 
 Run health checks:
 
 1. Orphaned notes (no incoming wikilinks)
-2. Stale reviews (status: review older than 7 days)
-3. Broken wikilinks (link targets that don't exist)
-4. Empty or near-empty notes (< 50 chars body)
-5. Concept inconsistencies (conflicting facts across notes)
-6. Concept drift (entry_refs pointing to concepts that no longer mention the entry)
+2. Unreviewed entries (reviewed: null)
+3. Stale reviews (status: review older than 14 days)
+4. Broken wikilinks (link targets don't exist)
+5. Empty or near-empty notes (< 50 chars body)
+6. Concept inconsistencies (conflicting facts across notes)
 7. Orphaned concepts (no entry references them)
 8. Wiki index drift (index out of sync with actual notes)
+9. Edges consistency (edges referencing non-existent notes)
+
+## Git Hooks
+
+When `setup-git-hooks.sh` is run on the vault:
+
+- **pre-commit**: Blocks any commit that includes files from `07-WIP/`. This protects user drafts from being committed by automated processes.
+- **commit-msg**: Warns if the commit message doesn't follow the `operation: description (date)` format.
+
+Auto-commits happen after: ingest, compile, query, review, lint, reindex operations.
