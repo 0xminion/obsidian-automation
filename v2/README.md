@@ -147,6 +147,7 @@ All scripts source this. Provides:
 - `append_log_md()` — structured log.md entries
 - `add_edge()` / `get_edges()` — typed relationship management
 - `auto_commit()` — git auto-commit with structured messages
+- `load_prompt()` — load prompt templates from `v2/prompts/*.prompt` files
 
 ## Humanizer Skill Usage
 

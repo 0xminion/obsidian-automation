@@ -51,16 +51,16 @@ bootstrap_url_index
 # ═══════════════════════════════════════════════════════════
 # LOAD PROMPT TEMPLATES
 # ═══════════════════════════════════════════════════════════
+# Shared structure prompts loaded via load_prompt().
 # Note: process functions below contain inline prompts (~80% shared Steps 1-9)
 # because each source type (YouTube/URL/File/Clipping) needs type-specific
 # instructions in Steps 1-2. Externalizing the common Steps 3-9 would add
 # complexity without reducing prompt size (agent reads all prompts anyway).
 # The prompts/*.prompt files serve as reference templates for agents.
-PROMPT_DIR="$SCRIPT_DIR/../prompts"
-COMMON_INSTRUCTIONS=$(cat "$PROMPT_DIR/common-instructions.prompt" 2>/dev/null || echo "")
-ENTRY_STRUCTURE=$(cat "$PROMPT_DIR/entry-structure.prompt" 2>/dev/null || echo "")
-CONCEPT_STRUCTURE=$(cat "$PROMPT_DIR/concept-structure.prompt" 2>/dev/null || echo "")
-MOC_STRUCTURE=$(cat "$PROMPT_DIR/moc-structure.prompt" 2>/dev/null || echo "")
+COMMON_INSTRUCTIONS=$(load_prompt "common-instructions")
+ENTRY_STRUCTURE=$(load_prompt "entry-structure")
+CONCEPT_STRUCTURE=$(load_prompt "concept-structure")
+MOC_STRUCTURE=$(load_prompt "moc-structure")
 
 # ═══════════════════════════════════════════════════════════
 # FILE TYPE DETECTION

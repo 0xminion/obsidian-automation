@@ -7,7 +7,9 @@
 #   - Removed mandatory ELI5 section check (now template-aware)
 #   - Added review status check (entries older than 7 days, unreviewed)
 #   - Added edges.tsv consistency check
+#   - Added entry template section validation (check 7)
 #   - Git auto-commit after lint
+#   - 10 health checks total
 #
 # Writes report to: $VAULT_PATH/Meta/Scripts/lint-report.md
 # ============================================================================
@@ -235,9 +237,87 @@ fi
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 7. Orphaned Concepts (no Entry references them)
+# 7. Entry Template Section Validation (v2.2)
 # ═══════════════════════════════════════════════════════════
-echo "## 7. Orphaned Concepts (no Entry links to them)" >> "$REPORT_FILE"
+echo "## 7. Entry Template Section Validation" >> "$REPORT_FILE"
+echo "" >> "$REPORT_FILE"
+template_issues=0
+
+# Define required sections per template type
+# Using arrays for portability
+check_template_sections() {
+  local entry_file="$1"
+  local template="$2"
+  local entry_name
+  entry_name=$(basename "$entry_file" .md)
+  local missing_sections=""
+
+  case "$template" in
+    standard|"")
+      for section in "## Summary" "## ELI5 insights" "## Diagrams" "## Open questions" "## Linked concepts"; do
+        if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
+          missing_sections="${missing_sections}    - ${section}\n"
+        fi
+      done
+      ;;
+    technical)
+      for section in "## Summary" "## Key Findings" "## Data/Evidence" "## Methodology" "## Limitations" "## Linked concepts"; do
+        if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
+          missing_sections="${missing_sections}    - ${section}\n"
+        fi
+      done
+      ;;
+    comparison)
+      for section in "## Summary" "## Side-by-Side Comparison" "## Pros and Cons" "## Verdict" "## Linked concepts"; do
+        if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
+          missing_sections="${missing_sections}    - ${section}\n"
+        fi
+      done
+      ;;
+    procedural)
+      for section in "## Summary" "## Prerequisites" "## Steps" "## Gotchas" "## Linked concepts"; do
+        if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
+          missing_sections="${missing_sections}    - ${section}\n"
+        fi
+      done
+      ;;
+  esac
+
+  if [ -n "$missing_sections" ]; then
+    echo "- **[$entry_name]** (template: $template) missing sections:" >> "$REPORT_FILE"
+    printf "%b" "$missing_sections" >> "$REPORT_FILE"
+    return 1
+  fi
+  return 0
+}
+
+if [ -d "$VAULT_PATH/04-Wiki/entries" ]; then
+  for entry in "$VAULT_PATH/04-Wiki/entries"/*.md; do
+    [ -f "$entry" ] || continue
+    template=$(grep -m1 '^template:' "$entry" 2>/dev/null | sed 's/^template: *//' | tr -d '[:space:]' || echo "standard")
+    [ -z "$template" ] && template="standard"
+
+    if ! check_template_sections "$entry" "$template"; then
+      template_issues=$((template_issues + 1))
+    fi
+  done
+fi
+
+if [ $template_issues -eq 0 ]; then
+  echo "All entries have correct sections for their template type." >> "$REPORT_FILE"
+else
+  echo "" >> "$REPORT_FILE"
+  echo "**Total: $template_issues entries with missing template sections**" >> "$REPORT_FILE"
+  echo "Action: Add missing sections or change the template type." >> "$REPORT_FILE"
+  total_issues=$((total_issues + template_issues))
+fi
+
+echo "" >> "$REPORT_FILE"
+
+# ═══════════════════════════════════════════════════════════
+# 8. Orphaned Concepts (no Entry references them)
+# ═══════════════════════════════════════════════════════════
+echo "## 8. Orphaned Concepts (no Entry links to them)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 orphan_concept_count=0
 
@@ -276,9 +356,9 @@ fi
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 8. Wiki Index Drift
+# 9. Wiki Index Drift
 # ═══════════════════════════════════════════════════════════
-echo "## 8. Wiki Index Drift (index vs actual notes)" >> "$REPORT_FILE"
+echo "## 9. Wiki Index Drift (index vs actual notes)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 drift_count=0
 
@@ -316,9 +396,9 @@ total_issues=$((total_issues + drift_count))
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 9. Edges Consistency Check (v2.2)
+# 10. Edges Consistency Check (v2.2)
 # ═══════════════════════════════════════════════════════════
-echo "## 9. Edges Consistency (edges.tsv)" >> "$REPORT_FILE"
+echo "## 10. Edges Consistency (edges.tsv)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 edge_issues=0
 
@@ -371,6 +451,7 @@ echo "| Stale reviews | $stale_count |" >> "$REPORT_FILE"
 echo "| Broken wikilinks | $broken_count |" >> "$REPORT_FILE"
 echo "| Near-empty notes | $empty_count |" >> "$REPORT_FILE"
 echo "| Concept structure issues | $conflict_count |" >> "$REPORT_FILE"
+echo "| Template section issues | $template_issues |" >> "$REPORT_FILE"
 echo "| Orphaned concepts | $orphan_concept_count |" >> "$REPORT_FILE"
 echo "| Wiki index drift | $drift_count |" >> "$REPORT_FILE"
 echo "| Edges consistency | $edge_issues |" >> "$REPORT_FILE"

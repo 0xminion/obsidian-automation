@@ -266,36 +266,20 @@ enrich_entry() {
   local entry_name
   entry_name=$(basename "$entry_path" .md)
 
-  local prompt="
-VAULT LOCATION: $VAULT_PATH
+  local TODAY
+  TODAY=$(date +%Y-%m-%d)
 
-TASK: Enrich the entry note '$entry_name' based on user feedback.
+  # Load externalized prompt and substitute placeholders
+  local REVIEW_PROMPT
+  REVIEW_PROMPT=$(load_prompt "review-enrich")
+  REVIEW_PROMPT=$(echo "$REVIEW_PROMPT" | sed \
+    -e "s|{VAULT_PATH}|$VAULT_PATH|g" \
+    -e "s|{ENTRY_NAME}|$entry_name|g" \
+    -e "s|{ENTRY_PATH}|$entry_path|g" \
+    -e "s|{INSTRUCTIONS}|$instructions|g" \
+    -e "s|{TODAY}|$TODAY|g")
 
-USER FEEDBACK: $instructions
-
-INSTRUCTIONS:
-1. Read the full entry at '$entry_path'
-2. Read the wiki index at '06-Config/wiki-index.md' for context
-3. Enrich the entry based on the user's instructions:
-   - Add depth to specific sections
-   - Expand on insights that were mentioned
-   - Add new connections or context
-4. If the feedback reveals new connections to other entries, UPDATE those entries too with cross-references.
-5. Update the 'reviewed:' and 'review_notes:' frontmatter fields.
-6. Humanize all new prose using the Humanizer skill.
-7. Update '06-Config/wiki-index.md' if new concepts were created.
-8. Append to '06-Config/log.md':
-   ## [$(date +%Y-%m-%d)] review | $entry_name (enriched)
-   - Feedback: $instructions
-   - Sections updated: [list]
-
-CRITICAL RULES:
-- Use [[wikilinks]] for all internal links
-- Quote wikilinks in YAML frontmatter
-- Do NOT modify 07-WIP/
-"
-
-  if run_with_retry "Review enrichment: $entry_name" "$prompt"; then
+  if run_with_retry "Review enrichment: $entry_name" "$REVIEW_PROMPT"; then
     update_review_status "$entry_path" "$(date +%Y-%m-%d)" "enriched: $instructions"
     echo "✓ Entry enriched."
     log "Review enrichment: $entry_name — $instructions"
@@ -310,40 +294,20 @@ update_entry() {
   local entry_name
   entry_name=$(basename "$entry_path" .md)
 
-  local prompt="
-VAULT LOCATION: $VAULT_PATH
+  local TODAY
+  TODAY=$(date +%Y-%m-%d)
 
-TASK: Update the entry '$entry_name' and related entries based on user feedback.
+  # Load externalized prompt and substitute placeholders
+  local REVIEW_PROMPT
+  REVIEW_PROMPT=$(load_prompt "review-update")
+  REVIEW_PROMPT=$(echo "$REVIEW_PROMPT" | sed \
+    -e "s|{VAULT_PATH}|$VAULT_PATH|g" \
+    -e "s|{ENTRY_NAME}|$entry_name|g" \
+    -e "s|{ENTRY_PATH}|$entry_path|g" \
+    -e "s|{INSTRUCTIONS}|$instructions|g" \
+    -e "s|{TODAY}|$TODAY|g")
 
-USER FEEDBACK: $instructions
-
-INSTRUCTIONS:
-1. Read the entry at '$entry_path'
-2. Read the wiki index at '06-Config/wiki-index.md'
-3. Based on the feedback, make updates:
-   - If connections are mentioned, add wikilinks to both sides
-   - If contradictions are found, note them in both entries' Open questions
-   - If new insights emerged, add them to the appropriate sections
-4. For any other entry mentioned in the feedback (e.g., [[Other Entry]]):
-   - Read that entry
-   - Add reciprocal links/connections
-   - Update its 'Linked concepts' section if needed
-5. Update frontmatter: reviewed: $(date +%Y-%m-%d), review_notes: [feedback summary]
-6. If typed edges are relevant, append to '06-Config/edges.tsv':
-   source<tab>target<tab>type<tab>description
-7. Humanize all new prose.
-8. Append to '06-Config/log.md':
-   ## [$(date +%Y-%m-%d)] review | $entry_name (connections updated)
-   - Feedback: $instructions
-   - Entries updated: [list]
-
-CRITICAL RULES:
-- Use [[wikilinks]] for all internal links
-- Quote wikilinks in YAML frontmatter
-- Do NOT modify 07-WIP/
-"
-
-  if run_with_retry "Review update: $entry_name" "$prompt"; then
+  if run_with_retry "Review update: $entry_name" "$REVIEW_PROMPT"; then
     update_review_status "$entry_path" "$(date +%Y-%m-%d)" "updated: $instructions"
     echo "✓ Entry updated."
     log "Review update: $entry_name — $instructions"

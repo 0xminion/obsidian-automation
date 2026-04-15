@@ -305,6 +305,27 @@ get_edges_by_type() {
 }
 
 # ═══════════════════════════════════════════════════════════
+# PROMPT LOADING
+# ═══════════════════════════════════════════════════════════
+# Load a prompt template from v2/prompts/
+# Usage: prompt=$(load_prompt "entry-structure")
+# Returns the file content, or empty string if not found.
+PROMPT_DIR_DEFAULT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../prompts" 2>/dev/null && pwd || echo "")"
+
+load_prompt() {
+  local name="$1"
+  local prompt_dir="${2:-$PROMPT_DIR_DEFAULT}"
+  local prompt_file="$prompt_dir/${name}.prompt"
+
+  if [ -f "$prompt_file" ]; then
+    cat "$prompt_file"
+  else
+    log "WARNING: Prompt file not found: $prompt_file"
+    echo ""
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════
 # GIT SAFETY: Auto-commit helper
 # ═══════════════════════════════════════════════════════════
 auto_commit() {

@@ -91,9 +91,9 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 - Lint checks sections based on template type
 
 **Acceptance Criteria:**
-- Entry.md documents all 4 template variants
-- Lint validates sections based on template field
-- Prompt templates support all variants
+- Entry.md documents all 4 template variants ✓
+- Lint validates sections based on template field (check 7: template section validation) ✓
+- Prompt templates support all variants ✓
 
 ### R5: Typed Edges
 
@@ -137,9 +137,9 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 - Recent activity from log.md
 
 **Acceptance Criteria:**
-- Dashboard shows all metrics in markdown tables
-- Run standalone or after compile
-- Output at `06-Config/dashboard.md`
+- Dashboard shows all metrics in markdown tables ✓
+- Run standalone or after compile ✓
+- Output at `06-Config/dashboard.md` ✓
 
 ### R8: Externalize Prompts
 
@@ -150,11 +150,16 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 - `entry-structure.prompt`
 - `concept-structure.prompt`
 - `moc-structure.prompt`
+- `compile-pass.prompt`
+- `query-vault.prompt`
+- `review-enrich.prompt`
+- `review-update.prompt`
 
 **Acceptance Criteria:**
-- Scripts load prompts from files, not inline variables
-- Prompts can be edited independently of scripts
-- Common library has `load_prompt()` helper
+- Scripts load prompts from files via `load_prompt()`, not inline variables ✓
+- Prompts can be edited independently of scripts ✓
+- Common library has `load_prompt()` helper ✓
+- 8 prompt files: common-instructions, entry-structure, concept-structure, moc-structure, compile-pass, query-vault, review-enrich, review-update ✓
 
 ### R9: Full Reindex
 
@@ -185,6 +190,19 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 
 ## Technical Architecture
 
+### Scripts Reference
+
+| Script | Purpose | Status |
+|---|---|---|
+| `process-inbox.sh` | Ingest: Source → Entry → Concepts → MoCs. Supports `--interactive` flag | v2.2 |
+| `review-pass.sh` | Review processed entries: `--untouched`, `--last N`, `--topic TAG`, `--entry NAME`, `--interactive` | v2.2 |
+| `compile-pass.sh` | Cross-link, concept convergence, MoC rebuild, index rebuild, typed edges, schema review | v2.2 |
+| `query-vault.sh` | Q&A with compound-back: answers expand wiki + update existing pages | v2.2 |
+| `lint-vault.sh` | 10 health checks: orphans, unreviewed, stale, broken links, empty, template sections, drift, edges | v2.2 |
+| `vault-stats.sh` | Dashboard: vault size, growth, review status, health indicators | v2.2 |
+| `reindex.sh` | Full rebuild of wiki-index.md from scratch | v2.2 |
+| `setup-git-hooks.sh` | Install git hooks for auto-commit and WIP protection | v2.2 |
+
 ### File Structure (v2.2)
 ```
 v2/
@@ -194,7 +212,11 @@ v2/
 │   ├── common-instructions.prompt
 │   ├── entry-structure.prompt
 │   ├── concept-structure.prompt
-│   └── moc-structure.prompt
+│   ├── moc-structure.prompt
+│   ├── compile-pass.prompt    # NEW: compile pass operations
+│   ├── query-vault.prompt     # NEW: query + compound-back
+│   ├── review-enrich.prompt   # NEW: review enrichment
+│   └── review-update.prompt   # NEW: review connection updates
 ├── scripts/
 │   ├── process-inbox.sh       # MODIFIED: sources common.sh, --interactive, externalized prompts
 │   ├── review-pass.sh         # NEW: interactive entry review
@@ -230,9 +252,12 @@ common.sh ← process-inbox.sh
          ← vault-stats.sh
          ← reindex.sh
 
-prompts/*.prompt ← process-inbox.sh
-                  ← compile-pass.sh (inline)
-                  ← query-vault.sh (inline)
+prompts/*.prompt ← process-inbox.sh (via load_prompt)
+                  ← compile-pass.sh (via load_prompt)
+                  ← query-vault.sh (via load_prompt)
+                  ← review-pass.sh (via load_prompt)
+
+load_prompt() ← all scripts that use externalized prompts
 ```
 
 ## Migration from v2.1 to v2.2
