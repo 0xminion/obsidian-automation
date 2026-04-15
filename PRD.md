@@ -226,7 +226,8 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 │   ├── lint-vault.sh          # 10 health checks
 │   ├── vault-stats.sh         # dashboard generation
 │   ├── reindex.sh             # full index rebuild
-│   └── setup-git-hooks.sh     # git initialization + hooks
+│   ├── setup-git-hooks.sh     # git initialization + hooks
+│   └── migrate-vault.sh       # optional: adopt existing vaults into v2 format
 ├── templates/
 │   ├── Entry.md
 │   ├── agents.md

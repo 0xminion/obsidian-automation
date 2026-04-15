@@ -326,6 +326,35 @@ get_edges_by_type() {
 }
 
 # ═══════════════════════════════════════════════════════════
+# FILENAME COLLISION DETECTION
+# ═══════════════════════════════════════════════════════════
+# Check if writing a note would overwrite an existing file.
+# Usage: check_collision "entries" "My-Note-Title" || echo "collision!"
+# Returns: 0 if safe, 1 if file already exists
+check_collision() {
+  local note_dir="$1"
+  local note_name="$2"
+  local target="$VAULT_PATH/04-Wiki/$note_dir/${note_name}.md"
+  [ ! -f "$target" ]
+}
+
+# Generate a unique filename by appending a suffix if collision detected.
+# Usage: unique_name=$(resolve_collision "entries" "My-Note-Title")
+resolve_collision() {
+  local note_dir="$1"
+  local note_name="$2"
+  local counter=1
+  local candidate="$note_name"
+
+  while ! check_collision "$note_dir" "$candidate"; do
+    candidate="${note_name}-${counter}"
+    counter=$((counter + 1))
+    [ $counter -gt 100 ] && { echo "${note_name}-$(date +%s)"; return; }
+  done
+  echo "$candidate"
+}
+
+# ═══════════════════════════════════════════════════════════
 # PROMPT LOADING
 # ═══════════════════════════════════════════════════════════
 # Load a prompt template from prompts/

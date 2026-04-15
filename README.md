@@ -5,6 +5,8 @@ Automated knowledge management system that turns raw web content, PDFs, and YouT
 ## What's New in v2.2
 
 - **Podcast support** (`process-inbox.sh`) — ingest podcast episodes via AssemblyAI transcription (100hrs/month free) with local whisper fallback
+- **Collision detection** — `check_collision()` / `resolve_collision()` prevent overwriting existing notes
+- **Vault migration** (`migrate-vault.sh`) — adopt existing Obsidian vaults into v2 format with scan/dry-run/execute modes
 - **Review pass** (`review-pass.sh`) — discuss processed entries with the LLM, enrich them, mark reviewed
 - **Query compound-back** — queries don't just create answer entries, they update existing wiki pages with discovered connections
 - **Shared library** (`lib/common.sh`) — all scripts share retry logic, logging, lock management, URL dedup
@@ -159,6 +161,40 @@ All scripts source this. Provides:
 | `compile-pass.sh` | MoC notes (rebuild), schema review | Operations 3, 9 |
 | `query-vault.sh` | Entry answers + new Concepts + compound-back updates | Steps 5-9 |
 | `lint-vault.sh` | None (read-only) | — |
+
+## Migration from Existing Vault
+
+If you have an existing Obsidian vault with a different structure, use `migrate-vault.sh`:
+
+```bash
+# Step 1: Scan — audit your vault (read-only, no changes)
+VAULT_PATH="$HOME/MyVault" bash scripts/migrate-vault.sh --scan
+
+# Step 2: Dry-run — preview exactly what would change
+VAULT_PATH="$HOME/MyVault" bash scripts/migrate-vault.sh --dry-run
+
+# Step 3: Execute — apply changes (creates backup by default)
+VAULT_PATH="$HOME/MyVault" bash scripts/migrate-vault.sh --execute
+
+# Skip backup (not recommended):
+VAULT_PATH="$HOME/MyVault" bash scripts/migrate-vault.sh --execute --no-backup
+```
+
+What it does:
+- Creates missing 01-09 directories (non-destructive)
+- Adds missing frontmatter fields to entry notes (`reviewed: null`, `review_notes: null`, `template: standard`, `aliases: []`)
+- Builds `url-index.tsv` from existing sources
+- Creates `edges.tsv` if missing
+- Creates a timestamped backup before modifying
+- Generates a detailed report at `$VAULT_PATH/migration-report-*.md`
+
+What it does NOT do:
+- Does NOT modify notes without frontmatter (flags them for manual review)
+- Does NOT change note content or structure
+- Does NOT overwrite existing files
+- Does NOT run automatically — you must invoke it
+
+After migration, run `lint-vault.sh` to check remaining issues and `reindex.sh` to rebuild the index.
 
 ## Notes
 
