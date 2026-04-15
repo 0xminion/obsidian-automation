@@ -1,179 +1,168 @@
-# Obsidian AI-Automated PKM Vault
+# v2.2: Obsidian AI-Automated PKM Vault — Karpathy-Style Wiki
 
-Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a self-compiling wiki — all humanized to sound natural.
+Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a self-compiling wiki. Inspired by Andrej Karpathy's "LLM Knowledge Bases" approach.
 
-**v2.1 (Karpathy-style)** — A self-compiling wiki with visual numbering (01-09). Separate workflow folders for Raw, Clippings, Queries, and Archives. Entries use numbered list items inside standard markdown headings. Concepts are shared across sources. The wiki index replaces RAG as the retrieval layer. Located in `v2/`.
+## What's New in v2.2
 
-**v1 (linear pipeline)** — The original one-shot inbox processor. Located at the repo root (`scripts/`, `docs/`, `templates/`).
+- **Review pass** (`review-pass.sh`) — discuss processed entries with the LLM, enrich them, mark reviewed
+- **Query compound-back** — queries don't just create answer entries, they update existing wiki pages with discovered connections
+- **Shared library** (`lib/common.sh`) — all scripts share retry logic, logging, lock management, URL dedup
+- **Domain-adaptive templates** — Entry notes support `standard`, `technical`, `comparison`, `procedural` templates
+- **Typed edges** (`edges.tsv`) — relationships between notes with types: extends, contradicts, supports, supersedes, tested_by, depends_on, inspired_by
+- **Git auto-commit** — all operations auto-commit with structured messages
+- **Vault stats** (`vault-stats.sh`) — dashboard showing growth, health, review status
+- **Full reindex** (`reindex.sh`) — rebuild wiki-index.md from scratch (fsck for your wiki)
+- **Externalized prompts** — prompt templates in `prompts/*.prompt` files, no more inline heredocs
+- **Schema co-evolution** — compile pass evaluates agents.md and suggests improvements
 
-## Quick Decision Guide
-
-| | v1 (current root) | v2.1 (new) |
-|---|---|---|
-| **Philosophy** | Pipeline: inbox → notes → archive | Wiki: inbox → self-compiling knowledge base |
-| **Note structure** | Source → Distilled → Atomic → MoC | Source → Entry → Concept → MoC |
-| **Concepts** | Per-source (one Atomic per idea) | Shared vocabulary across all sources |
-| **Retrieval** | Manual search | wiki-index.md (auto-maintained TOC with summaries) |
-| **Self-improves** | No — one-shot processing | Yes — compile pass cross-links, merges, rebuilds |
-| **Q&A** | Answers → WIP (dead-ended) | Answers → Entries back into wiki (expands knowledge) |
-| **Linting** | Basic (orphans, broken links) | 8 checks including concept consistency + drift |
-| **Who** | Start here, it works | Want Karpathy's "living wiki" vision |
-
----
-
-## v2.1: Karpathy-Style Wiki (Recommended)
-
-### Vault Structure
+## Vault Structure
 
 ```
-01-Raw/              →  Drop URLs, PDFs, files here
+01-Raw/             →  Drop URLs, PDFs, files here
 02-Clippings/        →  Web clipper saves (already markdown)
 03-Queries/          →  Drop .md files with questions for Q&A
 04-Wiki/
 ├── sources/         ←  Full original content (not humanized)
-├── entries/         ←  Entry notes (numbered list items inside sections)
-├── concepts/        ←  Shared ideas across sources (cross-source vocabulary)
+├── entries/         ←  Entry notes (humanized, template-aware)
+├── concepts/        ←  Shared vocabulary across sources
 └── mocs/            ←  Topic hubs with synthesized summaries
 05-Outputs/
 ├── answers/         ←  Q&A responses (duplicate for quick access)
-└── visualizations/  ←  Charts, diagrams
+└── visualizations/  ←  Charts, diagrams, exports
 06-Config/
-├── wiki-index.md     — Auto-maintained table of contents
-├── url-index.tsv     — URL → entry mapping for dedup
-├── tag-registry.md   — Canonical tag list
-├── log.md            — Structured activity log ([YYYY-MM-DD] format, parseable)
-└── agents.md         — Schema: tells any LLM agent how to maintain the wiki
+├── wiki-index.md    ←  Auto-maintained TOC (retrieval layer)
+├── url-index.tsv    ←  URL → entry mapping (dedup)
+├── edges.tsv        ←  Typed relationships between notes
+├── tag-registry.md  ←  Canonical tag list
+├── log.md           ←  Structured activity log
+└── agents.md        ←  Schema: tells any LLM agent how to maintain the wiki
 07-WIP/              ←  Your drafts (untouched by automation)
 08-Archive-Raw/      ←  Processed inbox items
 09-Archive-Queries/  ←  Answered queries
 ```
 
-### Entry Note Structure
+## Scripts
 
-Every Entry in `04-Wiki/entries/` has numbered list **items inside** standard markdown headings:
+| Script | Purpose |
+|---|---|
+| `process-inbox.sh` | Ingest: Source → Entry → Concepts → MoCs. Supports `--interactive` flag |
+| `review-pass.sh` | Review processed entries: `--untouched`, `--last N`, `--topic TAG`, `--entry NAME`, `--interactive` |
+| `compile-pass.sh` | Cross-link, concept convergence, MoC rebuild, index rebuild, typed edges, schema review |
+| `query-vault.sh` | Q&A with compound-back: answers expand wiki + update existing pages |
+| `lint-vault.sh` | 9 health checks: orphans, unreviewed, stale, broken links, empty, drift, edges |
+| `vault-stats.sh` | Dashboard: vault size, growth, review status, health indicators |
+| `reindex.sh` | Full rebuild of wiki-index.md from scratch |
+| `setup-git-hooks.sh` | Install git hooks for auto-commit and WIP protection |
 
-```markdown
----
-title: "Title"
-source: "[[Source note]]"
-date_entry: YYYY-MM-DD
-tags:
-  - entry
-  - topic-tag-1
-status: review
-aliases: []
----
+## Entry Note Templates
 
-# Title
+Use the `template:` frontmatter field to select:
 
-## Summary
-3-5 sentence overview. Plain language, no fluff.
+| Template | Sections | Use for |
+|---|---|---|
+| `standard` (default) | Summary, ELI5 insights, Diagrams, Open questions, Linked concepts | General articles |
+| `technical` | Summary, Key Findings, Data/Evidence, Methodology, Limitations, Linked concepts | Research papers, data-heavy |
+| `comparison` | Summary, Side-by-Side, Pros/Cons, Verdict, Linked concepts | Product comparisons |
+| `procedural` | Summary, Prerequisites, Steps, Gotchas, Linked concepts | Tutorials, how-tos |
 
-## ELI5 insights
+## Typed Edges (`edges.tsv`)
 
-### Core insights
+Tab-separated relationships between notes:
 
-1. First core insight — explained for a 12-year-old.
-2. Second core insight — concrete example, no jargon.
-3. Third core insight — as many as exist.
-
-### Other takeaways
-
-4. Continues numbering from Core insights.
-5. Fourth insight — same ELI5 treatment.
-
-## Diagrams
-Mermaid diagrams if warranted, else "N/A — content is straightforward."
-
-## Open questions
-
-1. First question or gap from the source.
-2. Second open question.
-
-## Linked concepts
-
-- [[Concept note 1]]
-- [[Concept note 2]]
-- [[Related Entry or MoC]]
+```
+source	target	type	description
+L2 Sequencing	Based Rollups	extends	Based rollups solve sequencer centralization
+Entry A	Entry B	contradicts	Disagree on fee market design
+Concept X	Entry Y	tested_by	Entry Y provides empirical evidence
 ```
 
-### Quick Start
+Types: `extends`, `contradicts`, `supports`, `supersedes`, `tested_by`, `depends_on`, `inspired_by`
+
+Built automatically during compile-pass. Also added during queries and reviews.
+
+## Quick Start
 
 ```bash
-# 1. Clone and set up vault
-git clone https://github.com/0xminion/obsidian-automation
+# 1. Set up vault
 mkdir -p ~/MyVault/{01-Raw,02-Clippings,03-Queries,04-Wiki/{sources,entries,concepts,mocs},05-Outputs/{answers,visualizations},06-Config,07-WIP,08-Archive-Raw,09-Archive-Queries,Meta/Scripts,Meta/Templates}
 
-# 2. Copy v2.1 scripts and templates
-chmod +x obsidian-automation/v2/scripts/*.sh
-cp obsidian-automation/v2/scripts/*.sh ~/MyVault/Meta/Scripts/
-cp obsidian-automation/v2/templates/*.md ~/MyVault/Meta/Templates/
+# 2. Copy scripts, lib, prompts, and templates
+chmod +x scripts/*.sh
+cp scripts/*.sh ~/MyVault/Meta/Scripts/
+cp lib/common.sh ~/MyVault/Meta/Scripts/../lib/
+cp -r prompts ~/MyVault/Meta/Scripts/../
+cp templates/*.md ~/MyVault/Meta/Templates/
 
-# 3. Process inbox
+# 3. Set up git hooks (optional but recommended)
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/setup-git-hooks.sh
+
+# 4. Process (batch mode)
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh
 
-# 4. Recompile wiki (weekly)
+# 4b. Process (interactive — discuss each source)
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh --interactive
+
+# 5. Review unreviewed entries
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/review-pass.sh --untouched --interactive
+
+# 6. Compile (weekly)
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/compile-pass.sh
 
-# 5. Query the wiki (drop .md in 03-Queries/)
+# 7. Query
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/query-vault.sh
 
-# 6. Health check
+# 8. Lint
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/lint-vault.sh
+
+# 9. Stats
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/vault-stats.sh
+
+# 10. Reindex (if index drift detected)
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/reindex.sh
 ```
 
----
-
-## v1: Linear Pipeline
-
-The original implementation. Still functional but doesn't self-improve.
-
-### Vault Structure
+## Recommended Workflow
 
 ```
-00-Inbox/
-├── raw/            →  Drop URLs, PDFs, files
-├── clippings/      →  Web clipper saves
-├── quick notes/    →  Manual notes (untouched)
-├── queries/        →  Q&A questions
-└── failed/         →  Processing failures
-01-Sources/         ←  Full original content
-02-Distilled/       ←  AI summaries (## Summary → ELI5 → Diagrams)
-03-Atomic/          ←  One idea per note
-04-MoCs/            ←  Topic hubs
-05-WIP/             ←  User drafts
-06-Archive/         ←  Processed items
+Daily:    Drop sources in 01-Raw/, run process-inbox.sh
+          Drop questions in 03-Queries/, run query-vault.sh
+
+Weekly:   Run compile-pass.sh (cross-links, concept merge, edges, schema review)
+          Run review-pass.sh --untouched (review key entries)
+          Run lint-vault.sh (check health)
+          Run vault-stats.sh (check dashboard)
+
+Monthly:  Run reindex.sh (if lint flags drift)
+          Review Meta/Scripts/schema-review.md (from compile)
 ```
 
-See `v2/` for the Karpathy-aligned approach.
+## Shared Library (`lib/common.sh`)
 
----
+All scripts source this. Provides:
+- `log()` — structured logging
+- `run_with_retry()` — exponential backoff, max 3 attempts
+- `acquire_lock()` / `release_lock()` — prevents overlapping runs
+- `source_exists_for_url()` / `register_url_source()` — URL dedup
+- `setup_directory_structure()` — creates all vault directories
+- `append_log_md()` — structured log.md entries
+- `add_edge()` / `get_edges()` — typed relationship management
+- `auto_commit()` — git auto-commit with structured messages
+- `load_prompt()` — load prompt templates from `prompts/*.prompt` files
 
 ## Humanizer Skill Usage
-
-The Humanizer skill is active in these v2.1 processes:
 
 | Process | What gets humanized | Where |
 |---|---|---|
 | `process-inbox.sh` | Entry, Concept, MoC notes | Steps 3-5 of each processor |
-| `compile-pass.sh` | MoC notes + Concept notes (rebuild) | Operation 2 |
-| `query-vault.sh` | Entry answers + new Concepts | Step 8 |
+| `review-pass.sh` | Enriched/updated entries | During enrich/update |
+| `compile-pass.sh` | MoC notes (rebuild), schema review | Operations 3, 9 |
+| `query-vault.sh` | Entry answers + new Concepts + compound-back updates | Steps 5-9 |
 | `lint-vault.sh` | None (read-only) | — |
 
-The Humanizer is declared as available in `COMMON_INSTRUCTIONS` and every processing prompt explicitly instructs the agent to "humanize before writing." The agent's runtime loads the Humanizer skill and applies pattern removal before final file writes.
+## Notes
 
-## Repository Structure
-
-```
-obsidian-automation/
-├── README.md                        # This file
-├── docs/                            # v1 guides
-├── scripts/                         # v1 scripts
-├── templates/                       # v1 templates
-├── skills/                          # Skill references
-└── v2/                              # Karpathy-style wiki (v2.1 recommended)
-    ├── README.md                    # Full v2.1 guide
-    ├── docs/                        # v2 setup guides (Part1, Part2)
-    ├── scripts/                     # v2.1 scripts (numbered 01-09 structure)
-    └── templates/                   # Entry, Concept, MoC, Source...
-```
+- Scripts use `set -uo pipefail` (not `set -e`). Errors are handled explicitly via `|| result=$?` pattern. This is intentional — transient failures (API rate limits, file races) should retry, not abort.
+- `setup-git-hooks.sh` intentionally does not source `lib/common.sh` — it runs during initial setup before the library exists.
+- Lock files use `mkdir` (atomic on POSIX) instead of `touch` (TOCTOU race).
+- `md5sum` has portable fallbacks: `md5 -q` (macOS) → `cksum` (any system).
+- Tested with bash 4.4+. Run `shellcheck scripts/*.sh` for static analysis.

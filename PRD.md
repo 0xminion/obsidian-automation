@@ -74,7 +74,7 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 
 **Problem:** `run_with_retry()`, `log()`, lock management copy-pasted across 3+ scripts.
 
-**Solution:** Shared library at `v2/lib/common.sh` sourced by all scripts.
+**Solution:** Shared library at `lib/common.sh` sourced by all scripts.
 
 **Acceptance Criteria:**
 - All scripts source `lib/common.sh` — no duplicated functions
@@ -145,7 +145,7 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 
 **Problem:** Prompt templates are inline shell variables buried in scripts.
 
-**Solution:** Move to `v2/prompts/*.prompt` files:
+**Solution:** Move to `prompts/*.prompt` files:
 - `common-instructions.prompt`
 - `entry-structure.prompt`
 - `concept-structure.prompt`
@@ -205,30 +205,29 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 
 ### File Structure (v2.2)
 ```
-v2/
 ├── lib/
-│   └── common.sh              # NEW: shared functions
-├── prompts/                   # NEW: externalized prompts
+│   └── common.sh              # shared functions
+├── prompts/                   # externalized prompts
 │   ├── common-instructions.prompt
 │   ├── entry-structure.prompt
 │   ├── concept-structure.prompt
 │   ├── moc-structure.prompt
-│   ├── compile-pass.prompt    # NEW: compile pass operations
-│   ├── query-vault.prompt     # NEW: query + compound-back
-│   ├── review-enrich.prompt   # NEW: review enrichment
-│   └── review-update.prompt   # NEW: review connection updates
+│   ├── compile-pass.prompt
+│   ├── query-vault.prompt
+│   ├── review-enrich.prompt
+│   └── review-update.prompt
 ├── scripts/
-│   ├── process-inbox.sh       # MODIFIED: sources common.sh, --interactive, externalized prompts
-│   ├── review-pass.sh         # NEW: interactive entry review
-│   ├── compile-pass.sh        # MODIFIED: sources common.sh, fixed dup bug, edges + schema review
-│   ├── query-vault.sh         # MODIFIED: sources common.sh, compound-back
-│   ├── lint-vault.sh          # MODIFIED: sources common.sh, template-aware, edges check
-│   ├── vault-stats.sh         # NEW: dashboard generation
-│   ├── reindex.sh             # NEW: full index rebuild
-│   └── setup-git-hooks.sh     # NEW: git initialization + hooks
+│   ├── process-inbox.sh       # ingest with --interactive
+│   ├── review-pass.sh         # interactive entry review
+│   ├── compile-pass.sh        # cross-links, edges, schema review
+│   ├── query-vault.sh         # Q&A with compound-back
+│   ├── lint-vault.sh          # 10 health checks
+│   ├── vault-stats.sh         # dashboard generation
+│   ├── reindex.sh             # full index rebuild
+│   └── setup-git-hooks.sh     # git initialization + hooks
 ├── templates/
-│   ├── Entry.md               # MODIFIED: reviewed/review_notes/template fields
-│   ├── agents.md              # MODIFIED: review/edges/compound-back/co-evolution workflows
+│   ├── Entry.md
+│   ├── agents.md
 │   ├── Concept.md
 │   ├── MoC.md
 │   ├── Source.md
@@ -239,7 +238,9 @@ v2/
 ├── docs/
 │   ├── Part1-Vault-Structure-Setup.md
 │   └── Part2-Automation-Skills-Setup.md
-└── README.md                  # MODIFIED: v2.2 documentation
+├── v1/                        # archived v1 scripts, skills, templates
+├── PRD.md
+└── README.md
 ```
 
 ### Dependency Graph
