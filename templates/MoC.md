@@ -23,3 +23,6 @@ tags:
 
 ## Open Threads
 - Questions/gaps for future exploration
+
+## Notes
+<Optional deeper commentary about the state of knowledge on this topic.>

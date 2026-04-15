@@ -12,6 +12,12 @@ set -uo pipefail
 
 VAULT_PATH="${VAULT_PATH:-$HOME/MyVault}"
 
+# Optional: source common.sh if available for logging consistency
+SCRIPT_DIR_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR_SETUP/../lib/common.sh" ]; then
+  source "$SCRIPT_DIR_SETUP/../lib/common.sh"
+fi
+
 if [ ! -d "$VAULT_PATH/.git" ]; then
   echo "Vault at $VAULT_PATH is not a git repository."
   echo "Initializing..."

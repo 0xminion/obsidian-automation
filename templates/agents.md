@@ -64,6 +64,7 @@ tags:
   - source
   - relevant-topic
 status: processed
+aliases: []
 ---
 # Title
 
@@ -246,9 +247,10 @@ Operations: ingest, review, query, compile, lint, reindex
 3. MoC refresh: Rebuild MoC notes with updated summaries
 4. Index rebuild: Regenerate `06-Config/wiki-index.md` from scratch
 5. Duplicate detection: Flag similar entries/concepts for review
-6. Typed edges construction: Build `06-Config/edges.tsv` from relationships
-7. Schema co-evolution: Evaluate `agents.md` and suggest improvements
-8. Log the compile pass
+6. Entry template assessment: Check if entries should use a non-standard template
+7. Typed edges construction: Build `06-Config/edges.tsv` from relationships
+8. Schema co-evolution: Evaluate `agents.md` and suggest improvements
+9. Log the compile pass
 
 ### Lint Workflow
 
@@ -259,10 +261,11 @@ Run health checks:
 3. Stale reviews (status: review older than 14 days)
 4. Broken wikilinks (link targets don't exist)
 5. Empty or near-empty notes (< 50 chars body)
-6. Concept inconsistencies (conflicting facts across notes)
-7. Orphaned concepts (no entry references them)
-8. Wiki index drift (index out of sync with actual notes)
-9. Edges consistency (edges referencing non-existent notes)
+6. Concept structure checks (orphaned concepts with no entry refs)
+7. Entry template section validation (sections match template type)
+8. Orphaned concepts (no entry references them)
+9. Wiki index drift (index out of sync with actual notes)
+10. Edges consistency (edges referencing non-existent notes)
 
 ## Git Hooks
 

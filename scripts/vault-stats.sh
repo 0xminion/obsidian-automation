@@ -24,10 +24,10 @@ echo "" >> "$DASHBOARD"
 # ═══════════════════════════════════════════════════════════
 # VAULT SIZE
 # ═══════════════════════════════════════════════════════════
-entry_count=$(find "$VAULT_PATH/04-Wiki/entries" -name '*.md' 2>/dev/null | wc -l)
-concept_count=$(find "$VAULT_PATH/04-Wiki/concepts" -name '*.md' 2>/dev/null | wc -l)
-moc_count=$(find "$VAULT_PATH/04-Wiki/mocs" -name '*.md' 2>/dev/null | wc -l)
-source_count=$(find "$VAULT_PATH/04-Wiki/sources" -name '*.md' 2>/dev/null | wc -l)
+entry_count=$(find "$VAULT_PATH/04-Wiki/entries" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+concept_count=$(find "$VAULT_PATH/04-Wiki/concepts" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+moc_count=$(find "$VAULT_PATH/04-Wiki/mocs" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+source_count=$(find "$VAULT_PATH/04-Wiki/sources" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 total_notes=$((entry_count + concept_count + moc_count + source_count))
 
 cat >> "$DASHBOARD" << EOF
@@ -112,8 +112,8 @@ fi
 # Edges count
 edge_count=0
 if [ -f "$VAULT_PATH/06-Config/edges.tsv" ]; then
-  edge_count=$(( $(wc -l < "$VAULT_PATH/06-Config/edges.tsv") - 1 ))
-  [ "$edge_count" -lt 0 ] && edge_count=0
+  edge_count=$(( $(wc -l < "$VAULT_PATH/06-Config/edges.tsv" | tr -d ' ') - 1 ))
+  [ "$edge_count" -lt 0 ] 2>/dev/null && edge_count=0
 fi
 
 # Last ingest

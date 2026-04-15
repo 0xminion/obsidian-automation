@@ -366,8 +366,8 @@ if [ -f "$VAULT_PATH/06-Config/wiki-index.md" ]; then
   index_entry_count=$(grep -c '(entry)' "$VAULT_PATH/06-Config/wiki-index.md" 2>/dev/null || echo 0)
   index_concept_count=$(grep -c '(concept)' "$VAULT_PATH/06-Config/wiki-index.md" 2>/dev/null || echo 0)
 
-  actual_entry_count=$(find "$VAULT_PATH/04-Wiki/entries" -name '*.md' 2>/dev/null | wc -l)
-  actual_concept_count=$(find "$VAULT_PATH/04-Wiki/concepts" -name '*.md' 2>/dev/null | wc -l)
+  actual_entry_count=$(find "$VAULT_PATH/04-Wiki/entries" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+  actual_concept_count=$(find "$VAULT_PATH/04-Wiki/concepts" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 
   if [ "$index_entry_count" -ne "$actual_entry_count" ]; then
     echo "- **Entry mismatch**: Index lists $index_entry_count, actual files: $actual_entry_count" >> "$REPORT_FILE"
@@ -403,8 +403,8 @@ echo "" >> "$REPORT_FILE"
 edge_issues=0
 
 if [ -f "$VAULT_PATH/06-Config/edges.tsv" ]; then
-  total_edges=$(( $(wc -l < "$VAULT_PATH/06-Config/edges.tsv") - 1 ))
-  [ "$total_edges" -lt 0 ] && total_edges=0
+  total_edges=$(( $(wc -l < "$VAULT_PATH/06-Config/edges.tsv" | tr -d ' ') - 1 ))
+  [ "$total_edges" -lt 0 ] 2>/dev/null && total_edges=0
 
   # Check for edges referencing non-existent notes
   while IFS=$'\t' read -r source target type desc; do

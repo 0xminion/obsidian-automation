@@ -23,7 +23,7 @@ mkdir -p "$VAULT_PATH/05-Outputs/answers"
 mkdir -p "$VAULT_PATH/08-Archive-Raw"
 mkdir -p "$VAULT_PATH/04-Wiki/concepts"
 
-query_count=$(find "$VAULT_PATH/03-Queries" -name '*.md' 2>/dev/null | wc -l)
+query_count=$(find "$VAULT_PATH/03-Queries" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 if [ "$query_count" -eq 0 ]; then
   echo "No query files found in $VAULT_PATH/03-Queries/"
   echo "Create a .md file with your question and re-run."
@@ -48,7 +48,7 @@ build_vault_summary() {
   for dir in "04-Wiki/entries" "04-Wiki/concepts" "04-Wiki/mocs" "04-Wiki/sources"; do
     dir_path="$VAULT_PATH/$dir"
     [ -d "$dir_path" ] || continue
-    count=$(find "$dir_path" -name '*.md' 2>/dev/null | wc -l)
+    count=$(find "$dir_path" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
     echo "## $dir/ ($count notes):"
     if [ "$count" -gt 0 ] && [ "$count" -le 20 ]; then
       for note in "$dir_path"/*.md; do
@@ -66,7 +66,7 @@ build_vault_summary() {
   # Include typed edges summary
   if [ -f "$VAULT_PATH/06-Config/edges.tsv" ]; then
     local edge_count
-    edge_count=$(( $(wc -l < "$VAULT_PATH/06-Config/edges.tsv") - 1 ))
+    edge_count=$(( $(wc -l < "$VAULT_PATH/06-Config/edges.tsv" | tr -d ' ') - 1 ))
     if [ "$edge_count" -gt 0 ]; then
       echo "## Typed Edges ($edge_count relationships):"
       head -20 "$VAULT_PATH/06-Config/edges.tsv"

@@ -70,15 +70,36 @@ _lock_dir=""
 acquire_lock() {
   local script_name="$1"
   local vault_hash
-# Portable hash: try md5sum (GNU), then md5 -q (macOS), then cksum (fallback)
-vault_hash=$(echo "$VAULT_PATH" | { md5sum 2>/dev/null || md5 -q 2>/dev/null || cksum; } | cut -c1-8)
+  # Portable hash: try md5sum (GNU), then md5 -q (macOS), then cksum (fallback)
+  vault_hash=$(echo "$VAULT_PATH" | { md5sum 2>/dev/null || md5 -q 2>/dev/null || cksum; } | cut -c1-8)
   _lock_dir="/tmp/obsidian-${script_name}-${vault_hash}.lock"
+
+  # Check for stale lock (process that created it is no longer running)
+  if [ -d "$_lock_dir" ]; then
+    local lock_pid_file="$_lock_dir/pid"
+    if [ -f "$lock_pid_file" ]; then
+      local lock_pid
+      lock_pid=$(cat "$lock_pid_file" 2>/dev/null)
+      if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
+        echo "$(date): Removing stale lock for $script_name (PID $lock_pid no longer running)" >> "$LOG_FILE"
+        rm -rf "$_lock_dir" 2>/dev/null || true
+      fi
+    else
+      # No PID file — legacy lock or very old instance, remove it
+      echo "$(date): Removing stale lock for $script_name (no PID file)" >> "$LOG_FILE"
+      rm -rf "$_lock_dir" 2>/dev/null || true
+    fi
+  fi
 
   # Atomic lock via mkdir (mkdir is atomic on all POSIX systems)
   if ! mkdir "$_lock_dir" 2>/dev/null; then
     echo "$(date): Another $script_name instance is already running. Exiting." >> "$LOG_FILE"
     return 1
   fi
+
+  # Store PID for stale lock detection
+  echo $$ > "$_lock_dir/pid" 2>/dev/null || true
+
   trap 'release_lock' EXIT INT TERM HUP
   return 0
 }

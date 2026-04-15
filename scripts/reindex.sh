@@ -86,7 +86,7 @@ echo "" >> "$INDEX_FILE"
 
 # Scan MoCs
 if [ -d "$VAULT_PATH/04-Wiki/mocs" ]; then
-  moc_count=$(find "$VAULT_PATH/04-Wiki/mocs" -name '*.md' 2>/dev/null | wc -l)
+  moc_count=$(find "$VAULT_PATH/04-Wiki/mocs" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
   if [ "$moc_count" -gt 0 ]; then
     echo "## Maps of Content" >> "$INDEX_FILE"
     echo "" >> "$INDEX_FILE"

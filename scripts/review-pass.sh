@@ -244,19 +244,34 @@ update_review_status() {
   local date="$2"
   local notes="$3"
 
-  # Update reviewed field in frontmatter
-  if grep -q '^reviewed:' "$entry_path" 2>/dev/null; then
-    sed -i "s/^reviewed:.*/reviewed: $date/" "$entry_path"
+  # Portable sed -i: GNU uses 'sed -i', BSD uses 'sed -i ""'
+  if sed --version >/dev/null 2>&1; then
+    sed -i "s/^reviewed:.*/reviewed: $date/" "$entry_path" 2>/dev/null || true
   else
+    sed -i '' "s/^reviewed:.*/reviewed: $date/" "$entry_path" 2>/dev/null || true
+  fi
+  if ! grep -q '^reviewed:' "$entry_path" 2>/dev/null; then
     # Add after status line
-    sed -i "/^status:/a reviewed: $date" "$entry_path"
+    if sed --version >/dev/null 2>&1; then
+      sed -i "/^status:/a reviewed: $date" "$entry_path" 2>/dev/null || true
+    else
+      sed -i '' "/^status:/a reviewed: $date" "$entry_path" 2>/dev/null || true
+    fi
   fi
 
   # Update review_notes
   if grep -q '^review_notes:' "$entry_path" 2>/dev/null; then
-    sed -i "s/^review_notes:.*/review_notes: \"$notes\"/" "$entry_path"
+    if sed --version >/dev/null 2>&1; then
+      sed -i "s/^review_notes:.*/review_notes: \"$notes\"/" "$entry_path" 2>/dev/null || true
+    else
+      sed -i '' "s/^review_notes:.*/review_notes: \"$notes\"/" "$entry_path" 2>/dev/null || true
+    fi
   else
-    sed -i "/^reviewed:/a review_notes: \"$notes\"" "$entry_path"
+    if sed --version >/dev/null 2>&1; then
+      sed -i "/^reviewed:/a review_notes: \"$notes\"" "$entry_path" 2>/dev/null || true
+    else
+      sed -i '' "/^reviewed:/a review_notes: \"$notes\"" "$entry_path" 2>/dev/null || true
+    fi
   fi
 }
 
