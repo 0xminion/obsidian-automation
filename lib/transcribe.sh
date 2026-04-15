@@ -13,6 +13,15 @@
 set -uo pipefail
 
 # ═══════════════════════════════════════════════════════════
+# JSON PARSING HELPER
+# ═══════════════════════════════════════════════════════════
+# Safely extract a field from JSON. Handles escaped quotes, unicode, etc.
+# Usage: value=$(json_field "$json_string" "field_name")
+json_field() {
+  echo "$1" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$2',''))" 2>/dev/null || true
+}
+
+# ═══════════════════════════════════════════════════════════
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════
 # Transcription backend: "assemblyai" or "local"
@@ -53,12 +62,15 @@ transcribe_assemblyai() {
   log "AssemblyAI: Uploading $(basename "$audio_file") ($(du -h "$audio_file" | cut -f1))"
 
   # Step 1: Upload audio file
-  local upload_url
-  upload_url=$(curl -s -X POST "$ASSEMBLYAI_API_URL/v2/upload" \
+  local upload_response
+  upload_response=$(curl -s -X POST "$ASSEMBLYAI_API_URL/v2/upload" \
     -H "Authorization: $ASSEMBLYAI_API_KEY" \
     -H "Content-Type: application/octet-stream" \
     --data-binary "@$audio_file" \
-    --max-time 300 2>>"$LOG_FILE" | grep -o '"upload_url":"[^"]*"' | cut -d'"' -f4)
+    --max-time 300 2>>"$LOG_FILE")
+
+  local upload_url
+  upload_url=$(json_field "$upload_response" "upload_url")
 
   if [ -z "$upload_url" ]; then
     echo "ERROR: AssemblyAI upload failed" >&2
@@ -77,7 +89,7 @@ transcribe_assemblyai() {
     -d "{\"audio_url\": \"$upload_url\", \"punctuate\": true, \"format_text\": true}" \
     --max-time 30 2>>"$LOG_FILE")
 
-  transcript_id=$(echo "$submit_response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+  transcript_id=$(json_field "$submit_response" "id")
 
   if [ -z "$transcript_id" ]; then
     echo "ERROR: AssemblyAI transcript submission failed" >&2
@@ -98,17 +110,13 @@ transcribe_assemblyai() {
       -H "Authorization: $ASSEMBLYAI_API_KEY" \
       --max-time 10 2>>"$LOG_FILE")
 
-    status=$(echo "$poll_response" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+    status=$(json_field "$poll_response" "status")
 
     case "$status" in
       completed)
-        # Extract transcript text
+        # Extract transcript text via python3 (handles escaped quotes, unicode)
         local text
-        text=$(echo "$poll_response" | grep -o '"text":"[^"]*"' | cut -d'"' -f4)
-        if [ -z "$text" ]; then
-          # Try multiline extraction for longer transcripts
-          text=$(echo "$poll_response" | python3 -c "import sys,json; print(json.load(sys.stdin).get('text',''))" 2>/dev/null || true)
-        fi
+        text=$(json_field "$poll_response" "text")
 
         if [ -z "$text" ]; then
           echo "ERROR: AssemblyAI returned empty transcript" >&2
@@ -122,7 +130,7 @@ transcribe_assemblyai() {
         ;;
       error)
         local error_msg
-        error_msg=$(echo "$poll_response" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)
+        error_msg=$(json_field "$poll_response" "error")
         echo "ERROR: AssemblyAI transcription failed: $error_msg" >&2
         log "AssemblyAI: Error for $transcript_id: $error_msg"
         return 1
@@ -167,7 +175,8 @@ transcribe_local() {
 
   log "Local whisper: Transcribing $(basename "$audio_file") with $LOCAL_WHISPER_CMD"
 
-  local output_file="$TRANSCRIBE_TMP_DIR/transcript_$(date +%s).txt"
+  local basename_no_ext
+  basename_no_ext=$(basename "$audio_file" | sed 's/\.[^.]*$//')
 
   case "$LOCAL_WHISPER_CMD" in
     faster-whisper|faster_whisper)
@@ -180,12 +189,15 @@ transcribe_local() {
         --model "$LOCAL_WHISPER_MODEL" \
         --language "$LOCAL_WHISPER_LANGUAGE" \
         --output_dir "$TRANSCRIBE_TMP_DIR" \
-        --output_format txt 2>>"$LOG_FILE"
+        --output_format txt 2>>"$LOG_FILE" || return 1
 
       # faster-whisper outputs to <filename>.txt
-      local basename_no_ext
-      basename_no_ext=$(basename "$audio_file" | sed 's/\.[^.]*$//')
-      cat "$TRANSCRIBE_TMP_DIR/${basename_no_ext}.txt" 2>/dev/null
+      if [ -f "$TRANSCRIBE_TMP_DIR/${basename_no_ext}.txt" ]; then
+        cat "$TRANSCRIBE_TMP_DIR/${basename_no_ext}.txt"
+        return 0
+      fi
+      echo "ERROR: faster-whisper produced no output file" >&2
+      return 1
       ;;
     whisper|openai-whisper)
       # OpenAI whisper CLI
@@ -197,11 +209,14 @@ transcribe_local() {
         --model "$LOCAL_WHISPER_MODEL" \
         --language "$LOCAL_WHISPER_LANGUAGE" \
         --output_dir "$TRANSCRIBE_TMP_DIR" \
-        --output_format txt 2>>"$LOG_FILE"
+        --output_format txt 2>>"$LOG_FILE" || return 1
 
-      local basename_no_ext
-      basename_no_ext=$(basename "$audio_file" | sed 's/\.[^.]*$//')
-      cat "$TRANSCRIBE_TMP_DIR/${basename_no_ext}.txt" 2>/dev/null
+      if [ -f "$TRANSCRIBE_TMP_DIR/${basename_no_ext}.txt" ]; then
+        cat "$TRANSCRIBE_TMP_DIR/${basename_no_ext}.txt"
+        return 0
+      fi
+      echo "ERROR: whisper produced no output file" >&2
+      return 1
       ;;
     *)
       echo "ERROR: Unknown LOCAL_WHISPER_CMD: $LOCAL_WHISPER_CMD" >&2
@@ -265,16 +280,16 @@ download_audio() {
   # Detect if this is a direct audio file URL
   if [[ "$url" =~ \.(mp3|m4a|wav|ogg|flac|aac|wma)(\?|$) ]]; then
     log "Downloading direct audio: $url"
-    curl -sL -o "$output_file" --max-time 600 "$url" 2>>"$LOG_FILE"
+    curl -sfL -o "$output_file" --max-time 600 "$url" 2>>"$LOG_FILE" || true
   elif command -v yt-dlp &>/dev/null; then
     # Use yt-dlp for platform URLs (Spotify, Apple Podcasts, etc.)
     log "Downloading via yt-dlp: $url"
     yt-dlp -x --audio-format mp3 --audio-quality 5 \
-      -o "$output_file" "$url" 2>>"$LOG_FILE"
+      -o "$output_file" "$url" 2>>"$LOG_FILE" || true
   else
     # Try curl as last resort (may work for some podcast URLs)
     log "Downloading audio (no yt-dlp): $url"
-    curl -sL -o "$output_file" --max-time 600 "$url" 2>>"$LOG_FILE"
+    curl -sfL -o "$output_file" --max-time 600 "$url" 2>>"$LOG_FILE" || true
   fi
 
   if [ ! -f "$output_file" ] || [ ! -s "$output_file" ]; then
