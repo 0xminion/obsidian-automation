@@ -57,7 +57,7 @@ This document instructs you on how to act as an automated wiki maintainer. You o
 ---
 title: "Full title of the source"
 source_url: "https://..."
-source_type: article|youtube|paper|clipping
+source_type: article|youtube|paper|clipping|podcast
 author: "Author Name"
 date_captured: YYYY-MM-DD
 tags:
@@ -207,7 +207,7 @@ Operations: ingest, review, query, compile, lint, reindex
 
 ### Ingest Workflow
 
-1. Parse source (Defuddle for URLs, TranscriptAPI for YouTube, LiteParse for files)
+1. Parse source (Defuddle for URLs, TranscriptAPI for YouTube, LiteParse for files, transcribe.sh for podcasts)
 2. Create Source note in `04-Wiki/sources/`
 3. Create Entry note in `04-Wiki/entries/` (with reviewed: null)
 4. Create/update Concept notes in `04-Wiki/concepts/` (check existing first!)
@@ -216,6 +216,23 @@ Operations: ingest, review, query, compile, lint, reindex
 7. Add typed edges to `06-Config/edges.tsv` if relationships exist
 8. Append to `06-Config/log.md`
 9. Move processed file to `08-Archive-Raw/`
+
+### Podcast Workflow
+
+Podcasts require audio download and transcription before the standard pipeline.
+
+Config:
+- `TRANSCRIBE_BACKEND=assemblyai` (default) or `local`
+- `ASSEMBLYAI_API_KEY=<key>` for AssemblyAI (free tier: 100hrs/month)
+- `LOCAL_WHISPER_CMD=faster-whisper` for local fallback (requires separate install)
+
+Steps:
+1. Download audio via `download_audio(url)` or yt-dlp
+2. Transcribe via `transcribe_audio(audio_path)` — AssemblyAI primary, local fallback
+3. Clean transcript (remove filler artifacts, fix transcription errors)
+4. Create Source note with `source_type: podcast` and full transcript
+5. Standard pipeline: Entry → Concepts → MoCs → Index → Edges → Log
+6. Clean up audio file after processing
 
 ### Review Workflow
 

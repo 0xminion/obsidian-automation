@@ -20,7 +20,13 @@ VAULT STRUCTURE (v2.2):
   08-Archive-Raw/       — Processed inbox items
   09-Archive-Queries/   — Answered queries
 
-AGENT AVAILABLE: obsidian-markdown, humanizer, youtube-full (TranscriptAPI), liteparse
+AGENT AVAILABLE: obsidian-markdown, humanizer, youtube-full (TranscriptAPI), liteparse, podcast (transcribe.sh)
+
+TRANSCRIPTION TOOLS (for podcast processing):
+- download_audio(url) → path to downloaded MP3
+- transcribe_audio(audio_path) → transcript text
+  Backends: AssemblyAI (TRANSCRIBE_BACKEND=assemblyai) or local whisper (TRANSCRIBE_BACKEND=local)
+  Both are in lib/transcribe.sh, already sourced by process-inbox.sh
 
 CRITICAL RULES:
 1. NEVER touch anything in '07-WIP/'. Off-limits.

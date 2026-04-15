@@ -4,6 +4,7 @@ Automated knowledge management system that turns raw web content, PDFs, and YouT
 
 ## What's New in v2.2
 
+- **Podcast support** (`process-inbox.sh`) — ingest podcast episodes via AssemblyAI transcription (100hrs/month free) with local whisper fallback
 - **Review pass** (`review-pass.sh`) — discuss processed entries with the LLM, enrich them, mark reviewed
 - **Query compound-back** — queries don't just create answer entries, they update existing wiki pages with discovered connections
 - **Shared library** (`lib/common.sh`) — all scripts share retry logic, logging, lock management, URL dedup

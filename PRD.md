@@ -206,7 +206,8 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 ### File Structure (v2.2)
 ```
 ├── lib/
-│   └── common.sh              # shared functions
+│   ├── common.sh              # shared functions
+│   └── transcribe.sh          # transcription abstraction (AssemblyAI + local whisper)
 ├── prompts/                   # externalized prompts
 │   ├── common-instructions.prompt
 │   ├── entry-structure.prompt
@@ -215,7 +216,8 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 │   ├── compile-pass.prompt
 │   ├── query-vault.prompt
 │   ├── review-enrich.prompt
-│   └── review-update.prompt
+│   ├── review-update.prompt
+│   └── podcast-structure.prompt
 ├── scripts/
 │   ├── process-inbox.sh       # ingest with --interactive
 │   ├── review-pass.sh         # interactive entry review
@@ -252,6 +254,9 @@ common.sh ← process-inbox.sh
          ← lint-vault.sh
          ← vault-stats.sh
          ← reindex.sh
+         ← transcribe.sh
+
+transcribe.sh ← process-inbox.sh (podcast processing)
 
 prompts/*.prompt ← process-inbox.sh (via load_prompt)
                   ← compile-pass.sh (via load_prompt)

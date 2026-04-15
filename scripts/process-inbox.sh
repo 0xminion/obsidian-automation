@@ -10,6 +10,8 @@
 #   - Sources common library (lib/common.sh) — no more duplicated retry/log code
 #   - --interactive flag for conversational ingestion
 #   - Externalized prompt templates (prompts/*.prompt)
+#   - Podcast support via transcribe.sh (AssemblyAI + local whisper fallback)
+#   - Source type detection: YouTube, podcast, URL, file, clipping
 #   - Typed edges support (edges.tsv)
 #   - Git auto-commit after processing
 #   - Entry frontmatter includes reviewed/review_notes fields
@@ -24,6 +26,7 @@ set -uo pipefail
 # Source common library
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/transcribe.sh"
 
 # ═══════════════════════════════════════════════════════════
 # ARGUMENT PARSING
@@ -96,6 +99,36 @@ is_youtube_link() {
 extract_url_from_file() {
   local file="$1"
   head -1 "$file" | tr -d '[:space:]' | grep -oE 'https?://[^[:space:]]+' || true
+}
+
+# ═══════════════════════════════════════════════════════════
+# PODCAST DETECTION
+# ═══════════════════════════════════════════════════════════
+is_podcast_url() {
+  local file="$1"
+  local url=""
+  local content
+  content=$(cat "$file" 2>/dev/null | tr -d '[:space:]')
+
+  # Extract URL from file
+  if [[ "${file##*.}" == "url" ]]; then
+    url=$(extract_url_from_file "$file")
+  elif [[ "$content" =~ ^https?:// ]]; then
+    url="$content"
+  fi
+
+  [ -z "$url" ] && return 1
+
+  # Direct audio file URLs
+  [[ "$url" =~ \.(mp3|m4a|wav|ogg|flac|aac)(\?|$) ]] && return 0
+
+  # Podcast platforms
+  [[ "$url" =~ (podcasts\.google\.com|podcasts\.apple\.com|open\.spotify\.com/show|open\.spotify\.com/episode|anchor\.fm|buzzsprout\.com|libsyn\.com|podbean\.com|transistor\.fm|simplecast\.com|captivate\.fm|fireside\.fm|podomatic\.com|spreaker\.com|audioboom\.com|soundcloud\.com/.+/sets|soundcloud\.com/[^/]+/[^/]+/?.*$/) ]] && return 0
+
+  # RSS feeds (common podcast feed extensions)
+  [[ "$url" =~ \.rss(\?|$)|feed\.xml(\?|$)|/feed/(\?|$)|/rss/(\?|$) ]] && return 0
+
+  return 1
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -228,6 +261,118 @@ Append a structured header to '06-Config/log.md':
   - Updated wiki-index.md
   - Archived: <filename>
   - Registered URL: <url or \"N/A\">
+"
+}
+
+# ═══════════════════════════════════════════════════════════
+# PROCESS: Podcasts (audio download → transcription)
+# ═══════════════════════════════════════════════════════════
+# Supports: direct MP3 URLs, Apple Podcasts, Spotify, Google Podcasts,
+#           Anchor, Buzzsprout, Libsyn, Podbean, SoundCloud, RSS feeds
+# Backend: AssemblyAI (primary) or local whisper (fallback)
+# Config:  TRANSCRIBE_BACKEND=assemblyai|local
+#          ASSEMBLYAI_API_KEY=<key> (for assemblyai backend)
+#          LOCAL_WHISPER_CMD=faster-whisper (for local backend)
+process_podcast() {
+  local file="$1"
+  local url=""
+  local ext="${file##*.}"
+
+  url=$(cat "$file" | tr -d '[:space:]')
+  if [[ "$ext" == "url" ]]; then url=$(extract_url_from_file "$file"); fi
+
+  if source_exists_for_url "$url"; then
+    skipped=$((skipped + 1))
+    log "SKIP (duplicate): Podcast — file: $file"
+    mkdir -p "$VAULT_PATH/08-Archive-Raw"
+    mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
+    return 0
+  fi
+
+  if ! interactive_review "Podcast: $url" "$url"; then
+    skipped=$((skipped + 1))
+    log "SKIP (user): Podcast — file: $file"
+    return 0
+  fi
+
+  run_with_retry "Podcast — file: $file" "
+$COMMON_INSTRUCTIONS
+
+TASK: Process a podcast episode into the wiki.
+FILE: '$file'
+URL: $url
+TRANSCRIBE_BACKEND: $TRANSCRIBE_BACKEND
+
+STEP 1 — DOWNLOAD AUDIO
+Use the download_audio function (from lib/transcribe.sh) to download the audio:
+  audio_path=\$(download_audio '$url')
+If download fails, try yt-dlp as fallback:
+  yt-dlp -x --audio-format mp3 -o '/tmp/podcast_\$(date +%s).mp3' '$url'
+If both fail, create a Source note with URL and status: needs-audio.
+
+STEP 2 — TRANSCRIBE AUDIO
+Use the transcribe_audio function (from lib/transcribe.sh):
+  transcript=\$(transcribe_audio \"\$audio_path\")
+This uses AssemblyAI (primary) or local whisper (fallback) based on config.
+If transcription fails, create Source note with URL and status: needs-transcript.
+
+Convert the transcript into clean markdown paragraphs.
+Clean up: remove filler words artifacts, fix obvious transcription errors.
+
+STEP 3 — CREATE SOURCE NOTE
+Create a Source note in '04-Wiki/sources/' with:
+  - Podcast URL, episode title, show name, host(s)
+  - Duration if available
+  - Full transcript as markdown in 'Original content' section
+  - Frontmatter: title, source_url, source_type: podcast, author, date_captured, tags, status: processed
+
+STEP 4 — CREATE ENTRY NOTE
+$ENTRY_STRUCTURE
+Draft the full Entry note from the transcript.
+Humanize all prose, then write to '04-Wiki/entries/'.
+IMPORTANT: Use date_entry: (NOT date_distilled:) in frontmatter.
+Include reviewed: null and review_notes: null in frontmatter.
+
+STEP 5 — CREATE/UPDATE CONCEPT NOTES
+$CONCEPT_STRUCTURE
+MANDATORY: Search 04-Wiki/concepts/ BEFORE creating any new concept.
+Check if existing concepts cover the same idea. If yes, UPDATE existing
+concept (add entry_ref, refresh body if needed). Only create new if truly novel.
+Humanize all concept prose before writing.
+
+STEP 6 — UPDATE MoCs
+Search 04-Wiki/mocs/ for relevant topic matches. For each matching or new MoC:
+- Add wikilinks with 1-sentence summaries for new Entry and Concept notes
+- Humanize all MoC prose
+
+STEP 7 — UPDATE WIKI INDEX
+Append the new Entry and any new Concepts to '06-Config/wiki-index.md'
+with 1-sentence summaries in this format:
+  - [[EntryName]]: <1-sentence summary> (entry)
+  - [[ConceptName]]: <1-sentence summary> (concept)
+
+STEP 8 — TYPED EDGES
+If the content reveals relationships between notes (this extends X,
+this contradicts Y, this supports Z), append to '06-Config/edges.tsv':
+  source<tab>target<tab>type<tab>description
+Types: extends, contradicts, supports, supersedes, tested_by, depends_on, inspired_by
+
+STEP 9 — ARCHIVE
+Move original inbox file to '08-Archive-Raw/'.
+Register URL in the index: append '\$url\t<source-note-path>' to '$URL_INDEX'.
+Clean up downloaded audio file: rm -f \"\$audio_path\"
+
+STEP 10 — LOG ENTRY
+Append a structured header to '06-Config/log.md':
+  ## [YYYY-MM-DD] ingest | <source-title>
+  - Created Source: [[Source Name]]
+  - Created Entry: [[Entry Name]]
+  - Created/Updated Concepts: [[Concept1]], [[Concept2]]
+  - Updated MoCs: [[MoC Name]]
+  - Updated wiki-index.md
+  - Archived: <filename>
+  - Registered URL: <url>
+  - Transcription backend: $TRANSCRIBE_BACKEND
 "
 }
 
@@ -480,6 +625,8 @@ if [ -d "$VAULT_PATH/01-Raw" ]; then
 
     if is_youtube_link "$file"; then
       process_youtube "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
+    elif is_podcast_url "$file"; then
+      process_podcast "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
     elif is_url_file "$file"; then
       process_url "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
     else

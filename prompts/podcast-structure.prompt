@@ -1,0 +1,37 @@
+PODCAST SOURCE NOTE STRUCTURE for 04-Wiki/sources/:
+
+Podcast episodes are audio content that has been transcribed. The Source note
+stores the full transcript and metadata for the Entry pipeline.
+
+Frontmatter must include:
+  - title: "<Episode Title> — <Show Name>"
+  - source_url: "<URL>"
+  - source_type: podcast
+  - author: "<Host name(s)>"
+  - date_captured: YYYY-MM-DD
+  - tags:
+      - source
+      - podcast
+      - <show-name-tag>
+  - status: processed
+  - aliases: []
+
+Body:
+  # <Episode Title>
+
+  ## Episode Info
+  - Show: <Show Name>
+  - Host(s): <Host name(s)>
+  - Date: <Episode publish date if known>
+  - Duration: <Duration if available>
+
+  ## Original content
+  <Full transcript as clean markdown paragraphs. Remove filler word artifacts.
+  Fix obvious transcription errors. Break into logical paragraphs.>
+
+NOTES ON TRANSCRIPTION:
+- Transcripts from AssemblyAI are clean but may have minor errors
+- Transcripts from local whisper may need more cleanup
+- Break long monologues into paragraph-sized chunks
+- Fix proper nouns, technical terms, and domain-specific jargon
+- Keep the meaning intact — don't paraphrase, just clean formatting
