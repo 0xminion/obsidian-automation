@@ -253,6 +253,23 @@ Operations: ingest, review, query, compile, lint, reindex
 
 ## Workflows
 
+### Extraction Priority (how to get content from any source)
+
+For URL/HTML/X-Twitter/any web source:
+  1. `defuddle parse --markdown <url>` — clean markdown extraction (primary)
+  2. `liteparse <downloaded html>` — fallback document parser
+  3. `mcp_tavily_tavily_extract` — web search API extraction
+  4. browser tools (navigate/screenshot) — last resort for JS-heavy/blocked sites
+  Shell: `source lib/extract.sh && extract_web "$url"`
+
+For PDF/Word/PowerPoint/XLSX (local files):
+  1. `liteparse parse --format text <file>` — local document parser (primary)
+  2. `liteparse with --dpi 300` (OCR) — for scanned/image documents
+  3. `ocr-and-documents skill` — final fallback
+  Shell: `source lib/extract.sh && extract_document "$file"`
+
+Auto-detect: `source lib/extract.sh && extract_content "$url_or_path"`
+
 ### Ingest Workflow
 
 1. Parse source (Defuddle for URLs, TranscriptAPI for YouTube, LiteParse for files, transcribe.sh for podcasts)

@@ -93,6 +93,26 @@ Before creating new tags, ALWAYS search existing tags in the vault first:
   obsidian tags sort=count counts
 Reuse existing tags wherever possible. Only mint a new tag if nothing fits.
 
+EXTRACTION PRIORITY (content parsing from URLs/files):
+
+For URL/HTML/X-Twitter/any web source:
+  1. defuddle parse --markdown <url>     — clean markdown extraction (primary)
+  2. liteparse <downloaded html>          — fallback document parser
+  3. mcp_tavily_tavily_extract            — web search API extraction
+  4. browser tools (navigate/screenshot)  — last resort for JS-heavy/blocked sites
+  Shell helper: source lib/extract.sh && extract_web "$url"
+
+For PDF/Word/PowerPoint/XLSX (local files):
+  1. liteparse parse --format text <file> — local document parser (primary)
+  2. liteparse with --dpi 300 (OCR)       — for scanned/image documents
+  3. ocr-and-documents skill              — final fallback
+  Shell helper: source lib/extract.sh && extract_document "$file"
+
+Auto-detect: source lib/extract.sh && extract_content "$url_or_path"
+  Routes to correct chain based on file type / URL pattern.
+
+lib/extract.sh is sourced by process-inbox.sh automatically.
+
 RETRY BEHAVIOR:
 If any step fails (API call, file operation, parsing), try an alternative
 approach before giving up. Be resourceful.
