@@ -522,8 +522,10 @@ echo "## 12. Tag Quality Validation" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 tag_issue_count=0
 
-# Blocklist: platform names, URLs, generic metadata — not topic tags
-BLOCKED_TAGS="x.com|tweet|source|url|link|article|web|http|https|rss|feed|podcast|video|youtube|medium|blog|post|page"
+# Blocklist: platform URLs, generic link metadata — NOT topic tags
+# Note: 'source' is valid on Source notes but not as the only tag on entries
+# 'podcast', 'video', 'blog' are valid source_types
+BLOCKED_TAGS="x\.com|tweet|http|https|rss|feed|url|link"
 
 for dir in "04-Wiki/entries" "04-Wiki/sources" "04-Wiki/concepts"; do
   dir_path="$VAULT_PATH/$dir"
