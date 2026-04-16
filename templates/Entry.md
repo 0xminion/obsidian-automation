@@ -82,3 +82,20 @@ Use for: product comparisons, framework evaluations, "X vs Y" articles
 ### template: procedural
 Sections: Summary, Prerequisites, Steps, Gotchas, Linked concepts
 Use for: tutorials, how-tos, setup guides, workflows
+
+### template: bilingual
+Use when an Entry draws from sources in both English and Chinese.
+Frontmatter: add `languages: [en, zh]`, `template: bilingual`.
+Title: `English Title / 中文标题` format.
+Sections (both languages):
+  ## Summary / 摘要
+  (English summary, then Chinese summary)
+  ## Key Insights / 关键洞察
+  ### English
+  ### 中文
+  ## Diagrams / 图表
+  (Shared — diagrams don't need translation)
+  ## Open Questions / 开放问题
+  (Shared — questions don't need language split)
+  ## Linked Concepts / 关联概念
+  (Shared — wikilinks don't need language split)

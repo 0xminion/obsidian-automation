@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.2: Compile Pass — Incremental wiki improvement (Karpathy-style)
+# v2.4: Compile Pass — Incremental wiki improvement (Karpathy-style)
 # ============================================================================
 # Changes from v2.1:
 #   - Sources common library (lib/common.sh)

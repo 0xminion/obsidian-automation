@@ -28,7 +28,25 @@ Scan 04-Wiki/concepts/ for concepts that:
 - Have very similar titles or body content (fuzzy match, shared key terms)
 - Cover the same idea from different Entry sources
 
-For near-duplicates found:
+CROSS-LANGUAGE CONVERGENCE (critical):
+If an English concept and a Chinese concept cover the same idea:
+1. Do NOT delete either. Merge into a single BILINGUAL concept note.
+2. Choose the OLDER concept file as the canonical filename.
+3. Rewrite the note using the bilingual template (template: bilingual):
+   - YAML: add `template: bilingual`, `languages: [en, zh]`
+   - Title: `English Name / 中文名称` format
+   - aliases: include the Chinese title (if English is primary filename)
+   - Body: each section has ### English and ### 中文 subsections
+   - Merge entry_refs from BOTH concepts
+   - Preserve all unique content from both — don't lose nuance
+4. DELETE the duplicate concept note.
+5. Update all Entry notes that linked to the deleted concept — change their
+   'Linked concepts' section to point to the merged bilingual concept.
+6. For Connections and Open Questions sections: merge into single shared sections
+   (no language split needed for wikilinks and questions).
+
+SAME-LANGUAGE CONVERGENCE:
+For near-duplicates in the same language:
 1. Choose the OLDER concept as the canonical version.
 2. Merge: copy all entry_refs from the duplicate into the canonical.
 3. Update the canonical body if the duplicate adds useful content.

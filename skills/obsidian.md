@@ -1,7 +1,7 @@
 ---
 name: obsidian
 description: "Process any URL, file, or link into the Obsidian vault. Drop URLs in chat, pipeline handles extraction + wiki creation."
-version: 2.3.0
+version: 2.4.0
 trigger: "obsidian"
 ---
 
@@ -47,6 +47,7 @@ VAULT_PATH="$VAULT_PATH" bash scripts/process-inbox.sh
 4. [[wikilinks]] for internal links
 5. Chinese body stays Chinese, English YAML/tags
 6. MoC headings: `English / 中文` format
+7. Cross-language concept convergence → bilingual note (template: bilingual, languages: [en, zh])
 
 ## Troubleshooting
 
