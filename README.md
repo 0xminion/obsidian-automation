@@ -1,4 +1,4 @@
-# v2.2: Obsidian AI-Automated PKM Vault — Karpathy-Style Wiki
+# v2.3.0: Obsidian AI-Automated PKM Vault — Karpathy-Style Wiki
 
 Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a self-compiling wiki. Inspired by Andrej Karpathy's "LLM Knowledge Bases" approach.
 

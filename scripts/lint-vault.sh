@@ -363,8 +363,8 @@ echo "" >> "$REPORT_FILE"
 drift_count=0
 
 if [ -f "$VAULT_PATH/06-Config/wiki-index.md" ]; then
-  index_entry_count=$(grep -c '(entry)' "$VAULT_PATH/06-Config/wiki-index.md" 2>/dev/null || echo 0)
-  index_concept_count=$(grep -c '(concept)' "$VAULT_PATH/06-Config/wiki-index.md" 2>/dev/null || echo 0)
+  index_entry_count=$(grep -c '(entry)' "$VAULT_PATH/06-Config/wiki-index.md" 2>/dev/null | tr -d ' \n' || echo 0)
+  index_concept_count=$(grep -c '(concept)' "$VAULT_PATH/06-Config/wiki-index.md" 2>/dev/null | tr -d ' \n' || echo 0)
 
   actual_entry_count=$(find "$VAULT_PATH/04-Wiki/entries" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
   actual_concept_count=$(find "$VAULT_PATH/04-Wiki/concepts" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')

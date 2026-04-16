@@ -57,7 +57,7 @@ extract_arxiv_alphaxiv() {
   if [ -n "$content" ] && [ "${#content}" -gt 200 ] && [[ "$content" != *"No intermediate report"* ]]; then
     log "extract_arxiv_alphaxiv: overview report OK (${#content} chars)"
     echo "$content"
-    return 1
+    return 0
   fi
 
   log "extract_arxiv_alphaxiv: alphaxiv failed for $paper_id, falling back to defuddle"
