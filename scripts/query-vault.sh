@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.2: Query Vault — Q&A against the wiki knowledge base (Karpathy-style)
+# v2.0.1: Query Vault — Q&A against the wiki knowledge base (Karpathy-style)
 # ============================================================================
-# Changes from v2.1:
+# Changes from v2.0.1:
 #   - Sources common library (lib/common.sh)
 #   - Query-compound-back: after creating answer Entry, LLM also updates
 #     existing wiki pages with newly-discovered connections
@@ -27,15 +27,15 @@ query_count=$(find "$VAULT_PATH/03-Queries" -name '*.md' 2>/dev/null | wc -l | t
 if [ "$query_count" -eq 0 ]; then
   echo "No query files found in $VAULT_PATH/03-Queries/"
   echo "Create a .md file with your question and re-run."
-  log "Query (v2.2): No queries found"
+  log "Query (v2.0.1): No queries found"
   exit 0
 fi
 
-log "=== Starting query processing (v2.2) ==="
+log "=== Starting query processing (v2.0.1) ==="
 
 # Build vault summary from wiki-index.md (fast retrieval layer)
 build_vault_summary() {
-  echo "VAULT STRUCTURE OVERVIEW (v2.2):"
+  echo "VAULT STRUCTURE OVERVIEW (v2.0.1):"
   echo ""
 
   if [ -f "$VAULT_PATH/06-Config/wiki-index.md" ]; then
@@ -96,12 +96,12 @@ for query_file in "$VAULT_PATH/03-Queries"/*.md; do
     -e "s|{TODAY}|$TODAY|g")
 
   if run_with_retry "Query: $query_name" "$QUERY_PROMPT"; then
-    log "Query answered (v2.2): $query_name"
+    log "Query answered (v2.0.1): $query_name"
   else
-    log "Query FAILED (v2.2): $query_name"
+    log "Query FAILED (v2.0.1): $query_name"
   fi
 done
 
-log "=== All queries processed (v2.2) ==="
+log "=== All queries processed (v2.0.1) ==="
 auto_commit "query" "Processed $query_count queries"
 echo "Done. Processed $query_count queries."

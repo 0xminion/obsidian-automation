@@ -1,5 +1,5 @@
 VAULT LOCATION: {VAULT_PATH}
-VAULT STRUCTURE (v2.2):
+VAULT STRUCTURE (v2.0.1):
   01-Raw/             — New sources to process (URLs, PDFs, files)
   02-Clippings/       — Web clipper saves (already markdown)
   03-Queries/         — Q&A questions (drop .md files here)

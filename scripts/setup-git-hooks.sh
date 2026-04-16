@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.2: Setup Git Hooks — Auto-commit after ingest and compile
+# v2.0.1: Setup Git Hooks — Auto-commit after ingest and compile
 # ============================================================================
 # Installs git hooks in the vault repo for automatic version control.
 # Creates post-operation commits with structured messages.

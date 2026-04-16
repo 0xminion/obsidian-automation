@@ -1,7 +1,7 @@
 ---
 name: obsidian
 description: "Process any URL, file, or link into the Obsidian vault. Drop URLs in chat, pipeline handles extraction + wiki creation."
-version: 2.4.0
+version: 2.0.1
 trigger: "obsidian"
 ---
 
@@ -33,6 +33,22 @@ VAULT_PATH="$VAULT_PATH" bash scripts/process-inbox.sh
 - **Podcasts** → AssemblyAI → whisper
 - **PDFs** → liteparse → OCR
 
+## Note Structures
+
+**Entries** (template: chinese):
+摘要 → 核心发现 → 其他要点 → 图表 (optional, n/a if not needed) → 开放问题 → 关联概念
+
+**Entries** (template: standard):
+Summary → Core insights → Other takeaways → Diagrams (optional, n/a if not needed) → Open questions → Linked concepts
+
+**Concepts** (evergreen format, language: zh):
+Frontmatter: sources: ["[[source]]"]
+核心概念 → 背景 (flowing prose — mechanism, significance, evidence, tensions) → 关联
+
+**Concepts** (evergreen format, English):
+Frontmatter: sources: ["[[source]]"]
+Core concept → Context (flowing prose) → Links
+
 ## Naming (in code: `title_to_filename`)
 
 - Chinese titles → Chinese filenames (潮汕钱庄与东南亚黑金网络...)
@@ -47,8 +63,10 @@ VAULT_PATH="$VAULT_PATH" bash scripts/process-inbox.sh
 3. YAML wikilinks quoted: `source: "[[note]]"`
 4. [[wikilinks]] for internal links
 5. Chinese body stays Chinese, English YAML/tags
-6. MoC headings: `English / 中文` format
-7. Cross-language concept convergence → bilingual note (template: bilingual, languages: [en, zh])
+6. NO stubs — every section must have real content at creation
+7. Tags must be topic-specific English (never platform names like x.com, tweet)
+8. Concepts use evergreen format — flowing prose in Context/背景, no sub-headings
+9. Sources for concepts go in frontmatter, not body
 
 ## Troubleshooting
 

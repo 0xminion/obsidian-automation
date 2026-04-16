@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.2: Reindex — Full rebuild of wiki-index.md from scratch
+# v2.0.1: Reindex — Full rebuild of wiki-index.md from scratch
 # ============================================================================
 # Think fsck for your wiki. Scans every Entry, Concept, and MoC,
 # reads their frontmatter, and rebuilds wiki-index.md from zero.

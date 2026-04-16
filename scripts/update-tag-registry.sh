@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.2: Update Tag Registry — Rebuild tag-registry.md from actual usage
+# v2.0.1: Update Tag Registry — Rebuild tag-registry.md from actual usage
 # ============================================================================
 # Scans all entries and concepts, extracts tags, and rebuilds the registry.
 # Run manually or via cron to keep tag-registry.md in sync with actual usage.

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.2: Obsidian Inbox Processor — Karpathy-style LLM Knowledge Base
+# v2.0.1: Obsidian Inbox Processor — Karpathy-style LLM Knowledge Base
 # ============================================================================
 # Watches raw/ and clippings/, processes each file through
 # Defuddle (URLs, primary), LiteParse (fallback), or TranscriptAPI (YouTube),
 # creates Source note → Entry note → Concept notes → updates MoCs.
 #
-# Changes from v2.1:
+# Changes from v2.0.1:
 #   - Sources common library (lib/common.sh) — no more duplicated retry/log code
 #   - --interactive flag for conversational ingestion
 #   - Externalized prompt templates (prompts/*.prompt)
@@ -624,7 +624,7 @@ processed=0
 skipped=0
 failed=0
 
-log "=== Starting inbox processing (v2.2, interactive=$INTERACTIVE) ==="
+log "=== Starting inbox processing (v2.0.1, interactive=$INTERACTIVE) ==="
 
 # Process everything in 01-Raw/
 if [ -d "$VAULT_PATH/01-Raw" ]; then
@@ -651,7 +651,7 @@ if [ -d "$VAULT_PATH/02-Clippings" ]; then
   done
 fi
 
-log "Inbox processing complete (v2.2). Processed: $processed, Skipped: $skipped, Failed: $failed"
+log "Inbox processing complete (v2.0.1). Processed: $processed, Skipped: $skipped, Failed: $failed"
 log "URL index now has $(wc -l < "$URL_INDEX") entries"
 
 # ═══════════════════════════════════════════════════════════
@@ -672,7 +672,7 @@ if [ "$processed" -gt 0 ]; then
   fi
 
   # ═══════════════════════════════════════════════════════════
-  # POST-INGEST VALIDATION GATE (v2.5)
+  # POST-INGEST VALIDATION GATE (v2.0.1)
   # ═══════════════════════════════════════════════════════════
   log "Running post-ingest validation..."
   validation_issues=0

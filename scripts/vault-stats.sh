@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.2: Vault Stats — Dashboard metrics for the wiki
+# v2.0.1: Vault Stats — Dashboard metrics for the wiki
 # ============================================================================
 # Generates a quick health/growth dashboard at 06-Config/dashboard.md
 # Run after compile-pass or standalone.

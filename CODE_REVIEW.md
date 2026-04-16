@@ -75,8 +75,8 @@ source "$_EXTRACT_DIR/common.sh"
 ### 9. templates/MoC.md — `sections:` YAML block ✅ FIXED
 - Sections removed from frontmatter, content lives in body
 
-### 10. Version drift: skills/obsidian.md says v2.3.0, README/PRD say v2.2 ✅ FIXED
-- README.md updated to v2.3.0
+### 10. Version drift: skills/obsidian.md says v2.0.1, README/PRD say v2.0.1 ✅ FIXED
+- README.md updated to v2.0.1
 
 ### 11. prompts/*.prompt — May reference old workflow ✅ AUDITED
 - No `claude` or `AGENT_CMD` references found
@@ -132,7 +132,7 @@ source "$_EXTRACT_DIR/common.sh"
 | Prompt paths resolve correctly | ✅ |
 | Template YAML valid | ✅ |
 | .env has required vars | ✅ |
-| Version consistency | ⚠️ Skill v2.3.0 vs README v2.2 |
+| Version consistency | ⚠️ Skill v2.0.1 vs README v2.0.1 |
 | CODE_REVIEW.md clean | ✅ |
 | Git hooks functional | ✅ |
 
@@ -152,6 +152,6 @@ All CRITICAL and WARNING items are fixed and pushed. The remaining INFO items ar
 
 **Remaining work (non-urgent):**
 1. Fix lint-vault.sh integer expression errors (line 372/377)
-2. Update README/PRD version to v2.3.0
+2. Update README/PRD version to v2.0.1
 3. Audit prompts for hermes invocation compatibility
 4. Add stale lock auto-detection to process-inbox.sh

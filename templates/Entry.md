@@ -22,22 +22,20 @@ aliases: []
 
 3-5 sentence overview. Plain language, no fluff.
 
-## ELI5 insights
+## Core insights
 
-### Core insights
-
-1. First core insight — explained for a 12-year-old.
+1. First core insight — clear explanation with evidence.
 2. Second core insight — concrete example, no jargon.
-3. Third core insight — as many as exist.
+3. Third core insight — extract everything significant.
 
-### Other takeaways
+## Other takeaways
 
 4. Continues numbering from Core insights.
-5. Fourth insight — same ELI5 treatment.
+5. Additional important findings.
 
 ## Diagrams
 
-Mermaid diagrams if warranted, else "N/A — content is straightforward."
+n/a
 
 ## Open questions
 
@@ -58,16 +56,15 @@ Use the `template:` frontmatter field to select a variant. The lint script
 checks sections based on template type. Available templates:
 
 ### template: standard (default)
-Sections: Summary, ELI5 insights, Diagrams, Open questions, Linked concepts
+Sections: Summary, Core insights, Other takeaways, Diagrams (optional — n/a if not needed), Open questions, Linked concepts
 
 ### template: chinese (for Chinese-language sources)
 Frontmatter: add `language: zh`, use `template: chinese`. Tags stay English.
 Sections (Chinese body text):
   摘要 (3-5句中文摘要)
-  关键洞察
-    - 核心发现 (编号列表, ELI5方法)
-    - 其他要点 (继续编号)
-  图表 (Mermaid图表或"N/A")
+  核心发现 (编号列表，关键发现和论点)
+  其他要点 (继续编号)
+  图表 (可选 — 仅在图表确实有助于理解时加入，否则写 'n/a')
   开放问题 (编号列表)
   关联概念 (破折号列表, wikilinks)
 
@@ -82,20 +79,3 @@ Use for: product comparisons, framework evaluations, "X vs Y" articles
 ### template: procedural
 Sections: Summary, Prerequisites, Steps, Gotchas, Linked concepts
 Use for: tutorials, how-tos, setup guides, workflows
-
-### template: bilingual
-Use when an Entry draws from sources in both English and Chinese.
-Frontmatter: add `languages: [en, zh]`, `template: bilingual`.
-Title: `English Title / 中文标题` format.
-Sections (both languages):
-  ## Summary / 摘要
-  (English summary, then Chinese summary)
-  ## Key Insights / 关键洞察
-  ### English
-  ### 中文
-  ## Diagrams / 图表
-  (Shared — diagrams don't need translation)
-  ## Open Questions / 开放问题
-  (Shared — questions don't need language split)
-  ## Linked Concepts / 关联概念
-  (Shared — wikilinks don't need language split)

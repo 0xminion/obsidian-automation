@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.2: Review Pass — Interactive review of processed wiki entries
+# v2.0.1: Review Pass — Interactive review of processed wiki entries
 # ============================================================================
 # Lets you discuss processed entries with the LLM, provide feedback,
 # and enrich/update entries based on your domain expertise.

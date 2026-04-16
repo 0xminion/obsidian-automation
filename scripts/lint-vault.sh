@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.2: Lint Vault — Karpathy-style health checks on the wiki
+# v2.0.1: Lint Vault — Karpathy-style health checks on the wiki
 # ============================================================================
-# Changes from v2.1:
+# Changes from v2.0.1:
 #   - Sources common library (lib/common.sh)
 #   - Removed mandatory ELI5 section check (now template-aware)
 #   - Added review status check (entries older than 7 days, unreviewed)
@@ -24,7 +24,7 @@ REPORT_DATE=$(date +%Y-%m-%d)
 
 mkdir -p "$VAULT_PATH/Meta/Scripts"
 
-echo "# Lint Report — $REPORT_DATE (v2.6)" > "$REPORT_FILE"
+echo "# Lint Report — $REPORT_DATE (v2.0.1)" > "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 echo "> Karpathy-style linting: catches what the LLM misses." >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -259,7 +259,7 @@ fi
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 7. Entry Template Section Validation (v2.4)
+# 7. Entry Template Section Validation (v2.0.1)
 # ═══════════════════════════════════════════════════════════
 echo "## 7. Entry Template Section Validation" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -432,7 +432,7 @@ total_issues=$((total_issues + drift_count))
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 10. Edges Consistency Check (v2.4)
+# 10. Edges Consistency Check (v2.0.1)
 # ═══════════════════════════════════════════════════════════
 echo "## 10. Edges Consistency (edges.tsv)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -474,7 +474,7 @@ total_issues=$((total_issues + edge_issues))
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 11. Stub/Placeholder Detection (v2.5)
+# 11. Stub/Placeholder Detection (v2.0.1)
 # ═══════════════════════════════════════════════════════════
 echo "## 11. Stub/Placeholder Detection" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -516,7 +516,7 @@ fi
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 12. Tag Quality Validation (v2.5)
+# 12. Tag Quality Validation (v2.0.1)
 # ═══════════════════════════════════════════════════════════
 echo "## 12. Tag Quality Validation" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -596,7 +596,7 @@ echo "| Stub/placeholder sections | $stub_count |" >> "$REPORT_FILE"
 echo "| Invalid tags | $tag_issue_count |" >> "$REPORT_FILE"
 echo "| **TOTAL** | **$total_issues** |" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
-echo "*Run lint-vault.sh (v2.6) to regenerate this report.*" >> "$REPORT_FILE"
+echo "*Run lint-vault.sh (v2.0.1) to regenerate this report.*" >> "$REPORT_FILE"
 
 # Log entry
 append_log_md "lint" "Health check" \

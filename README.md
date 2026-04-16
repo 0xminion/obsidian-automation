@@ -1,42 +1,17 @@
-# v2.3.0: Obsidian AI-Automated PKM Vault — Karpathy-Style Wiki
+# v2.0.1: Obsidian AI-Automated PKM Vault — Karpathy-Style Wiki
 
 Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a self-compiling wiki. Inspired by Andrej Karpathy's "LLM Knowledge Bases" approach.
-
-## What's New in v2.2
-
-- **Transcript extraction system** — universal YouTube and podcast transcript extraction with intelligent fallback chains
-  - YouTube: existing → TranscriptAPI (primary) → Supadata (fallback) → local Whisper (last resort)
-  - Podcasts: existing transcript → AssemblyAI (fallback)
-  - Markdown output with metadata, timestamps, speaker labels
-  - Cache management with 30-day expiry
-- **Post-ingest auto-updates** — config files stay in sync automatically
-  - `dashboard.md` — updated after every ingest
-  - `tag-registry.md` — rebuilt with actual tag usage counts
-  - `wiki-index.md` — full rebuild if ≥5 notes processed (avoids overhead on small runs)
-- **Podcast support** (`process-inbox.sh`) — ingest podcast episodes via AssemblyAI transcription (100hrs/month free) with local whisper fallback
-- **Collision detection** — `check_collision()` / `resolve_collision()` prevent overwriting existing notes
-- **Vault migration** (`migrate-vault.sh`) — adopt existing Obsidian vaults into v2 format with scan/dry-run/execute modes
-- **Review pass** (`review-pass.sh`) — discuss processed entries with the LLM, enrich them, mark reviewed
-- **Query compound-back** — queries don't just create answer entries, they update existing wiki pages with discovered connections
-- **Shared library** (`lib/common.sh`) — all scripts share retry logic, logging, lock management, URL dedup
-- **Domain-adaptive templates** — Entry notes support `standard`, `technical`, `comparison`, `procedural` templates
-- **Typed edges** (`edges.tsv`) — relationships between notes with types: extends, contradicts, supports, supersedes, tested_by, depends_on, inspired_by
-- **Git auto-commit** — all operations auto-commit with structured messages
-- **Vault stats** (`vault-stats.sh`) — dashboard showing growth, health, review status
-- **Full reindex** (`reindex.sh`) — rebuild wiki-index.md from scratch (fsck for your wiki)
-- **Externalized prompts** — prompt templates in `prompts/*.prompt` files, no more inline heredocs
-- **Schema co-evolution** — compile pass evaluates agents.md and suggests improvements
 
 ## Vault Structure
 
 ```
-01-Raw/             →  Drop URLs, PDFs, files here
+01-Raw/              →  Drop URLs, PDFs, files here
 02-Clippings/        →  Web clipper saves (already markdown)
 03-Queries/          →  Drop .md files with questions for Q&A
 04-Wiki/
 ├── sources/         ←  Full original content (not humanized)
 ├── entries/         ←  Entry notes (humanized, template-aware)
-├── concepts/        ←  Shared vocabulary across sources
+├── concepts/        ←  Shared vocabulary across sources (evergreen format)
 └── mocs/            ←  Topic hubs with synthesized summaries
 05-Outputs/
 ├── answers/         ←  Q&A responses (duplicate for quick access)
@@ -53,6 +28,58 @@ Automated knowledge management system that turns raw web content, PDFs, and YouT
 09-Archive-Queries/  ←  Answered queries
 ```
 
+## Note Structures
+
+### Entries
+
+English (template: standard):
+```
+## Summary
+## Core insights        ← numbered list, key findings with evidence
+## Other takeaways      ← continues numbering from Core insights
+## Diagrams             ← optional — 'n/a' if not needed
+## Open questions
+## Linked concepts
+```
+
+Chinese (template: chinese, language: zh):
+```
+## 摘要
+## 核心发现            ← 编号列表，关键发现和论点
+## 其他要点            ← 继续从核心发现编号开始
+## 图表               ← 可选 — 不需要则写 'n/a'
+## 开放问题
+## 关联概念
+```
+
+Other templates: `technical` (research papers), `comparison` (product comparisons), `procedural` (tutorials).
+
+### Concepts (Evergreen Format)
+
+Concepts are atomic notes — one idea per note, title IS the concept.
+
+English:
+```
+Frontmatter: sources: ["[[source-note]]"]
+
+## Core concept    ← single overview paragraph (2-3 sentences)
+## Context         ← flowing prose (2-4 paragraphs): mechanism, significance, evidence, tensions
+## Links           ← wikilinks to related notes
+```
+
+Chinese (language: zh):
+```
+Frontmatter: sources: ["[[source-note]]"]
+
+## 核心概念        ← 一段概述 (2-3句)
+## 背景            ← 连贯正文 (2-4段)：运作机制、为什么重要、实际案例、争议
+## 关联            ← wikilinks
+```
+
+### MoCs (Maps of Content)
+
+Topic hubs with synthesized summaries. Flexible section structure — organize by theme, language, or time period. Use `English / 中文` heading format when bridging languages.
+
 ## Scripts
 
 | Script | Purpose |
@@ -61,83 +88,45 @@ Automated knowledge management system that turns raw web content, PDFs, and YouT
 | `review-pass.sh` | Review processed entries: `--untouched`, `--last N`, `--topic TAG`, `--entry NAME`, `--interactive` |
 | `compile-pass.sh` | Cross-link, concept convergence, MoC rebuild, index rebuild, typed edges, schema review |
 | `query-vault.sh` | Q&A with compound-back: answers expand wiki + update existing pages |
-| `lint-vault.sh` | 10 health checks: orphans, unreviewed, stale, broken links, empty, template sections, drift, edges |
+| `lint-vault.sh` | 12 health checks: orphans, unreviewed, stale, broken links, empty, concept structure, template sections, orphaned concepts, index drift, edges, stubs, tags |
 | `vault-stats.sh` | Dashboard: vault size, growth, review status, health indicators |
 | `reindex.sh` | Full rebuild of wiki-index.md from scratch |
 | `setup-git-hooks.sh` | Install git hooks for auto-commit and WIP protection |
 | `update-tag-registry.sh` | Rebuild tag-registry.md with actual tag usage counts from all notes |
 | `extract-transcript.sh` | Standalone transcript extraction for YouTube and podcasts |
 | `migrate-vault.sh` | Adopt existing Obsidian vaults into v2 format (scan/dry-run/execute) |
-## Entry Note Templates
-
-Use the `template:` frontmatter field to select:
-
-| Template | Sections | Use for |
-|---|---|---|
-| `standard` (default) | Summary, ELI5 insights, Diagrams, Open questions, Linked concepts | General articles |
-| `technical` | Summary, Key Findings, Data/Evidence, Methodology, Limitations, Linked concepts | Research papers, data-heavy |
-| `comparison` | Summary, Side-by-Side, Pros/Cons, Verdict, Linked concepts | Product comparisons |
-| `procedural` | Summary, Prerequisites, Steps, Gotchas, Linked concepts | Tutorials, how-tos |
 
 ## Typed Edges (`edges.tsv`)
 
-Tab-separated relationships between notes:
+3-column tab-separated relationships between notes:
 
 ```
-source	target	type	description
-L2 Sequencing	Based Rollups	extends	Based rollups solve sequencer centralization
-Entry A	Entry B	contradicts	Disagree on fee market design
-Concept X	Entry Y	tested_by	Entry Y provides empirical evidence
+source<tab>relation<tab>target
 ```
-
-Types: `extends`, `contradicts`, `supports`, `supersedes`, `tested_by`, `depends_on`, `inspired_by`
 
 Built automatically during compile-pass. Also added during queries and reviews.
 
-## Transcript Extraction
+## Extraction Chain
 
-The system includes universal transcript extraction for YouTube videos and podcasts.
+| Source Type | Chain |
+|---|---|
+| arxiv | `arxiv.org/html/IDv1` → defuddle → alphaxiv → liteparse |
+| URLs | defuddle → liteparse → browser screenshot |
+| X/Twitter | defuddle (primary) → liteparse → browser |
+| YouTube | existing → TranscriptAPI → Supadata → whisper |
+| Podcasts | existing → AssemblyAI → whisper |
+| PDFs | liteparse → OCR |
 
-### YouTube Flow
-```
-existing transcript → TranscriptAPI (primary) → Supadata (fallback) → local Whisper (last resort)
-```
+## Critical Rules
 
-**Features:**
-- Check cache and vault before API calls
-- 1 credit per transcript (TranscriptAPI), 100 free credits
-- Local Whisper fallback (no API cost, 2-10 min processing)
-- Timestamps and metadata preservation
-
-### Podcast Flow
-```
-existing transcript → AssemblyAI (fallback)
-```
-
-**Features:**
-- Searches RSS feeds, show notes, podcast websites first
-- AssemblyAI: speaker identification, punctuation, paragraph detection
-- 100 hours/month free tier
-
-### Usage
-```bash
-# Place YouTube URLs or podcast audio files in 01-Raw/
-# process-inbox.sh automatically detects and extracts transcripts
-
-# Or use standalone script:
-bash scripts/extract-transcript.sh youtube "VIDEO_URL"
-bash scripts/extract-transcript.sh podcast "AUDIO_FILE" --name "Podcast" --episode "Episode"
-```
-
-### Output Format
-Both YouTube and podcasts output markdown with:
-- Title and source metadata
-- Extraction method and timestamp
-- Full transcript text
-- Speaker labels (if available)
-- Proper frontmatter for Obsidian integration
-
-Transcripts are cached at `~/.hermes/cache/transcripts/` with 30-day expiry.
+1. NEVER touch `07-WIP/`
+2. NEVER overwrite existing notes — use `check_collision()` + `resolve_collision()`
+3. NO stubs/placeholder content — every section must have real content at creation
+4. Tags must be topic-specific English (never platform names like x.com, tweet)
+5. Chinese body text stays Chinese in all 04-Wiki notes
+6. YAML wikilinks must be quoted: `source: "[[note]]"`
+7. File names: Chinese titles → Chinese filenames, English titles → kebab-case
+8. NEVER use URL slugs as filenames or titles
 
 ## Quick Start
 
@@ -207,50 +196,7 @@ All scripts source this. Provides:
 - `add_edge()` / `get_edges()` — typed relationship management
 - `auto_commit()` — git auto-commit with structured messages
 - `load_prompt()` — load prompt templates from `prompts/*.prompt` files
-
-## Humanizer Skill Usage
-
-| Process | What gets humanized | Where |
-|---|---|---|
-| `process-inbox.sh` | Entry, Concept, MoC notes | Steps 3-5 of each processor |
-| `review-pass.sh` | Enriched/updated entries | During enrich/update |
-| `compile-pass.sh` | MoC notes (rebuild), schema review | Operations 3, 9 |
-| `query-vault.sh` | Entry answers + new Concepts + compound-back updates | Steps 5-9 |
-| `lint-vault.sh` | None (read-only) | — |
-
-## Migration from Existing Vault
-
-If you have an existing Obsidian vault with a different structure, use `migrate-vault.sh`:
-
-```bash
-# Step 1: Scan — audit your vault (read-only, no changes)
-VAULT_PATH="$HOME/MyVault" bash scripts/migrate-vault.sh --scan
-
-# Step 2: Dry-run — preview exactly what would change
-VAULT_PATH="$HOME/MyVault" bash scripts/migrate-vault.sh --dry-run
-
-# Step 3: Execute — apply changes (creates backup by default)
-VAULT_PATH="$HOME/MyVault" bash scripts/migrate-vault.sh --execute
-
-# Skip backup (not recommended):
-VAULT_PATH="$HOME/MyVault" bash scripts/migrate-vault.sh --execute --no-backup
-```
-
-What it does:
-- Creates missing 01-09 directories (non-destructive)
-- Adds missing frontmatter fields to entry notes (`reviewed: null`, `review_notes: null`, `template: standard`, `aliases: []`)
-- Builds `url-index.tsv` from existing sources
-- Creates `edges.tsv` if missing
-- Creates a timestamped backup before modifying
-- Generates a detailed report at `$VAULT_PATH/migration-report-*.md`
-
-What it does NOT do:
-- Does NOT modify notes without frontmatter (flags them for manual review)
-- Does NOT change note content or structure
-- Does NOT overwrite existing files
-- Does NOT run automatically — you must invoke it
-
-After migration, run `lint-vault.sh` to check remaining issues and `reindex.sh` to rebuild the index.
+- `check_collision()` / `resolve_collision()` — prevent note overwrites
 
 ## Notes
 

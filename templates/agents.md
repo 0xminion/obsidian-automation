@@ -1,4 +1,4 @@
-# Wiki Agent — Schema (v2.2)
+# Wiki Agent — Schema (v2.0.1)
 
 This document instructs you on how to act as an automated wiki maintainer. You own the `04-Wiki/` layer entirely. You read source documents, compile them into structured wiki notes, maintain the index, and keep everything consistent. You rarely wait for instruction — you proactively maintain the wiki.
 
@@ -62,8 +62,8 @@ When processing Chinese-language sources:
 - **MoC headings use `English / 中文` format** consistently (e.g. `Overview / 概述`, `Market Manipulation / 市场操纵`).
 - **MoCs are bilingual bridges** — Chinese descriptions for Chinese resources, English for English resources. Mixed according to integration linkages, NOT pure one language.
 - **Non-Chinese/non-English resources** (except Chinese) — translate and store in English for integration.
-- **Entry template for Chinese sources**: use `template: chinese` with `language: zh` in frontmatter. Sections: 摘要, 关键洞察 (核心发现/其他要点), 图表, 开放问题, 关联概念.
-- **Concept template for Chinese**: use `language: zh` in frontmatter. Sections: 核心概念, 运作机制, 为什么重要, 实际案例, 关联, 开放问题.
+- **Entry template for Chinese sources**: use `template: chinese` with `language: zh` in frontmatter. Sections: 摘要, 核心发现, 其他要点, 图表 (optional), 开放问题, 关联概念.
+- **Concept template for Chinese**: use `language: zh` in frontmatter. Evergreen format: 核心概念, 背景 (flowing prose), 关联. Sources in frontmatter `sources:` field.
 
 ### File Naming Convention
 
@@ -120,7 +120,7 @@ aliases: []
 ```
 
 **Template: standard** (default)
-Sections: Summary, ELI5 insights (Core + Other), Diagrams, Open questions, Linked concepts
+Sections: Summary, Core insights, Other takeaways, Diagrams (optional — 'n/a' if not needed), Open questions, Linked concepts
 
 **Template: technical**
 Sections: Summary, Key Findings, Data/Evidence, Methodology, Limitations, Linked concepts
@@ -130,36 +130,49 @@ Sections: Summary, Side-by-Side Comparison, Pros/Cons, Verdict, Linked concepts
 
 **Template: chinese** (for Chinese-language sources)
 Frontmatter: add `language: zh`, use `template: chinese`. Tags stay English.
-Sections (Chinese body text): 摘要, 关键洞察 (核心发现 + 其他要点), 图表, 开放问题, 关联概念
+Sections (Chinese body text): 摘要, 核心发现, 其他要点, 图表 (optional — 'n/a' if not needed), 开放问题, 关联概念
 
 **Template: procedural**
 Sections: Summary, Prerequisites, Steps, Gotchas, Linked concepts
 
 ### Concept Note (`04-Wiki/concepts/`)
 
+Concepts use the evergreen format — atomic notes, one idea per note, title IS the concept.
+
 ```yaml
 ---
 title: "Concept name as concise phrase"
+type: concept
 date_created: YYYY-MM-DD
 updated: YYYY-MM-DD
+sources:
+  - "[[Source note 1]]"
+  - "[[Source note 2]]"
 tags:
   - concept
   - relevant-topic-1
   - relevant-topic-2
-entry_refs:
-  - "[[Entry name 1]]"
-  - "[[Entry name 2]]"
 status: evergreen
 aliases: []
 ---
 # Concept Name
 
-<2-5 sentences explaining the idea standalone. Clear, humanized prose.>
+## Core concept
+<Single overview paragraph. Plain language, 2-3 sentences.>
 
-## References
-- Entries: [[Entry1]], [[Entry2]]
-- Related Concepts: [[Concept1]], [[Concept2]]
+## Context
+<Flowing prose 2-4 paragraphs: how it works, why it matters, evidence, tensions.
+No sub-headings within Context.>
+
+## Links
+- [[Related Concept]]
+- [[Related Entry]]
+- [[Related MoC]]
 ```
+
+**English:** Core concept → Context → Links
+**Chinese (language: zh):** 核心概念 → 背景 → 关联
+Sources always in frontmatter `sources:` field, NOT in body section.
 
 ### MoC Note (`04-Wiki/mocs/`)
 
