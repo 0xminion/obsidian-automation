@@ -25,7 +25,7 @@ ENTRY_TAGS_TMP=$(mktemp)
 CONCEPT_TAGS_TMP=$(mktemp)
 trap 'rm -f "$ENTRY_TAGS_TMP" "$CONCEPT_TAGS_TMP"' EXIT
 
-# Extract tags from entries
+# Extract tags from entries (handles both inline and multi-line YAML)
 echo "# Tag Registry" > "$TAG_REGISTRY"
 echo "" >> "$TAG_REGISTRY"
 echo "Canonical list of tags used in this wiki. Before minting a new tag," >> "$TAG_REGISTRY"
@@ -34,16 +34,47 @@ echo "" >> "$TAG_REGISTRY"
 echo "Auto-updated on $REPORT_DATE" >> "$TAG_REGISTRY"
 echo "" >> "$TAG_REGISTRY"
 
+extract_yaml_tags() {
+  local file="$1"
+  python3 -c "
+import re, sys
+with open('$file') as f:
+    content = f.read()
+# Extract frontmatter
+m = re.search(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+if not m:
+    sys.exit(0)
+fm = m.group(1)
+# Find tags block
+m2 = re.search(r'^tags:\s*\n((?:\s+-\s+.+\n?)+)', fm, re.MULTILINE)
+if m2:
+    for line in m2.group(1).strip().split('\n'):
+        tag = re.sub(r'^\s*-\s*', '', line).strip().strip('\"')
+        if tag:
+            print(tag)
+else:
+    # Inline format: tags: [a, b, c] or tags: a b c
+    m3 = re.search(r'^tags:\s*\[(.+?)\]', fm, re.MULTILINE)
+    if m3:
+        for tag in m3.group(1).split(','):
+            tag = tag.strip().strip('\"')
+            if tag:
+                print(tag)
+    else:
+        m4 = re.search(r'^tags:\s*(.+)', fm, re.MULTILINE)
+        if m4:
+            for tag in m4.group(1).split():
+                tag = tag.strip().strip('\"')
+                if tag:
+                    print(tag)
+" 2>/dev/null
+}
+
 # Collect entry tags
 if [ -d "$VAULT_PATH/04-Wiki/entries" ]; then
   for entry in "$VAULT_PATH/04-Wiki/entries"/*.md; do
     [ -f "$entry" ] || continue
-    # Extract tags from frontmatter (handles both list and inline formats)
-    tags_line=$(grep -m1 '^tags:' "$entry" 2>/dev/null || true)
-    if [ -n "$tags_line" ]; then
-      # Remove 'tags:' prefix and extract individual tags
-      echo "$tags_line" | sed 's/^tags: *//' | tr '[],' '\n' | sed 's/^[" ]*//;s/[" ]*$//' | grep -v '^$' >> "$ENTRY_TAGS_TMP"
-    fi
+    extract_yaml_tags "$entry" >> "$ENTRY_TAGS_TMP"
   done
   
   # Count and sort entry tags
@@ -61,11 +92,7 @@ fi
 if [ -d "$VAULT_PATH/04-Wiki/concepts" ]; then
   for concept in "$VAULT_PATH/04-Wiki/concepts"/*.md; do
     [ -f "$concept" ] || continue
-    # Extract tags from frontmatter
-    tags_line=$(grep -m1 '^tags:' "$concept" 2>/dev/null || true)
-    if [ -n "$tags_line" ]; then
-      echo "$tags_line" | sed 's/^tags: *//' | tr '[],' '\n' | sed 's/^[" ]*//;s/[" ]*$//' | grep -v '^$' >> "$CONCEPT_TAGS_TMP"
-    fi
+    extract_yaml_tags "$concept" >> "$CONCEPT_TAGS_TMP"
   done
   
   # Count and sort concept tags
@@ -87,10 +114,7 @@ if [ -d "$VAULT_PATH/04-Wiki/mocs" ]; then
   moc_tags_tmp=$(mktemp)
   for moc in "$VAULT_PATH/04-Wiki/mocs"/*.md; do
     [ -f "$moc" ] || continue
-    tags_line=$(grep -m1 '^tags:' "$moc" 2>/dev/null || true)
-    if [ -n "$tags_line" ]; then
-      echo "$tags_line" | sed 's/^tags: *//' | tr '[],' '\n' | sed 's/^[\" ]*//;s/[\" ]*$//' | grep -v '^$' >> "$moc_tags_tmp"
-    fi
+    extract_yaml_tags "$moc" >> "$moc_tags_tmp"
   done
   if [ -s "$moc_tags_tmp" ]; then
     sort "$moc_tags_tmp" | uniq -c | sort -rn | while read count tag; do
