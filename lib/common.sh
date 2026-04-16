@@ -154,7 +154,8 @@ run_with_retry() {
 
     local result=0
     # Timeout agent calls at 10 minutes to prevent hangs on long prompts
-    cd "$VAULT_PATH" && timeout 600 bash -c "echo \"$prompt\" | \"$AGENT_CMD\" chat" 2>> "$LOG_FILE" || result=$?
+    # Use heredoc to safely pass prompt — prevents shell injection from prompt content
+    cd "$VAULT_PATH" && timeout 600 bash -c '"$AGENT_CMD" chat' <<< "$prompt" 2>> "$LOG_FILE" || result=$?
 
     if [ $result -eq 0 ]; then
       log "SUCCESS: $description"

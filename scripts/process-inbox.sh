@@ -687,18 +687,19 @@ if [ "$processed" -gt 0 ]; then
     fi
   done
   
-  # Check: no stubs in newly created notes
-  stub_patterns="> 待补充|> 待分析|> 待深入研究|> 待深入|> TODO|> TBD"
+  # Check: no stubs in newly created notes (same patterns as lint check 11)
+  stub_patterns="> 待补充|> 待分析|> 待深入研究|> 待深入|> TODO|> TBD|> FIXME|> PLACEHOLDER|> 待完善|> 待更新|> 待定|> 待处理"
   stub_found=$(grep -rlE "$stub_patterns" "$VAULT_PATH/04-Wiki/entries/" "$VAULT_PATH/04-Wiki/concepts/" 2>/dev/null | wc -l | tr -d ' ')
   if [ "$stub_found" -gt 0 ]; then
     log "VALIDATION: $stub_found files contain stub placeholders"
     validation_issues=$((validation_issues + stub_found))
   fi
   
-  # Check: no invalid tags (x.com, tweet)
-  invalid_tags=$(grep -rl '\- x\.com\|\- tweet' "$VAULT_PATH/04-Wiki/sources/" "$VAULT_PATH/04-Wiki/entries/" 2>/dev/null | wc -l | tr -d ' ')
+  # Check: no invalid tags (same blocklist as lint check 12)
+  blocked_tags="x\.com|tweet|http|https|rss|feed|url|link"
+  invalid_tags=$(grep -rlE "\- ($blocked_tags)" "$VAULT_PATH/04-Wiki/sources/" "$VAULT_PATH/04-Wiki/entries/" 2>/dev/null | wc -l | tr -d ' ')
   if [ "$invalid_tags" -gt 0 ]; then
-    log "VALIDATION: $invalid_tags files contain invalid tags (x.com/tweet)"
+    log "VALIDATION: $invalid_tags files contain invalid tags"
     validation_issues=$((validation_issues + invalid_tags))
   fi
   

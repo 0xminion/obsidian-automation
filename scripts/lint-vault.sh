@@ -496,7 +496,7 @@ for dir in "04-Wiki/entries" "04-Wiki/concepts"; do
     while IFS= read -r stub_line; do
       [ -z "$stub_line" ] && continue
       # Find which ## section this stub is under
-      line_num=$(grep -n "$stub_line" "$note" | head -1 | cut -d: -f1)
+      line_num=$(grep -Fn "$stub_line" "$note" | head -1 | cut -d: -f1)
       section=$(head -n "$line_num" "$note" | grep -E '^## ' | tail -1 | sed 's/^## //')
       echo "- **[$note_name]** in section '$section': \`${stub_line:0:60}\`" >> "$REPORT_FILE"
       stub_count=$((stub_count + 1))
