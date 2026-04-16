@@ -89,10 +89,17 @@ acquire_lock() {
   vault_hash=$(echo "$VAULT_PATH" | { md5sum 2>/dev/null || md5 -q 2>/dev/null || cksum; } | cut -c1-8)
   _lock_dir="/tmp/obsidian-${script_name}-${vault_hash}.lock"
 
-  # Check for stale lock (process that created it is no longer running)
+  # Check for stale lock (process that created it is no longer running, or too old)
   if [ -d "$_lock_dir" ]; then
     local lock_pid_file="$_lock_dir/pid"
-    if [ -f "$lock_pid_file" ]; then
+    
+    # Time-based stale detection: if lock dir older than 30 minutes, force remove
+    local lock_age
+    lock_age=$(( $(date +%s) - $(stat -c %Y "$_lock_dir" 2>/dev/null || stat -f %m "$_lock_dir" 2>/dev/null || echo 0) ))
+    if [ "$lock_age" -gt 1800 ]; then
+      echo "$(date): Removing stale lock for $script_name (${lock_age}s old, exceeding 30min threshold)" >> "$LOG_FILE"
+      rm -rf "$_lock_dir" 2>/dev/null || true
+    elif [ -f "$lock_pid_file" ]; then
       local lock_pid
       lock_pid=$(cat "$lock_pid_file" 2>/dev/null)
       if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
@@ -146,7 +153,8 @@ run_with_retry() {
     log "Attempt $attempt/$MAX_RETRIES: $description"
 
     local result=0
-    cd "$VAULT_PATH" && echo "$prompt" | $AGENT_CMD chat 2>> "$LOG_FILE" || result=$?
+    # Timeout agent calls at 10 minutes to prevent hangs on long prompts
+    cd "$VAULT_PATH" && timeout 600 bash -c "echo \"$prompt\" | \"$AGENT_CMD\" chat" 2>> "$LOG_FILE" || result=$?
 
     if [ $result -eq 0 ]; then
       log "SUCCESS: $description"
@@ -434,7 +442,11 @@ clean_title() {
   
   # If empty, try first bold text
   if [ -z "$title" ]; then
-    title=$(echo "$content" | grep -m1P '\*\*[^*]+\*\*' | sed 's/.*\*\*//;s/\*\*.*//' | head -1)
+    # Try GNU grep -P first, fall back to POSIX grep -E
+    title=$(echo "$content" | grep -m1P '\*\*[^*]+\*\*' 2>/dev/null | sed 's/.*\*\*//;s/\*\*.*//' | head -1)
+    if [ -z "$title" ]; then
+      title=$(echo "$content" | grep -m1E '\*\*[^*]+\*\*' 2>/dev/null | sed 's/.*\*\*//;s/\*\*.*//' | head -1)
+    fi
   fi
 
   # If still empty, try first non-empty line that's > 20 chars

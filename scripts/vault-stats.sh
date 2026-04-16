@@ -112,7 +112,7 @@ fi
 # Edges count
 edge_count=0
 if [ -f "$VAULT_PATH/06-Config/edges.tsv" ]; then
-  edge_count=$(( $(wc -l < "$VAULT_PATH/06-Config/edges.tsv" | tr -d ' ') - 1 ))
+  edge_count=$(( $(wc -l < "$VAULT_PATH/06-Config/edges.tsv" | tr -d ' \n') - 1 ))
   [ "$edge_count" -lt 0 ] 2>/dev/null && edge_count=0
 fi
 
