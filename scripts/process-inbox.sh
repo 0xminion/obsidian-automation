@@ -670,9 +670,47 @@ if [ "$processed" -gt 0 ]; then
   if [ "$processed" -ge 5 ]; then
     bash "$SCRIPT_DIR/reindex.sh" 2>/dev/null && log "Wiki index rebuilt" || log "Wiki index rebuild failed"
   fi
+
+  # ═══════════════════════════════════════════════════════════
+  # POST-INGEST VALIDATION GATE (v2.5)
+  # ═══════════════════════════════════════════════════════════
+  log "Running post-ingest validation..."
+  validation_issues=0
+  
+  # Check: every processed source has a matching entry
+  for src_file in "$VAULT_PATH/04-Wiki/sources"/*.md; do
+    [ -f "$src_file" ] || continue
+    src_name=$(basename "$src_file" .md)
+    if [ ! -f "$VAULT_PATH/04-Wiki/entries/$src_name.md" ]; then
+      log "VALIDATION: Missing entry for source '$src_name'"
+      validation_issues=$((validation_issues + 1))
+    fi
+  done
+  
+  # Check: no stubs in newly created notes
+  stub_patterns="> 待补充|> 待分析|> 待深入研究|> 待深入|> TODO|> TBD"
+  stub_found=$(grep -rlE "$stub_patterns" "$VAULT_PATH/04-Wiki/entries/" "$VAULT_PATH/04-Wiki/concepts/" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$stub_found" -gt 0 ]; then
+    log "VALIDATION: $stub_found files contain stub placeholders"
+    validation_issues=$((validation_issues + stub_found))
+  fi
+  
+  # Check: no invalid tags (x.com, tweet)
+  invalid_tags=$(grep -rl '\- x\.com\|\- tweet' "$VAULT_PATH/04-Wiki/sources/" "$VAULT_PATH/04-Wiki/entries/" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$invalid_tags" -gt 0 ]; then
+    log "VALIDATION: $invalid_tags files contain invalid tags (x.com/tweet)"
+    validation_issues=$((validation_issues + invalid_tags))
+  fi
+  
+  # MoC staleness scan — suggest compile pass if >10 sources processed
+  if [ "$processed" -ge 10 ]; then
+    log "MOCS: $processed sources processed — MoCs may be stale. Consider running: bash $SCRIPT_DIR/compile-pass.sh"
+  fi
+  
+  log "Post-ingest validation: $validation_issues issues found"
 fi
 
 # Git auto-commit
-auto_commit "ingest" "Processed $processed sources (skipped $skipped, failed $failed)"
+auto_commit "ingest" "Processed $processed sources (skipped $skipped, failed $failed, validation: $validation_issues issues)"
 
 echo "Done. Processed: $processed, Skipped: $skipped, Failed: $failed"

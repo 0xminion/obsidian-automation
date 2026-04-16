@@ -1,4 +1,4 @@
-# PRD: obsidian-automation v2.2
+# PRD: obsidian-automation v2.5
 
 ## Executive Summary
 

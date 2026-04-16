@@ -304,7 +304,7 @@ check_template_sections() {
       done
       ;;
     chinese)
-      for section in "## 摘要" "## 关键洞察" "## 开放问题" "## 关联概念"; do
+      for section in "## 摘要" "## 关键洞察" "### 核心发现" "### 其他要点" "## 图表" "## 开放问题" "## 关联概念"; do
         if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
           missing_sections="${missing_sections}    - ${section}\\n"
         fi
@@ -443,9 +443,10 @@ if [ -f "$VAULT_PATH/06-Config/edges.tsv" ]; then
   [ "$total_edges" -lt 0 ] 2>/dev/null && total_edges=0
 
   # Check for edges referencing non-existent notes
-  while IFS=$'\t' read -r source target type desc; do
-    [ "$source" = "source" ] && continue  # Skip header
+  # Format: source<tab>relation<tab>target (3 columns)
+  while IFS=$'\t' read -r source relation target; do
     [ -z "$source" ] && continue
+    [[ "$source" == "#"* ]] && continue  # Skip comments/headers
 
     if ! find "$VAULT_PATH/04-Wiki" -name "${source}.md" 2>/dev/null | grep -q .; then
       echo "- Source '$source' in edge not found as a note" >> "$REPORT_FILE"
@@ -473,6 +474,104 @@ total_issues=$((total_issues + edge_issues))
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
+# 11. Stub/Placeholder Detection (v2.5)
+# ═══════════════════════════════════════════════════════════
+echo "## 11. Stub/Placeholder Detection" >> "$REPORT_FILE"
+echo "" >> "$REPORT_FILE"
+stub_count=0
+
+# Expanded placeholder patterns — detect incomplete sections
+STUB_PATTERNS="> 待补充|> 待分析|> 待深入研究|> 待深入|> TODO|> TBD|> FIXME|> PLACEHOLDER|> 待完善|> 待更新|> 待定|> 待处理"
+
+for dir in "04-Wiki/entries" "04-Wiki/concepts"; do
+  dir_path="$VAULT_PATH/$dir"
+  [ -d "$dir_path" ] || continue
+
+  for note in "$dir_path"/*.md; do
+    [ -f "$note" ] || continue
+    note_name=$(basename "$note" .md)
+    note_rel="${note#$VAULT_PATH/}"
+
+    # Find stub lines and report which section they're in
+    while IFS= read -r stub_line; do
+      [ -z "$stub_line" ] && continue
+      # Find which ## section this stub is under
+      line_num=$(grep -n "$stub_line" "$note" | head -1 | cut -d: -f1)
+      section=$(head -n "$line_num" "$note" | grep -E '^## ' | tail -1 | sed 's/^## //')
+      echo "- **[$note_name]** in section '$section': \`${stub_line:0:60}\`" >> "$REPORT_FILE"
+      stub_count=$((stub_count + 1))
+    done < <(grep -En "$STUB_PATTERNS" "$note" 2>/dev/null | sed 's/^[0-9]*://' || true)
+  done
+done
+
+if [ $stub_count -eq 0 ]; then
+  echo "No stubs or placeholders found." >> "$REPORT_FILE"
+else
+  echo "" >> "$REPORT_FILE"
+  echo "**Total: $stub_count stub/placeholder sections found**" >> "$REPORT_FILE"
+  echo "Action: Fill these sections with real content from sources. Never leave stubs." >> "$REPORT_FILE"
+  total_issues=$((total_issues + stub_count))
+fi
+
+echo "" >> "$REPORT_FILE"
+
+# ═══════════════════════════════════════════════════════════
+# 12. Tag Quality Validation (v2.5)
+# ═══════════════════════════════════════════════════════════
+echo "## 12. Tag Quality Validation" >> "$REPORT_FILE"
+echo "" >> "$REPORT_FILE"
+tag_issue_count=0
+
+# Blocklist: platform names, URLs, generic metadata — not topic tags
+BLOCKED_TAGS="x.com|tweet|source|url|link|article|web|http|https|rss|feed|podcast|video|youtube|medium|blog|post|page"
+
+for dir in "04-Wiki/entries" "04-Wiki/sources" "04-Wiki/concepts"; do
+  dir_path="$VAULT_PATH/$dir"
+  [ -d "$dir_path" ] || continue
+
+  for note in "$dir_path"/*.md; do
+    [ -f "$note" ] || continue
+    note_name=$(basename "$note" .md)
+
+    # Extract tags from frontmatter
+    in_tags=false
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^tags: ]]; then
+        in_tags=true
+        continue
+      fi
+      if $in_tags; then
+        if [[ ! "$line" =~ ^[[:space:]]+- ]]; then
+          in_tags=false
+          continue
+        fi
+        tag=$(echo "$line" | sed 's/^[[:space:]]*- //' | tr -d '[:space:]')
+        if echo "$tag" | grep -qiE "^($BLOCKED_TAGS)$"; then
+          echo "- **[$note_name]**: blocked tag '$tag'" >> "$REPORT_FILE"
+          tag_issue_count=$((tag_issue_count + 1))
+        fi
+        # Also flag single-char or empty tags
+        if [ ${#tag} -le 1 ]; then
+          echo "- **[$note_name]**: too-short tag '$tag'" >> "$REPORT_FILE"
+          tag_issue_count=$((tag_issue_count + 1))
+        fi
+      fi
+    done < "$note"
+  done
+done
+
+if [ $tag_issue_count -eq 0 ]; then
+  echo "All tags pass quality checks." >> "$REPORT_FILE"
+else
+  echo "" >> "$REPORT_FILE"
+  echo "**Total: $tag_issue_count invalid tags found**" >> "$REPORT_FILE"
+  echo "Action: Replace with topic-specific tags. Tags must describe the content, not the platform." >> "$REPORT_FILE"
+  total_issues=$((total_issues + tag_issue_count))
+fi
+
+echo "" >> "$REPORT_FILE"
+
+# ═══════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════
 echo "---" >> "$REPORT_FILE"
@@ -491,6 +590,8 @@ echo "| Template section issues | $template_issues |" >> "$REPORT_FILE"
 echo "| Orphaned concepts | $orphan_concept_count |" >> "$REPORT_FILE"
 echo "| Wiki index drift | $drift_count |" >> "$REPORT_FILE"
 echo "| Edges consistency | $edge_issues |" >> "$REPORT_FILE"
+echo "| Stub/placeholder sections | $stub_count |" >> "$REPORT_FILE"
+echo "| Invalid tags | $tag_issue_count |" >> "$REPORT_FILE"
 echo "| **TOTAL** | **$total_issues** |" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 echo "*Run lint-vault.sh (v2.4) to regenerate this report.*" >> "$REPORT_FILE"
@@ -503,9 +604,12 @@ append_log_md "lint" "Health check" \
 - Broken wikilinks: $broken_count
 - Near-empty notes: $empty_count
 - Concept structure issues: $conflict_count
+- Template section issues: $template_issues
 - Orphaned concepts: $orphan_concept_count
 - Wiki index drift: $drift_count
 - Edges consistency: $edge_issues
+- Stub/placeholder sections: $stub_count
+- Invalid tags: $tag_issue_count
 - Total issues: $total_issues
 - Full report: Meta/Scripts/lint-report.md"
 

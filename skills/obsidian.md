@@ -27,7 +27,8 @@ VAULT_PATH="$VAULT_PATH" bash scripts/process-inbox.sh
 ## Extraction Chain (in code)
 
 - **arxiv** → `arxiv.org/html/IDv1` (defuddle) → alphaxiv → defuddle abstract
-- **URLs** → defuddle → liteparse → tavily → browser
+- **URLs** → defuddle → liteparse → browser screenshot
+- **X/Twitter** → defuddle (primary, works well) → liteparse → browser
 - **YouTube** → TranscriptAPI → Supadata → whisper
 - **Podcasts** → AssemblyAI → whisper
 - **PDFs** → liteparse → OCR

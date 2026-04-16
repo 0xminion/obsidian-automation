@@ -98,8 +98,7 @@ EXTRACTION PRIORITY (content parsing from URLs/files):
 For URL/HTML/X-Twitter/any web source:
   1. defuddle parse --markdown <url>     — clean markdown extraction (primary)
   2. liteparse <downloaded html>          — fallback document parser
-  3. mcp_tavily_tavily_extract            — web search API extraction
-  4. browser tools (navigate/screenshot)  — last resort for JS-heavy/blocked sites
+  3. browser tools (navigate/screenshot)  — last resort for JS-heavy/blocked sites
   Shell helper: source lib/extract.sh && extract_web "$url"
 
 For PDF/Word/PowerPoint/XLSX (local files):
@@ -112,6 +111,33 @@ Auto-detect: source lib/extract.sh && extract_content "$url_or_path"
   Routes to correct chain based on file type / URL pattern.
 
 lib/extract.sh is sourced by process-inbox.sh automatically.
+
+X/TWITTER EXTRACTION:
+Defuddle is the primary extractor for X/Twitter — it works well on tweet pages.
+NEVER use URL slugs as filenames. Extract the actual tweet content title.
+If defuddle fails, try liteparse, then browser screenshot as last resort.
+
+CONCEPT CONVERGENCE (critical — prevent duplicate concepts):
+Before creating ANY new concept note in 04-Wiki/concepts/:
+1. Search existing concepts: grep for similar titles and keywords
+2. If an existing concept covers the same idea, UPDATE it:
+   - Add the new entry to its 关联条目/entry_refs section
+   - Refresh the body if the new source adds insight
+   - Do NOT create a duplicate
+3. Only create new if the concept is truly novel (no existing concept covers it)
+4. After creating a concept, check if it should be merged with a near-duplicate
+  in the compile pass
+
+BATCH PROCESSING (10+ sources):
+1. Process sources sequentially — never skip or summarize
+2. If extraction fails for one source, log it and continue to next
+3. After batch completes, run post-processing validation:
+   - Every processed source has a matching entry
+   - No stubs (> 待补充, > TODO) in any section
+   - No invalid tags (x.com, tweet, source alone)
+   - MoCs are updated if >10 sources processed
+4. If >20 sources, consider splitting across sub-agents by theme
+5. Report: total processed, total failed, total concepts created/updated
 
 NAMING CONVENTIONS (critical — apply to ALL Source and Entry filenames):
 - Use title_to_filename() from lib/common.sh

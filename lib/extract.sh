@@ -5,8 +5,8 @@
 # Source this file: source lib/extract.sh
 #
 # Priority chains:
-#   arxiv.org → arxiv HTML (defuddle) → alphaxiv → defuddle → liteparse → tavily
-#   URL/HTML/X → defuddle → liteparse (url mode) → tavily/web search → screenshot
+#   arxiv.org → arxiv HTML (defuddle) → alphaxiv → defuddle → liteparse → browser
+#   URL/HTML/X → defuddle → liteparse (url mode) → browser screenshot
 #   PDF/DOCX/PPTX/XLSX → liteparse (local) → ocr-and-documents → browser
 #
 # Dependencies: defuddle, liteparse (both in PATH)
@@ -67,7 +67,7 @@ extract_arxiv_alphaxiv() {
 # ═══════════════════════════════════════════════════════════
 # WEB / URL / HTML / X-TWITTER EXTRACTION
 # ═══════════════════════════════════════════════════════════
-# Chain: defuddle → liteparse (url) → tavily extract → web search → screenshot
+# Chain: defuddle → liteparse (url) → browser screenshot
 #
 # Usage: content=$(extract_web "$url")
 # Returns: markdown content on stdout, exits 1 if all methods fail
@@ -120,18 +120,9 @@ extract_web() {
     echo "$output"
     return 0
   fi
-  log "extract_web: liteparse failed for $url, trying tavily/web search..."
+  log "extract_web: liteparse failed for $url, trying browser screenshot..."
 
-  # ── Tier 3: Tavily extract (web search API) ──
-  output=$(extract_web_tavily "$url") && rc=0 || rc=$?
-  if [ $rc -eq 0 ] && [ -n "$output" ] && [ "${#output}" -gt 200 ]; then
-    log "extract_web: tavily succeeded for $url (${#output} chars)"
-    echo "$output"
-    return 0
-  fi
-  log "extract_web: tavily failed for $url, trying browser screenshot..."
-
-  # ── Tier 4: Browser screenshot (last resort) ──
+  # ── Tier 3: Browser screenshot (last resort) ──
   output=$(extract_web_screenshot "$url") && rc=0 || rc=$?
   if [ $rc -eq 0 ] && [ -n "$output" ]; then
     log "extract_web: screenshot fallback succeeded for $url"
@@ -213,13 +204,9 @@ extract_web_liteparse() {
 }
 
 # Tavily: web search API extraction
-extract_web_tavily() {
-  local url="$1"
-  # Tavily extraction is MCP-based — return signal for caller to use MCP tools
-  # This function is a placeholder; actual tavily calls happen in the agent loop
-  log "extract_web_tavily: delegating to agent MCP tools for $url"
-  return 1
-}
+# Tavily extraction removed — use defuddle for all web URLs including X/Twitter.
+# For X/Twitter: defuddle parse <url> --md (primary, works well).
+# If defuddle fails on X, fall through to liteparse then browser screenshot.
 
 # Browser screenshot: last resort for JS-heavy or blocked sites
 extract_web_screenshot() {
