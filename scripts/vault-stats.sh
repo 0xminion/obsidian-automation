@@ -144,3 +144,11 @@ echo "Dashboard written to $DASHBOARD"
 echo "Summary: $total_notes total notes, $unreviewed_count unreviewed, $orphan_count orphans"
 
 log "Vault stats generated: $total_notes notes, $unreviewed_count unreviewed, $orphan_count orphans"
+
+append_log_md "vault-stats" "Dashboard updated" \
+  "- Total notes: $total_notes
+- Unreviewed: $unreviewed_count
+- Orphans: $orphan_count
+- Output: 06-Config/dashboard.md"
+
+auto_commit "vault-stats" "Dashboard update ($total_notes notes, $unreviewed_count unreviewed)"

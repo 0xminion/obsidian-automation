@@ -41,7 +41,7 @@ LOCAL_WHISPER_LANGUAGE="${LOCAL_WHISPER_LANGUAGE:-en}"
 TRANSCRIBE_TMP_DIR="${TRANSCRIBE_TMP_DIR:-/tmp/obsidian-transcribe}"
 
 # Transcript cache: reuse previous transcriptions
-TRANSCRIPT_CACHE_DIR="${TRANSCRIPT_CACHE_DIR:-$HOME/.cache/obsidian-transcripts}"
+TRANSCRIPT_CACHE_DIR="${TRANSCRIPT_CACHE_DIR:-$HOME/.hermes/cache/transcripts}"
 
 # ═══════════════════════════════════════════════════════════
 # TRANSCRIPT CACHE

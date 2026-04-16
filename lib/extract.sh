@@ -125,7 +125,10 @@ extract_web_liteparse() {
   fi
 
   # Parse with liteparse
-  if liteparse parse --format text "$tmpfile" 2>/dev/null | head -5000; then
+  local content
+  content=$(liteparse parse --format text "$tmpfile" 2>/dev/null | head -5000) || true
+  if [ -n "$content" ]; then
+    echo "$content"
     rm -f "$tmpfile"
     return 0
   fi

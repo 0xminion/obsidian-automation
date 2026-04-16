@@ -474,6 +474,7 @@ case "$MODE" in
     ;;
   execute)
     fix_vault "execute"
+    auto_commit "migrate" "Vault migration executed"
     ;;
 esac
 

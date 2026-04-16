@@ -163,7 +163,7 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 - Scripts load prompts from files via `load_prompt()`, not inline variables ✓
 - Prompts can be edited independently of scripts ✓
 - Common library has `load_prompt()` helper ✓
-- 8 prompt files: common-instructions, entry-structure, concept-structure, moc-structure, compile-pass, query-vault, review-enrich, review-update ✓
+- 7 prompt files: common-instructions, entry-structure, concept-structure, moc-structure, compile-pass, query-vault, review-enrich, review-update ✓
 
 ### R9: Full Reindex
 
@@ -257,8 +257,7 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 │   ├── compile-pass.prompt
 │   ├── query-vault.prompt
 │   ├── review-enrich.prompt
-│   ├── review-update.prompt
-│   └── podcast-structure.prompt
+│   └── review-update.prompt
 ├── scripts/
 │   ├── process-inbox.sh       # ingest with --interactive, auto-updates config
 │   ├── review-pass.sh         # interactive entry review

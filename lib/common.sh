@@ -210,12 +210,12 @@ register_url_source() {
 # Build index from existing Source notes if empty
 bootstrap_url_index() {
   if [ ! -s "$URL_INDEX" ]; then
-    for dir in "$VAULT_PATH/01-Sources" "$VAULT_PATH/04-Wiki/sources"; do
+    for dir in "$VAULT_PATH/01-Raw" "$VAULT_PATH/04-Wiki/sources"; do
       [ -d "$dir" ] || continue
       for f in "$dir"/*.md; do
         [ -f "$f" ] || continue
         local url
-        url=$(grep -m1 'source_url:' "$f" 2>/dev/null | sed 's/.*source_url: *//; s/^"//; s/"$//' || true)
+        url=$(grep -m1 'source_url:' "$f" 2>/dev/null | sed 's/.*source_url: *//; s/^\"//; s/\"$//' || true)
         if [ -n "$url" ]; then
           register_url_source "$url" "$f"
         fi

@@ -30,7 +30,8 @@ mkdir -p "$CACHE_DIR/youtube" "$CACHE_DIR/podcasts"
 # Extract YouTube video ID from URL
 extract_video_id() {
   local url="$1"
-  echo "$url" | grep -oP '(?:v=|youtu\.be/|shorts/)([a-zA-Z0-9_-]{11})' | head -1 | sed 's/v=\|youtu\.be\/\|shorts\///'
+  # POSIX-compatible extraction (no grep -oP or sed \| needed)
+  echo "$url" | sed -n 's/.*[?&]v=\([a-zA-Z0-9_-]\{11\}\).*/\1/p; s/.*youtu\.be\/\([a-zA-Z0-9_-]\{11\}\).*/\1/p; s/.*shorts\/\([a-zA-Z0-9_-]\{11\}\).*/\1/p' | head -1
 }
 
 # YouTube: Check for existing transcript
@@ -40,7 +41,10 @@ youtube_check_existing() {
   
   # Check cache
   if [[ -f "$CACHE_DIR/youtube/${video_id}.json" ]]; then
-    local cache_age=$(($(date +%s) - $(stat -c %Y "$CACHE_DIR/youtube/${video_id}.json" 2>/dev/null || echo 0)))
+    local cache_age
+    local file_mtime
+    file_mtime=$(stat -c %Y "$CACHE_DIR/youtube/${video_id}.json" 2>/dev/null || stat -f %m "$CACHE_DIR/youtube/${video_id}.json" 2>/dev/null || echo 0)
+    cache_age=$(($(date +%s) - file_mtime))
     if [[ $cache_age -lt 2592000 ]]; then  # 30 days
       log "Cache HIT for YouTube video: $video_id"
       cat "$CACHE_DIR/youtube/${video_id}.json"
@@ -188,7 +192,10 @@ podcast_check_existing() {
   # Check cache
   local cache_key=$(echo "$url" | md5sum | cut -d' ' -f1)
   if [[ -f "$CACHE_DIR/podcasts/${cache_key}.json" ]]; then
-    local cache_age=$(($(date +%s) - $(stat -c %Y "$CACHE_DIR/podcasts/${cache_key}.json" 2>/dev/null || echo 0)))
+    local cache_age
+    local file_mtime
+    file_mtime=$(stat -c %Y "$CACHE_DIR/podcasts/${cache_key}.json" 2>/dev/null || stat -f %m "$CACHE_DIR/podcasts/${cache_key}.json" 2>/dev/null || echo 0)
+    cache_age=$(($(date +%s) - file_mtime))
     if [[ $cache_age -lt 2592000 ]]; then  # 30 days
       log "Cache HIT for podcast"
       cat "$CACHE_DIR/podcasts/${cache_key}.json"
@@ -209,18 +216,8 @@ format_youtube_markdown() {
   local method="$3"
   local transcript="$4"
   
-  cat << EOF
-# $title
-**Source:** $url
-**Extracted:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-**Method:** $method
-
-## Transcript
-$transcript
-
----
-*Extracted via $method*
-EOF
+  printf '# %s\n**Source:** %s\n**Extracted:** %s\n**Method:** %s\n\n## Transcript\n%s\n\n---\n*Extracted via %s*\n' \
+    "$title" "$url" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$method" "$transcript" "$method"
 }
 
 format_podcast_markdown() {
@@ -230,18 +227,8 @@ format_podcast_markdown() {
   local method="$4"
   local transcript="$5"
   
-  cat << EOF
-# $podcast_name - $episode_title
-**Source:** $url
-**Extracted:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-**Method:** $method
-
-## Transcript
-$transcript
-
----
-*Extracted via $method*
-EOF
+  printf '# %s - %s\n**Source:** %s\n**Extracted:** %s\n**Method:** %s\n\n## Transcript\n%s\n\n---\n*Extracted via %s*\n' \
+    "$podcast_name" "$episode_title" "$url" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$method" "$transcript" "$method"
 }
 
 # ═══════════════════════════════════════════════════════════
