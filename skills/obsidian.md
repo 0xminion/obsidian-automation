@@ -68,9 +68,24 @@ Core concept → Context (flowing prose) → Links
 8. Concepts use evergreen format — flowing prose in Context/背景, no sub-headings
 9. Sources for concepts go in frontmatter, not body
 
+## Post-Change Sync
+
+After updating codebase (prompts, templates, scripts, lib), ALWAYS:
+1. Copy updated files to vault Meta/ directories:
+   - `cp scripts/*.sh $VAULT_PATH/Meta/Scripts/`
+   - `cp lib/*.sh $VAULT_PATH/Meta/Scripts/../lib/`
+   - `cp prompts/*.prompt $VAULT_PATH/Meta/Scripts/../prompts/`
+   - `cp templates/*.md $VAULT_PATH/Meta/Templates/`
+2. Update existing vault content to match new structures (bulk migration scripts)
+3. Rebuild wiki-index.md
+4. Sync: `npx obsidian-headless sync --path $VAULT_PATH`
+
+Updating codebase alone is NOT complete — vault content must match.
+
 ## Troubleshooting
 
 - Lock file: `rm /tmp/obsidian-process-inbox-*.lock`
 - Defuddle not found: `npm install -g defuddle`
 - Medium blocked: fallback to tavily extract
 - SCRIPT_DIR bug: extract.sh uses `_EXTRACT_DIR`, not inherited `SCRIPT_DIR`
+- Sync: `npx obsidian-headless sync --path /home/linuxuser/MyVault`
