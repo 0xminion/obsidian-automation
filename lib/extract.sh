@@ -5,6 +5,7 @@
 # Source this file: source lib/extract.sh
 #
 # Priority chains:
+#   arxiv.org → alphaxiv (full text) → defuddle → liteparse → tavily
 #   URL/HTML/X → defuddle → liteparse (url mode) → tavily/web search → screenshot
 #   PDF/DOCX/PPTX/XLSX → liteparse (local) → ocr-and-documents → browser
 #
@@ -13,6 +14,55 @@
 
 _EXTRACT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_EXTRACT_DIR/common.sh"
+
+# ═══════════════════════════════════════════════════════════
+# ARXIV / ALPHAXIV EXTRACTION (special handling for papers)
+# ═══════════════════════════════════════════════════════════
+# For arxiv papers, use alphaxiv.org which provides full extracted text.
+# Falls back to defuddle if alphaxiv fails.
+
+is_arxiv_url() {
+  local url="$1"
+  [[ "$url" =~ arxiv\.org/(abs|pdf|html)/[0-9]{4}\.[0-9]{4,5} ]]
+}
+
+extract_arxiv_paper_id() {
+  local url="$1"
+  # Extract paper ID: 2503.03312 from various arxiv URL formats
+  echo "$url" | grep -oP '[0-9]{4}\.[0-9]{4,5}' | head -1
+}
+
+extract_arxiv_alphaxiv() {
+  local url="$1"
+  local paper_id
+  paper_id=$(extract_arxiv_paper_id "$url")
+  if [ -z "$paper_id" ]; then
+    log "extract_arxiv_alphaxiv: could not extract paper ID from $url"
+    return 1
+  fi
+
+  log "extract_arxiv_alphaxiv: fetching full text for $paper_id via alphaxiv"
+  
+  # Try full text endpoint first (alphaxiv.org/abs/{ID}.md)
+  local content
+  content=$(curl -sL "https://www.alphaxiv.org/abs/${paper_id}.md" 2>/dev/null)
+  if [ -n "$content" ] && [ "${#content}" -gt 500 ]; then
+    log "extract_arxiv_alphaxiv: full text OK (${#content} chars)"
+    echo "$content"
+    return 0
+  fi
+
+  # Fallback: try overview/report endpoint
+  content=$(curl -sL "https://www.alphaxiv.org/overview/${paper_id}.md" 2>/dev/null)
+  if [ -n "$content" ] && [ "${#content}" -gt 200 ] && [[ "$content" != *"No intermediate report"* ]]; then
+    log "extract_arxiv_alphaxiv: overview report OK (${#content} chars)"
+    echo "$content"
+    return 1
+  fi
+
+  log "extract_arxiv_alphaxiv: alphaxiv failed for $paper_id, falling back to defuddle"
+  return 1
+}
 
 # ═══════════════════════════════════════════════════════════
 # WEB / URL / HTML / X-TWITTER EXTRACTION
@@ -28,6 +78,17 @@ extract_web() {
   local rc=1
 
   log "extract_web: attempting extraction for $url"
+
+  # ── Tier 0: Arxiv papers → alphaxiv (full text, no defuddle needed) ──
+  if is_arxiv_url "$url"; then
+    output=$(extract_arxiv_alphaxiv "$url") && rc=0 || rc=$?
+    if [ $rc -eq 0 ] && [ -n "$output" ] && [ "${#output}" -gt 500 ]; then
+      log "extract_web: alphaxiv succeeded for $url (${#output} chars)"
+      echo "$output"
+      return 0
+    fi
+    log "extract_web: alphaxiv failed for arxiv URL $url, falling back to defuddle..."
+  fi
 
   # ── Tier 1: Defuddle (clean markdown from web pages) ──
   output=$(extract_web_defuddle "$url") && rc=0 || rc=$?

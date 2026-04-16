@@ -414,3 +414,82 @@ auto_commit() {
     log "Git commit: $operation: $message"
   fi
 }
+
+# ═══════════════════════════════════════════════════════════
+# TITLE CLEANING — Generate human-readable filenames from content
+# ═══════════════════════════════════════════════════════════
+# Takes raw content + URL and produces a clean kebab-case title.
+# Falls back to URL slug if no title found in content.
+#
+# Usage: title=$(clean_title "$content" "$url")
+
+clean_title() {
+  local content="$1"
+  local url="$2"
+  local title=""
+
+  # Extract title from content (first # heading, or first line with substantial text)
+  # Try markdown H1 first
+  title=$(echo "$content" | grep -m1 '^# ' | sed 's/^# //' | head -1)
+  
+  # If empty, try first bold text
+  if [ -z "$title" ]; then
+    title=$(echo "$content" | grep -m1P '\*\*[^*]+\*\*' | sed 's/.*\*\*//;s/\*\*.*//' | head -1)
+  fi
+
+  # If still empty, try first non-empty line that's > 20 chars
+  if [ -z "$title" ]; then
+    title=$(echo "$content" | grep -m1 '^.\{20,\}' | head -1)
+  fi
+
+  # Clean the title
+  if [ -n "$title" ]; then
+    # Remove common prefixes/suffixes
+    title=$(echo "$title" | sed \
+      -e 's/^danny on X: "//' \
+      -e 's/^.*on X: "//' \
+      -e 's/" \/\/ X$//' \
+      -e 's/ | by .*$//' \
+      -e 's/ | Medium$//' \
+      -e 's/\s*—.*$//' \
+      -e 's/^[[:space:]]*//' \
+      -e 's/[[:space:]]*$//')
+    
+    # Truncate to reasonable length
+    title=$(echo "$title" | head -c 120)
+    echo "$title"
+    return 0
+  fi
+
+  # Fallback: derive from URL
+  # e.g. https://blog.example.com/great-article → great-article
+  title=$(echo "$url" | sed \
+    -e 's|https\?://||' \
+    -e 's|www\.||' \
+    -e 's|x\.com/[a-zA-Z0-9_]*/status/||' \
+    -e 's|arxiv\.org/abs/|arxiv-|' \
+    -e 's|/.*$||' \
+    -e 's|[?#].*$||' \
+    -e 's|\.[a-z]*$||')
+  
+  echo "$title"
+}
+
+# ═══════════════════════════════════════════════════════════
+# FILENAME FROM TITLE — Generate safe filename from title
+# ═══════════════════════════════════════════════════════════
+# Converts "Everyone's Promising 20x Leverage..." to
+# "everyones-promising-20x-leverage..."
+#
+# Usage: filename=$(title_to_filename "$title")
+
+title_to_filename() {
+  local title="$1"
+  echo "$title" | tr '[:upper:]' '[:lower:]' \
+    | sed -e "s/[''']//g" \
+    -e 's/[^a-zA-Z0-9\u4e00-\u9fff]/-/g' \
+    -e 's/--*/-/g' \
+    -e 's/^-//' \
+    -e 's/-$//' \
+    | head -c 80
+}
