@@ -5,7 +5,7 @@
 # Source this file: source lib/extract.sh
 #
 # Priority chains:
-#   arxiv.org → alphaxiv (full text) → defuddle → liteparse → tavily
+#   arxiv.org → arxiv HTML (defuddle) → alphaxiv → defuddle → liteparse → tavily
 #   URL/HTML/X → defuddle → liteparse (url mode) → tavily/web search → screenshot
 #   PDF/DOCX/PPTX/XLSX → liteparse (local) → ocr-and-documents → browser
 #
@@ -79,8 +79,22 @@ extract_web() {
 
   log "extract_web: attempting extraction for $url"
 
-  # ── Tier 0: Arxiv papers → alphaxiv (full text, no defuddle needed) ──
+  # ── Tier 0: Arxiv papers → HTML version (full text via defuddle) → alphaxiv ──
   if is_arxiv_url "$url"; then
+    # Try arxiv HTML first (same domain, defuddle handles it well)
+    local html_url
+    local paper_id
+    paper_id=$(extract_arxiv_paper_id "$url")
+    if [ -n "$paper_id" ]; then
+      html_url="https://arxiv.org/html/${paper_id}v1"
+      output=$(extract_web_defuddle "$html_url") && rc=0 || rc=$?
+      if [ $rc -eq 0 ] && [ -n "$output" ] && [ "${#output}" -gt 500 ]; then
+        log "extract_web: arxiv HTML succeeded for $html_url (${#output} chars)"
+        echo "$output"
+        return 0
+      fi
+    fi
+    # Fallback: alphaxiv full text
     output=$(extract_arxiv_alphaxiv "$url") && rc=0 || rc=$?
     if [ $rc -eq 0 ] && [ -n "$output" ] && [ "${#output}" -gt 500 ]; then
       log "extract_web: alphaxiv succeeded for $url (${#output} chars)"
