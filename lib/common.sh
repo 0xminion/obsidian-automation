@@ -146,7 +146,7 @@ run_with_retry() {
     log "Attempt $attempt/$MAX_RETRIES: $description"
 
     local result=0
-    cd "$VAULT_PATH" && $AGENT_CMD "$prompt" 2>> "$LOG_FILE" || result=$?
+    cd "$VAULT_PATH" && echo "$prompt" | $AGENT_CMD chat 2>> "$LOG_FILE" || result=$?
 
     if [ $result -eq 0 ]; then
       log "SUCCESS: $description"
