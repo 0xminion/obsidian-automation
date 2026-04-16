@@ -307,7 +307,7 @@ TRANSCRIBE_BACKEND: $TRANSCRIBE_BACKEND
 STEP 1 — CHECK FOR EXISTING TRANSCRIPT
 Before downloading audio, check if a transcript already exists:
   existing=\\$(source lib/transcribe.sh && find_existing_transcript '$url' '$VAULT_PATH')
-If $existing is non-empty, SKIP Steps 1-2 and use it directly for Steps 3+.
+If \$existing is non-empty, SKIP Steps 1-2 and use it directly for Steps 3+.
 This avoids redundant API calls when re-processing or when a transcript was
 provided externally.
 

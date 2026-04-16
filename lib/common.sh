@@ -475,14 +475,26 @@ clean_title() {
 
   # Fallback: derive from URL
   # e.g. https://blog.example.com/great-article → great-article
+  # NEVER use tweet IDs or pure numeric slugs
+  if echo "$url" | grep -qE 'x\.com|twitter\.com'; then
+    # For X/Twitter, return empty — force caller to extract content title
+    echo ""
+    return 1
+  fi
+  
   title=$(echo "$url" | sed \
     -e 's|https\?://||' \
     -e 's|www\.||' \
-    -e 's|x\.com/[a-zA-Z0-9_]*/status/||' \
     -e 's|arxiv\.org/abs/|arxiv-|' \
     -e 's|/.*$||' \
     -e 's|[?#].*$||' \
     -e 's|\.[a-z]*$||')
+  
+  # Reject pure numeric slugs (tweet IDs, short codes)
+  if echo "$title" | grep -qE '^[0-9]+$'; then
+    echo ""
+    return 1
+  fi
   
   echo "$title"
 }
