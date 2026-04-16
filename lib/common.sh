@@ -478,18 +478,39 @@ clean_title() {
 # ═══════════════════════════════════════════════════════════
 # FILENAME FROM TITLE — Generate safe filename from title
 # ═══════════════════════════════════════════════════════════
-# Converts "Everyone's Promising 20x Leverage..." to
-# "everyones-promising-20x-leverage..."
+# Rules:
+#   - Chinese titles → use Chinese as filename (keep original chars)
+#   - English titles → kebab-case lowercase
+#   - Papers → use actual paper title, not arxiv/DOI ID
+#   - Truncate to 120 chars for filesystem safety
+#   - Strip: quotes, colons (replace with -), special chars
 #
 # Usage: filename=$(title_to_filename "$title")
 
 title_to_filename() {
   local title="$1"
-  echo "$title" | tr '[:upper:]' '[:lower:]' \
-    | sed -e "s/[''']//g" \
-    -e 's/[^a-zA-Z0-9\u4e00-\u9fff]/-/g' \
-    -e 's/--*/-/g' \
-    -e 's/^-//' \
-    -e 's/-$//' \
-    | head -c 80
+  local has_chinese
+  
+  # Check if title contains Chinese characters
+  has_chinese=$(echo "$title" | grep -cP '[\x{4e00}-\x{9fff}]' 2>/dev/null || echo "$title" | grep -c '[一-龥]' || echo "0")
+  
+  if [ "$has_chinese" -gt 0 ]; then
+    # Chinese title: keep Chinese chars, replace specials
+    echo "$title" | sed \
+      -e 's/[：:]/-/g' \
+      -e 's/[？?！!，,。.、]/ /g' \
+      -e 's/[\"'"'"'《》「」（）\(\)]//g' \
+      -e 's/[[:space:]]*$//' \
+      -e 's/^[[:space:]]*//' \
+      | head -c 120
+  else
+    # English title: kebab-case
+    echo "$title" | tr '[:upper:]' '[:lower:]' \
+      | sed -e "s/[''']//g" \
+      -e 's/[^a-zA-Z0-9]/-/g' \
+      -e 's/--*/-/g' \
+      -e 's/^-//' \
+      -e 's/-$//' \
+      | head -c 120
+  fi
 }
