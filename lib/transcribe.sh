@@ -30,6 +30,7 @@ TRANSCRIBE_BACKEND="${TRANSCRIBE_BACKEND:-assemblyai}"
 # AssemblyAI
 ASSEMBLYAI_API_KEY="${ASSEMBLYAI_API_KEY:-}"
 ASSEMBLYAI_API_URL="${ASSEMBLYAI_API_URL:-https://api.assemblyai.com}"
+ASSEMBLYAI_MODEL="${ASSEMBLYAI_MODEL:-universal-2}"
 
 # Local whisper (not installed by default — user configures)
 LOCAL_WHISPER_CMD="${LOCAL_WHISPER_CMD:-}"          # e.g., "faster-whisper" or "whisper"
@@ -38,6 +39,98 @@ LOCAL_WHISPER_LANGUAGE="${LOCAL_WHISPER_LANGUAGE:-en}"
 
 # Temp directory for audio downloads
 TRANSCRIBE_TMP_DIR="${TRANSCRIBE_TMP_DIR:-/tmp/obsidian-transcribe}"
+
+# Transcript cache: reuse previous transcriptions
+TRANSCRIPT_CACHE_DIR="${TRANSCRIPT_CACHE_DIR:-$HOME/.cache/obsidian-transcripts}"
+
+# ═══════════════════════════════════════════════════════════
+# TRANSCRIPT CACHE
+# ═══════════════════════════════════════════════════════════
+# Avoid re-transcribing audio that was already processed.
+# Cache key: SHA256 of audio file.
+
+# Check if a cached transcript exists for an audio file.
+# Usage: cached=$(find_cached_transcript "/path/to/audio.mp3")
+# Returns: transcript text on stdout, or empty string if not cached
+find_cached_transcript() {
+  local audio_file="$1"
+  if [ ! -f "$audio_file" ]; then return 1; fi
+
+  local hash
+  hash=$(sha256sum "$audio_file" | cut -d' ' -f1)
+  local cache_file="$TRANSCRIPT_CACHE_DIR/${hash}.txt"
+
+  if [ -f "$cache_file" ] && [ -s "$cache_file" ]; then
+    log "Transcript cache HIT: $hash ($(basename "$audio_file"))"
+    cat "$cache_file"
+    return 0
+  fi
+
+  return 1
+}
+
+# Save a transcript to the cache.
+# Usage: save_cached_transcript "/path/to/audio.mp3" "$transcript"
+save_cached_transcript() {
+  local audio_file="$1"
+  local transcript="$2"
+
+  local hash
+  hash=$(sha256sum "$audio_file" | cut -d' ' -f1)
+  mkdir -p "$TRANSCRIPT_CACHE_DIR"
+  echo "$transcript" > "$TRANSCRIPT_CACHE_DIR/${hash}.txt"
+  log "Transcript cached: $hash ($(basename "$audio_file"))"
+}
+
+# Check if existing transcript text is available (file or Source note).
+# Usage: existing=$(find_existing_transcript "$url" "$vault_path")
+# Checks: 1) Source note with transcript, 2) cached .txt by URL hash
+find_existing_transcript() {
+  local url="$1"
+  local vault_path="${2:-$VAULT_PATH}"
+
+  # Check Source notes for existing transcript
+  local url_hash
+  url_hash=$(echo -n "$url" | sha256sum | cut -d' ' -f1)
+  local cache_file="$TRANSCRIPT_CACHE_DIR/url_${url_hash}.txt"
+
+  if [ -f "$cache_file" ] && [ -s "$cache_file" ]; then
+    log "Transcript cache HIT for URL: $url"
+    cat "$cache_file"
+    return 0
+  fi
+
+  # Check if a Source note already has transcript content
+  if [ -d "$vault_path/04-Wiki/sources" ]; then
+    local existing
+    existing=$(grep -rl "$url" "$vault_path/04-Wiki/sources/" 2>/dev/null | head -1)
+    if [ -n "$existing" ]; then
+      # Extract transcript from "## Original Content" or "## Transcript" section
+      local transcript
+      transcript=$(awk '/^## (Original Content|Transcript)/{found=1; next} /^## /{if(found) exit} found{print}' "$existing" 2>/dev/null)
+      if [ -n "$transcript" ] && [ "${#transcript}" -gt 100 ]; then
+        log "Found existing transcript in Source note: $(basename "$existing")"
+        echo "$transcript"
+        return 0
+      fi
+    fi
+  fi
+
+  return 1
+}
+
+# Save URL-based transcript to cache.
+# Usage: save_url_transcript "$url" "$transcript"
+save_url_transcript() {
+  local url="$1"
+  local transcript="$2"
+
+  local url_hash
+  url_hash=$(echo -n "$url" | sha256sum | cut -d' ' -f1)
+  mkdir -p "$TRANSCRIPT_CACHE_DIR"
+  echo "$transcript" > "$TRANSCRIPT_CACHE_DIR/url_${url_hash}.txt"
+  log "URL transcript cached: $url"
+}
 
 # ═══════════════════════════════════════════════════════════
 # ASSEMBLYAI TRANSCRIPTION
@@ -86,7 +179,7 @@ transcribe_assemblyai() {
   submit_response=$(curl -s -X POST "$ASSEMBLYAI_API_URL/v2/transcript" \
     -H "Authorization: $ASSEMBLYAI_API_KEY" \
     -H "Content-Type: application/json" \
-    -d "{\"audio_url\": \"$upload_url\", \"punctuate\": true, \"format_text\": true}" \
+    -d "{\"audio_url\": \"$upload_url\", \"speech_models\": [\"$ASSEMBLYAI_MODEL\"], \"punctuate\": true, \"format_text\": true}" \
     --max-time 30 2>>"$LOG_FILE")
 
   transcript_id=$(json_field "$submit_response" "id")
@@ -230,6 +323,7 @@ transcribe_local() {
 # UNIFIED TRANSCRIBE FUNCTION
 # ═══════════════════════════════════════════════════════════
 # Dispatches to the configured backend with automatic fallback.
+# Checks cache before hitting any API.
 #
 # Usage: transcript=$(transcribe_audio "/path/to/audio.mp3")
 # Returns: transcript text on stdout, exits 1 if all backends fail
@@ -238,22 +332,33 @@ transcribe_audio() {
 
   mkdir -p "$TRANSCRIBE_TMP_DIR"
 
+  # Check cache first — avoid re-transcribing
+  local cached
+  cached=$(find_cached_transcript "$audio_file" 2>/dev/null) || true
+  if [ -n "$cached" ]; then
+    echo "$cached"
+    return 0
+  fi
+
+  local transcript=""
+  local rc=1
+
   case "$TRANSCRIBE_BACKEND" in
     assemblyai)
-      if transcribe_assemblyai "$audio_file"; then
-        return 0
+      transcript=$(transcribe_assemblyai "$audio_file" 2>/dev/null) && rc=0 || rc=$?
+      if [ $rc -ne 0 ]; then
+        log "AssemblyAI failed, attempting local fallback..."
+        echo "WARNING: AssemblyAI failed, trying local whisper fallback..." >&2
+        transcript=$(transcribe_local "$audio_file" 2>/dev/null) && rc=0 || rc=$?
       fi
-      log "AssemblyAI failed, attempting local fallback..."
-      echo "WARNING: AssemblyAI failed, trying local whisper fallback..." >&2
-      transcribe_local "$audio_file"
       ;;
     local)
-      if transcribe_local "$audio_file"; then
-        return 0
+      transcript=$(transcribe_local "$audio_file" 2>/dev/null) && rc=0 || rc=$?
+      if [ $rc -ne 0 ]; then
+        log "Local whisper failed, attempting AssemblyAI fallback..."
+        echo "WARNING: Local whisper failed, trying AssemblyAI fallback..." >&2
+        transcript=$(transcribe_assemblyai "$audio_file" 2>/dev/null) && rc=0 || rc=$?
       fi
-      log "Local whisper failed, attempting AssemblyAI fallback..."
-      echo "WARNING: Local whisper failed, trying AssemblyAI fallback..." >&2
-      transcribe_assemblyai "$audio_file"
       ;;
     *)
       echo "ERROR: Unknown TRANSCRIBE_BACKEND: $TRANSCRIBE_BACKEND" >&2
@@ -261,6 +366,15 @@ transcribe_audio() {
       return 1
       ;;
   esac
+
+  # Cache on success
+  if [ $rc -eq 0 ] && [ -n "$transcript" ]; then
+    save_cached_transcript "$audio_file" "$transcript"
+    echo "$transcript"
+    return 0
+  fi
+
+  return 1
 }
 
 # ═══════════════════════════════════════════════════════════

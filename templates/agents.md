@@ -49,6 +49,21 @@ This document instructs you on how to act as an automated wiki maintainer. You o
 9. **Typed edges**: When content reveals relationships, append to `06-Config/edges.tsv`.
 10. **Query compound-back**: After answering a query, update existing wiki pages with discovered connections.
 
+## Bilingual Rules
+
+When processing Chinese-language sources:
+
+- **Chinese sources stay Chinese in ALL 04-Wiki content** — Sources, Entries, Concepts all in Chinese. NEVER translate Chinese source content to English for wiki body text.
+- **Chinese content goes through full pipeline** — read Chinese source → write Chinese entry → create/update Chinese concepts. NOT translation from English output.
+- **Tags are always English** regardless of source language.
+- **File names are always English.**
+- **YAML frontmatter keys are always English** (`title:`, `source:`, `tags:`, `status:`).
+- **Wikilinks can be in either language** depending on the linked note's language.
+- **MoCs are bilingual bridges** — Chinese descriptions for Chinese resources, English for English resources. Mixed according to integration linkages, NOT pure one language.
+- **Non-Chinese/non-English resources** (except Chinese) — translate and store in English for integration.
+- **Entry template for Chinese sources**: use `template: chinese` with `language: zh` in frontmatter. Sections: 摘要, 关键洞察 (核心发现/其他要点), 图表, 开放问题, 关联概念.
+- **Concept template for Chinese**: use `language: zh` in frontmatter. Sections: 核心概念, 运作机制, 为什么重要, 实际案例, 关联, 开放问题.
+
 ## Note Structures
 
 ### Source Note (`04-Wiki/sources/`)
@@ -102,6 +117,10 @@ Sections: Summary, Key Findings, Data/Evidence, Methodology, Limitations, Linked
 **Template: comparison**
 Sections: Summary, Side-by-Side Comparison, Pros/Cons, Verdict, Linked concepts
 
+**Template: chinese** (for Chinese-language sources)
+Frontmatter: add `language: zh`, use `template: chinese`. Tags stay English.
+Sections (Chinese body text): 摘要, 关键洞察 (核心发现 + 其他要点), 图表, 开放问题, 关联概念
+
 **Template: procedural**
 Sections: Summary, Prerequisites, Steps, Gotchas, Linked concepts
 
@@ -133,6 +152,8 @@ aliases: []
 
 ### MoC Note (`04-Wiki/mocs/`)
 
+MoCs can be monolingual or bilingual bridges.
+
 ```yaml
 ---
 title: "Topic Name — Map of Content"
@@ -144,6 +165,33 @@ tags:
   - topic-tag
   - map-of-content
 ---
+```
+
+**Bilingual MoC** (default — bridges Chinese and English resources):
+```
+# Topic Name — 知识图谱
+
+## 概述 / Overview
+<2-3 sentence synthesized summary.>
+
+## 中文资源 — <Category Name>
+- [[Chinese Entry]]（English Title）— <Chinese description>
+
+## 中文概念 — <Category Name>
+- [[Chinese Concept]]（English Name）— <Chinese description>
+
+## English Resources — <Category Name>
+- [[English Entry]] — <English description>
+
+## English Concepts
+- [[English Concept]] — <English description>
+
+## 关联图谱 / Cross-References
+<ASCII diagram showing how languages connect>
+```
+
+**Monolingual MoC** (for pure English or pure Chinese pools):
+```
 # Topic Name — Map of Content
 
 ## Overview

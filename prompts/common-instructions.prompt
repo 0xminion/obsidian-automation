@@ -55,6 +55,39 @@ CRITICAL RULES:
    source<tab>target<tab>type<tab>description
    Types: extends, contradicts, supports, supersedes, tested_by, depends_on, inspired_by
 
+BILINGUAL PIPELINE RULES (English + Chinese):
+
+11. LANGUAGE DETECTION: Before processing any source, detect its primary language.
+   - Chinese content (any CJK block) → BILINGUAL PIPELINE
+   - All other non-English languages → translate to English, process in English
+   - English content → process in English
+
+12. CHINESE PIPELINE: For Chinese-language sources, ALL 04-Wiki content stays Chinese:
+   - Sources: keep original Chinese content as-is
+   - Entries: write 摘要 (Summary), 关键洞察 (Key Insights), 关联概念 (Linked Concepts) — all Chinese body text
+   - Concepts: Chinese explanation body, Chinese section headers
+   - YAML frontmatter keys stay English, tag VALUES stay English
+   - File names stay English
+   - Wikilinks can be either language
+   Go through the full pipeline end-to-end in Chinese — NEVER translate to English then back.
+
+13. NEVER WRITE LAZY DISCLAIMERS: If content is too large to process in one pass,
+   break it into chunks and process each chunk properly.
+   Do NOT write "Content extracted via Tavily. Full article text available in raw extraction."
+   or any similar placeholder. Write the actual content or chunk it.
+
+14. MoC BILINGUAL BRIDGES: MoCs are the integration layer.
+   When a MoC bridges Chinese and English resources:
+   - Chinese resources get Chinese descriptions
+   - English resources get English descriptions
+   - Use section headers to separate language groups
+   - Include bridge concepts that connect the two language worlds
+   - MoCs are NEVER pure Chinese or pure English when spanning both language pools
+
+15. NON-CHINESE/NON-ENGLISH SOURCES: For sources in other languages (Japanese, Korean, etc.),
+   translate to English, store in English, integrate in English. Only Chinese gets
+   the bilingual pipeline — everything else routes through English.
+
 TAG CONSOLIDATION:
 Before creating new tags, ALWAYS search existing tags in the vault first:
   obsidian tags sort=count counts

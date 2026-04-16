@@ -303,66 +303,73 @@ FILE: '$file'
 URL: $url
 TRANSCRIBE_BACKEND: $TRANSCRIBE_BACKEND
 
-STEP 1 — DOWNLOAD AUDIO
+STEP 1 — CHECK FOR EXISTING TRANSCRIPT
+Before downloading audio, check if a transcript already exists:
+  existing=\\$(source lib/transcribe.sh && find_existing_transcript '$url' '$VAULT_PATH')
+If $existing is non-empty, SKIP Steps 1-2 and use it directly for Steps 3+.
+This avoids redundant API calls when re-processing or when a transcript was
+provided externally.
+
+STEP 2 — DOWNLOAD AUDIO
 Use the download_audio function (from lib/transcribe.sh) to download the audio:
   audio_path=\$(download_audio '$url')
 If download fails, try yt-dlp as fallback:
   yt-dlp -x --audio-format mp3 -o '/tmp/podcast_\$(date +%s).mp3' '$url'
 If both fail, create a Source note with URL and status: needs-audio.
 
-STEP 2 — TRANSCRIBE AUDIO
+STEP 3 — TRANSCRIBE AUDIO
 Use the transcribe_audio function (from lib/transcribe.sh):
-  transcript=\$(transcribe_audio \"\$audio_path\")
+  transcript=\\$(transcribe_audio "$audio_path")
 This uses AssemblyAI (primary) or local whisper (fallback) based on config.
 If transcription fails, create Source note with URL and status: needs-transcript.
 
 Convert the transcript into clean markdown paragraphs.
 Clean up: remove filler words artifacts, fix obvious transcription errors.
 
-STEP 3 — CREATE SOURCE NOTE
+STEP 4 — CREATE SOURCE NOTE
 Create a Source note in '04-Wiki/sources/' with:
   - Podcast URL, episode title, show name, host(s)
   - Duration if available
   - Full transcript as markdown in 'Original content' section
   - Frontmatter: title, source_url, source_type: podcast, author, date_captured, tags, status: processed
 
-STEP 4 — CREATE ENTRY NOTE
+STEP 5 — CREATE ENTRY NOTE
 $ENTRY_STRUCTURE
 Draft the full Entry note from the transcript.
 Humanize all prose, then write to '04-Wiki/entries/'.
 IMPORTANT: Use date_entry: (NOT date_distilled:) in frontmatter.
 Include reviewed: null and review_notes: null in frontmatter.
 
-STEP 5 — CREATE/UPDATE CONCEPT NOTES
+STEP 6 — CREATE/UPDATE CONCEPT NOTES
 $CONCEPT_STRUCTURE
 MANDATORY: Search 04-Wiki/concepts/ BEFORE creating any new concept.
 Check if existing concepts cover the same idea. If yes, UPDATE existing
 concept (add entry_ref, refresh body if needed). Only create new if truly novel.
 Humanize all concept prose before writing.
 
-STEP 6 — UPDATE MoCs
+STEP 7 — UPDATE MoCs
 Search 04-Wiki/mocs/ for relevant topic matches. For each matching or new MoC:
 - Add wikilinks with 1-sentence summaries for new Entry and Concept notes
 - Humanize all MoC prose
 
-STEP 7 — UPDATE WIKI INDEX
+STEP 8 — UPDATE WIKI INDEX
 Append the new Entry and any new Concepts to '06-Config/wiki-index.md'
 with 1-sentence summaries in this format:
   - [[EntryName]]: <1-sentence summary> (entry)
   - [[ConceptName]]: <1-sentence summary> (concept)
 
-STEP 8 — TYPED EDGES
+STEP 9 — TYPED EDGES
 If the content reveals relationships between notes (this extends X,
 this contradicts Y, this supports Z), append to '06-Config/edges.tsv':
   source<tab>target<tab>type<tab>description
 Types: extends, contradicts, supports, supersedes, tested_by, depends_on, inspired_by
 
-STEP 9 — ARCHIVE
+STEP 10 — ARCHIVE
 Move original inbox file to '08-Archive-Raw/'.
 Register URL in the index: append '\$url\t<source-note-path>' to '$URL_INDEX'.
 Clean up downloaded audio file: rm -f \"\$audio_path\"
 
-STEP 10 — LOG ENTRY
+STEP 11 — LOG ENTRY
 Append a structured header to '06-Config/log.md':
   ## [YYYY-MM-DD] ingest | <source-title>
   - Created Source: [[Source Name]]

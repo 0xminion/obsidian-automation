@@ -1,8 +1,9 @@
 ENTRY NOTE STRUCTURE — follow EXACTLY for every note in 04-Wiki/entries/:
 
 Check the `template:` field in frontmatter. Default is `standard`.
+Check the `language:` field. If zh, use the Chinese template.
 
-=== TEMPLATE: standard (default) ===
+=== TEMPLATE: standard (default, English) ===
 
 Frontmatter (YAML) must include:
   - title: "<concise title>"
@@ -56,6 +57,44 @@ Use a bullet-point list (dash-prefixed). Wikilinks to related Concept notes,
 other Entry notes, and MoCs.
 Use 'obsidian search' to find existing related notes in the vault.
 Link to concepts in 04-Wiki/concepts/, entries in 04-Wiki/entries/, and MoCs in 04-Wiki/mocs/.
+
+=== TEMPLATE: chinese (for Chinese-language sources) ===
+
+Frontmatter must include language: zh:
+  - title: "<Chinese title>"
+  - title_en: "<English title if applicable>"
+  - source: "[[<source-note-name>]]"
+  - date_entry: YYYY-MM-DD
+  - language: zh
+  - status: review
+  - template: chinese
+  - tags: English tag values (tags stay in English always)
+
+Body sections IN THIS ORDER — ALL BODY TEXT IN CHINESE:
+
+## 摘要
+3-5句中文摘要。简洁明了，不要废话。
+
+## 关键洞察
+
+### 核心发现
+像给聪明的12岁孩子解释一样说清楚。不用术语，用具体例子。用编号列表。
+提取所有重要内容。每个编号项都要有实质性的ELI5解释。
+
+### 其他要点
+继续从核心发现的编号开始。同样用ELI5方法。不要人为限制数量。
+
+## 图表
+如果内容涉及流程、关系、层次、比较或任何可视化更清楚的概念：用Mermaid图表。
+如果没有帮助，写："N/A — 内容直白易懂。"
+
+## 开放问题
+编号列表。源文件提出的问题、缺口、假设。
+
+## 关联概念
+破折号列表。Wikilinks到相关概念笔记、条目笔记和MoC。
+用 'obsidian search' 找现有的相关笔记。
+链接到 04-Wiki/concepts/、04-Wiki/entries/ 和 04-Wiki/mocs/ 中的笔记。
 
 === TEMPLATE: technical ===
 

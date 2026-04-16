@@ -1,28 +1,34 @@
 ---
-title: "Topic — Map of Content"
+title: "{{title}}"
 type: moc
-date_created: YYYY-MM-DD
-date_updated: YYYY-MM-DD
 status: active
+date_created: {{date}}
+date_updated: {{date}}
 tags:
-  - topic-tag
   - map-of-content
+  - {{topic_tag}}
 ---
 
-# Topic — Map of Content
+# {{title}} — 知识图谱
 
-## Overview
-2-3 sentence synthesized summary of the topic. What it covers and why it matters.
+## 概述 / Overview
+<2-3 sentence synthesized summary of what this topic covers. Can be bilingual if bridging languages.>
 
-## Core Concepts
-- [[Concept 1]] — 1-sentence summary
-- [[Concept 2]] — 1-sentence summary
+## 中文资源 — <Category Name>
 
-## Related Entries
-- [[Entry 1]] — 1-sentence summary
+- [[Chinese Entry]]（English Title）— <Chinese description>
 
-## Open Threads
-- Questions/gaps for future exploration
+## 中文概念 — <Category Name>
 
-## Notes
-<Optional deeper commentary about the state of knowledge on this topic.>
+- [[Chinese Concept]]（English Name）— <Chinese description>
+
+## English Resources — <Category Name>
+
+- [[English Entry]] — <English description>
+
+## English Concepts
+
+- [[English Concept]] — <English description>
+
+## 关联图谱 / Cross-References
+<ASCII or text diagram showing how Chinese and English resources connect through bridge concepts>

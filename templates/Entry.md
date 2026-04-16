@@ -60,6 +60,17 @@ checks sections based on template type. Available templates:
 ### template: standard (default)
 Sections: Summary, ELI5 insights, Diagrams, Open questions, Linked concepts
 
+### template: chinese (for Chinese-language sources)
+Frontmatter: add `language: zh`, use `template: chinese`. Tags stay English.
+Sections (Chinese body text):
+  摘要 (3-5句中文摘要)
+  关键洞察
+    - 核心发现 (编号列表, ELI5方法)
+    - 其他要点 (继续编号)
+  图表 (Mermaid图表或"N/A")
+  开放问题 (编号列表)
+  关联概念 (破折号列表, wikilinks)
+
 ### template: technical
 Sections: Summary, Key Findings, Data/Evidence, Methodology, Limitations, Linked concepts
 Use for: research papers, data-heavy articles, technical documentation

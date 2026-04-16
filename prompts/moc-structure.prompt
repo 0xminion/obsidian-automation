@@ -1,5 +1,7 @@
 MOC NOTE STRUCTURE — for 04-Wiki/mocs/:
 
+MoCs are the INTEGRATION LAYER. They bridge languages, topics, and resources.
+
 Frontmatter:
   - title: "<Topic Name> — Map of Content"
   - type: moc
@@ -8,21 +10,58 @@ Frontmatter:
   - date_updated: YYYY-MM-DD
   - tags: the topic tag repeated, plus 'map-of-content'
 
+=== BILINGUAL MoC (default for most MoCs) ===
+
+When a MoC bridges Chinese and English resources, organize by language group.
+Each resource gets a description IN ITS OWN LANGUAGE.
+
 Body:
+  # <Topic Name> — 知识图谱
+
+  ## 概述 / Overview
+  <2-3 sentence synthesized summary. Can be bilingual if the topic spans both languages.>
+
+  ## 中文资源 — <Category Name>
+
+  - [[Chinese Entry 1]]（English Title if applicable）— <Chinese description, 1 sentence>
+  - [[Chinese Entry 2]] — <Chinese description>
+
+  ## 中文概念 — <Category Name>
+
+  - [[Chinese Concept 1]]（English Name）— <Chinese description>
+  - [[Chinese Concept 2]] — <Chinese description>
+
+  ## English Resources — <Category Name>
+
+  - [[English Entry 1]] — <English description, 1 sentence>
+  - [[English Entry 2]] — <English description>
+
+  ## English Concepts
+
+  - [[English Concept 1]] — <English description>
+
+  ## 关联图谱 / Cross-References
+  <ASCII or text diagram showing how Chinese and English resources connect through bridge concepts>
+  The pipeline links Chinese operational analysis with English technical infrastructure
+  through shared concepts.
+
+=== MONOLINGUAL MoC (for pure English or pure Chinese topic pools) ===
+
+If a MoC covers ONLY English or ONLY Chinese resources, use the standard structure:
+
   # <Topic Name> — Map of Content
 
   ## Overview
-  <2-3 sentence synthesized summary of this topic. Explain WHAT this topic
-  covers and WHY it matters. Prose paragraph for at-a-glance understanding.>
+  <2-3 sentence synthesized summary.>
 
   ## Core Concepts
-  - [[<Concept note>]] — <1-sentence summary>
+  - [[Concept note]] — 1-sentence summary
 
   ## Related Entries
-  - [[<Entry note>]] — <1-sentence summary>
+  - [[Entry note]] — 1-sentence summary
 
   ## Open Threads
-  - <Questions that remain unanswered, for future exploration>
+  - Questions that remain unanswered
 
   ## Notes
   <Optional deeper commentary about the state of knowledge on this topic.>

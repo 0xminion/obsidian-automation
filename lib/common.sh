@@ -12,6 +12,21 @@
 set -uo pipefail
 
 # ═══════════════════════════════════════════════════════════
+# LOAD .env FILE (secrets, API keys)
+# ═══════════════════════════════════════════════════════════
+# Looks for .env in script dir, then repo root
+SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+for _env_candidate in "$SCRIPT_DIR/.env" "$(dirname "$SCRIPT_DIR")/.env"; do
+  if [ -f "$_env_candidate" ]; then
+    set -a
+    source "$_env_candidate"
+    set +a
+    break
+  fi
+done
+unset _env_candidate
+
+# ═══════════════════════════════════════════════════════════
 # CONFIGURATION (inherited from caller or defaults)
 # ═══════════════════════════════════════════════════════════
 VAULT_PATH="${VAULT_PATH:-$HOME/MyVault}"
