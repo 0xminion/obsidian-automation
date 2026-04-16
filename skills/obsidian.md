@@ -105,6 +105,19 @@ source lib/transcribe.sh
 - Any `https://...` URL not matching YouTube or podcast patterns
 - Content extraction via Defuddle (primary) or LiteParse (fallback)
 
+### Arxiv Papers (special handling)
+- arxiv.org/abs/ID → rewrite to arxiv.org/html/IDv1, extract with defuddle (~100K chars full text)
+- Fallback: alphaxiv.org/abs/ID.md (full text) or alphaxiv.org/overview/ID.md (summary)
+- Never extract just the abstract page — always go for HTML or alphaxiv
+
+### X/Twitter
+- Articles (long-form): defuddle handles them (~10-30K chars)
+- Regular tweets: defuddle may return minimal content, acceptable for short takes
+
+### Medium / Cloudflare-protected sites
+- Defuddle returns 403 on Medium. Fallback to Tavily extract.
+- Some academic publishers (akjournals, springer) also block — try PDF download + liteparse
+
 ### Files
 - PDF: extracted via LiteParse
 - Markdown: processed as-is
@@ -129,11 +142,17 @@ obsidian ~/notes/meeting-notes.md
 4. YAML wikilinks MUST be quoted: `source: "[[note]]"`
 5. Use [[wikilinks]] for all internal vault links
 6. Log every operation to `06-Config/log.md`
+7. Source/Entry filenames MUST use clean human-readable titles, NOT URL slugs
+   - ✅ `the-measles-market-on-kalshi-settlement-coin-flip.md`
+   - ❌ `www.oddchain.com_p_the-measles-market-on-kalshi-for-2025-is-one-of-the-dumbest-a.md`
+   - Use `clean_title()` from common.sh to extract title from content
 
 ## Troubleshooting
 
-- **"ASSEMBLYAI_API_KEY not set"**: Set `export ASSEMBLYAI_API_KEY="your-key"` for podcast processing
+- **"ASSEMBLYAI_API_KEY not set"**: Set `export ASSEMBLYAI_API_KEY="***"` for podcast processing
 - **"defuddle not found"**: Install with `npm install -g defuddle`
 - **"lit not found"**: Install with `npm install -g @llamaindex/liteparse`
 - **URL already processed**: Check `06-Config/url-index.tsv` for dedup — the system skips known URLs
 - **Large podcast timeout**: AssemblyAI has a 10-minute poll limit. Very long episodes (>2hrs) may need manual retry
+- **"common.sh not found" when sourced from scripts/**: SCRIPT_DIR inheritance bug. In extract.sh, use `_EXTRACT_DIR` not `SCRIPT_DIR` (which gets set by the parent script)
+- **Lock file blocks new run**: Remove `/tmp/obsidian-process-inbox-*.lock` before restarting. Stale locks from killed processes persist.
