@@ -1,7 +1,7 @@
 ---
 name: obsidian
 description: "Process any URL, file, or link into the Obsidian knowledge vault. Drop it in the inbox, process through the wiki pipeline, report results. Handles YouTube, podcasts, articles, PDFs, and files."
-version: 2.0.0
+version: 2.2.0
 trigger: "obsidian"
 ---
 
