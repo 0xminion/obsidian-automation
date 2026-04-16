@@ -36,24 +36,20 @@ Body sections IN THIS ORDER (use ## and ### markdown headings):
 ## Summary
 3-5 sentence summary of what the source is about. Plain language, no fluff.
 
-## ELI5 insights
+## Core insights
+Key findings and arguments. Simple language, no jargon, concrete examples.
+Use a numbered list (1., 2., 3., etc.). Extract EVERYTHING significant.
+Each numbered item is substantive with a clear explanation.
 
-### Core insights
-Main findings explained like to a smart 12-year-old. Simple language,
-no jargon, concrete examples. Use a numbered list (1., 2., 3., etc.).
-Extract EVERYTHING significant. Not top 5 or top 10 — as many as exist.
-Each numbered item is substantive with a clear ELI5 explanation.
-
-### Other takeaways
-Other important findings. Same ELI5 treatment. Use a numbered list that
-CONTINUES from Core insights numbering (e.g., if Core ends at 4, start
-Other at 5). No artificial limits.
+## Other takeaways
+Additional important findings. Numbered list that CONTINUES from Core
+insights numbering (e.g., if Core ends at 4, start Other at 5).
+No artificial limits.
 
 ## Diagrams
-If the content involves processes, relationships, hierarchies, comparisons,
-or any concept that would be clearer as a visual: include a Mermaid diagram
-using Obsidian's native mermaid code block support.
-If no diagram would genuinely help, write: 'N/A — content is straightforward.'
+Optional — include ONLY if a diagram genuinely aids understanding (processes,
+relationships, hierarchies, comparisons). Use Obsidian mermaid code blocks.
+If not needed, write: 'n/a'
 
 ## Open questions
 Use a numbered list (1., 2., 3.). Questions, gaps, assumptions raised by
@@ -82,18 +78,16 @@ Body sections IN THIS ORDER — ALL BODY TEXT IN CHINESE:
 ## 摘要
 3-5句中文摘要。简洁明了，不要废话。
 
-## 关键洞察
+## 核心发现
+关键发现和论点。通俗易懂，用具体例子。用编号列表。提取所有重要内容。
+每个编号项都要有实质内容。
 
-### 核心发现
-像给聪明的12岁孩子解释一样说清楚。不用术语，用具体例子。用编号列表。
-提取所有重要内容。每个编号项都要有实质性的ELI5解释。
-
-### 其他要点
-继续从核心发现的编号开始。同样用ELI5方法。不要人为限制数量。
+## 其他要点
+继续从核心发现的编号开始。不要人为限制数量。
 
 ## 图表
-如果内容涉及流程、关系、层次、比较或任何可视化更清楚的概念：用Mermaid图表。
-如果没有帮助，写："N/A — 内容直白易懂。"
+可选——仅在图表确实有助于理解时才加入（流程、关系、层级、比较）。
+用Obsidian mermaid代码块。不需要则写：'n/a'
 
 ## 开放问题
 编号列表。源文件提出的问题、缺口、假设。

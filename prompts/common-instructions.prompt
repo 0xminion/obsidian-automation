@@ -5,7 +5,7 @@ VAULT STRUCTURE (v2.2):
   03-Queries/         — Q&A questions (drop .md files here)
   04-Wiki/
   ├── sources/    — Source notes (full original content)
-  ├── entries/    — Entry notes (summary + ELI5 + concepts + links)
+  ├── entries/    — Entry notes (summary + insights + concepts + links)
   ├── concepts/   — Shared concept notes (cross-source vocabulary)
   └── mocs/        — Topic hubs with synthesized summaries
   05-Outputs/         — Q&A responses, visualizations
@@ -64,7 +64,7 @@ BILINGUAL PIPELINE RULES (English + Chinese):
 
 12. CHINESE PIPELINE: For Chinese-language sources, ALL 04-Wiki content stays Chinese:
    - Sources: keep original Chinese content as-is
-   - Entries: write 摘要 (Summary), 关键洞察 (Key Insights), 关联概念 (Linked Concepts) — all Chinese body text
+   - Entries: write 摘要 (Summary), 核心发现 (Core Insights), 其他要点 (Other Takeaways), 关联概念 (Linked Concepts) — all Chinese body text
    - Concepts: Chinese explanation body, Chinese section headers
    - YAML frontmatter keys stay English, tag VALUES stay English
    - File names stay English
@@ -121,7 +121,7 @@ CONCEPT CONVERGENCE (critical — prevent duplicate concepts):
 Before creating ANY new concept note in 04-Wiki/concepts/:
 1. Search existing concepts: grep for similar titles and keywords
 2. If an existing concept covers the same idea, UPDATE it:
-   - Add the new entry to its 关联条目/entry_refs section
+   - Add the new entry to its 关联/Links section
    - Refresh the body if the new source adds insight
    - Do NOT create a duplicate
 3. Only create new if the concept is truly novel (no existing concept covers it)

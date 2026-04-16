@@ -24,7 +24,7 @@ REPORT_DATE=$(date +%Y-%m-%d)
 
 mkdir -p "$VAULT_PATH/Meta/Scripts"
 
-echo "# Lint Report — $REPORT_DATE (v2.4)" > "$REPORT_FILE"
+echo "# Lint Report — $REPORT_DATE (v2.6)" > "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 echo "> Karpathy-style linting: catches what the LLM misses." >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -219,31 +219,31 @@ if [ -d "$VAULT_PATH/04-Wiki/concepts" ]; then
     [ -f "$note" ] || continue
     note_name=$(basename "$note" .md)
 
-    # Check entry_refs exist
-    entry_refs=$(grep -A20 'entry_refs:' "$note" 2>/dev/null | grep -oE '\[\[.+?\]\]' | sed 's/\[\[//;s/\]\]//' || true)
-    if [ -z "$entry_refs" ]; then
-      echo "- **[$note_name]**: Concept has no Entry references — orphaned concept?" >> "$REPORT_FILE"
-      conflict_count=$((conflict_count + 1))
+    # Check concept has core body sections (evergreen format)
+    # English: Core concept, Context, Links
+    # Chinese: 核心概念, 背景, 关联
+    lang=$(grep -m1 '^language:' "$note" 2>/dev/null | sed 's/^language: *//' | tr -d '[:space:]' || echo "en")
+    template=$(grep -m1 '^template:' "$note" 2>/dev/null | sed 's/^template: *//' | tr -d '[:space:]' || echo "")
+
+    concept_missing=""
+    if [ "$lang" = "zh" ]; then
+      for section in "## 核心概念" "## 背景" "## 关联"; do
+        if ! grep -qF "$section" "$note" 2>/dev/null; then
+          concept_missing="${concept_missing}    - ${section}\n"
+        fi
+      done
+    else
+      for section in "## Core concept" "## Context" "## Links"; do
+        if ! grep -qF "$section" "$note" 2>/dev/null; then
+          concept_missing="${concept_missing}    - ${section}\n"
+        fi
+      done
     fi
 
-    # Check bilingual template sections
-    template=$(grep -m1 '^template:' "$note" 2>/dev/null | sed 's/^template: *//' | tr -d '[:space:]' || echo "")
-    if [ "$template" = "bilingual" ]; then
-      for section in "## Overview / 概述" "## Core Idea / 核心概念" "## How It Works / 运作机制" "## Why It Matters / 为什么重要" "## In Practice / 实际案例" "## Connections / 关联" "## Open Questions / 开放问题" "## References"; do
-        if ! grep -qF "$section" "$note" 2>/dev/null; then
-          echo "- **[$note_name]** (bilingual) missing: $section" >> "$REPORT_FILE"
-          conflict_count=$((conflict_count + 1))
-        fi
-      done
-      # Check each language section has both English and Chinese subsections
-      for section in "Core Idea" "How It Works" "Why It Matters" "In Practice"; do
-        has_en=$(grep -A5 "## $section" "$note" 2>/dev/null | grep -c "### English" || true)
-        has_zh=$(grep -A5 "## $section" "$note" 2>/dev/null | grep -c "### 中文" || true)
-        if [ "$has_en" -eq 0 ] || [ "$has_zh" -eq 0 ]; then
-          echo "- **[$note_name]** (bilingual): '$section' missing ### English or ### 中文 subsection" >> "$REPORT_FILE"
-          conflict_count=$((conflict_count + 1))
-        fi
-      done
+    if [ -n "$concept_missing" ]; then
+      echo "- **[$note_name]** missing sections:" >> "$REPORT_FILE"
+      printf "%b" "$concept_missing" >> "$REPORT_FILE"
+      conflict_count=$((conflict_count + 1))
     fi
   done
 fi
@@ -276,7 +276,7 @@ check_template_sections() {
 
   case "$template" in
     standard|"")
-      for section in "## Summary" "## ELI5 insights" "## Diagrams" "## Open questions" "## Linked concepts"; do
+      for section in "## Summary" "## Core insights" "## Other takeaways" "## Diagrams" "## Open questions" "## Linked concepts"; do
         if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
           missing_sections="${missing_sections}    - ${section}\n"
         fi
@@ -304,7 +304,7 @@ check_template_sections() {
       done
       ;;
     chinese)
-      for section in "## 摘要" "## 关键洞察" "### 核心发现" "### 其他要点" "## 图表" "## 开放问题" "## 关联概念"; do
+      for section in "## 摘要" "## 核心发现" "## 其他要点" "## 图表" "## 开放问题" "## 关联概念"; do
         if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
           missing_sections="${missing_sections}    - ${section}\\n"
         fi
@@ -596,7 +596,7 @@ echo "| Stub/placeholder sections | $stub_count |" >> "$REPORT_FILE"
 echo "| Invalid tags | $tag_issue_count |" >> "$REPORT_FILE"
 echo "| **TOTAL** | **$total_issues** |" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
-echo "*Run lint-vault.sh (v2.4) to regenerate this report.*" >> "$REPORT_FILE"
+echo "*Run lint-vault.sh (v2.6) to regenerate this report.*" >> "$REPORT_FILE"
 
 # Log entry
 append_log_md "lint" "Health check" \

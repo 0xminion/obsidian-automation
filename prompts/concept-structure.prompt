@@ -7,14 +7,15 @@ FILE NAMING:
 - English concept → English kebab-case (e.g. prediction-markets.md)
 - NEVER use URL slugs or English translations for Chinese concepts
 
-=== ENGLISH Concept (default) ===
+=== ENGLISH Concept (default) — Evergreen Format ===
 
 Frontmatter:
-  - title: "<Concept Name>" — keep natural, descriptive
+  - title: "<Concept Name>" — keep natural, descriptive (title IS the concept)
   - type: concept
   - status: review
   - reviewed: null
   - aliases: [] (plain text only, no wikilinks — raw [link] syntax fails in tags)
+  - sources: ["[[source-note-name]]"] — OPTIONAL, list of source notes this concept emerged from
   - tags: minimum 3, maximum 8 topic-specific tags, always start with:
       tags:
         - concept
@@ -29,33 +30,28 @@ existing tags wherever a match exists. Only mint a new tag if nothing fits.
 
 Body sections IN THIS ORDER (use ## headings):
 
-## Core idea
-Define the concept in plain language — like explaining to a curious friend,
-NOT like writing a textbook. 2-3 sentences maximum.
+## Core concept
+A single overview paragraph defining the concept. Plain language — like
+explaining to a curious friend, NOT like writing a textbook. This is the
+one-sentence elevator pitch expanded to 2-3 sentences.
 
-## How it works
-Plain-language explanation of the mechanics. Use analogies. Use
-a numbered list (1., 2., 3.) for sequential processes or bulleted lists
-for non-sequential components. Can be longer if the concept is complex.
+## Context
+Flowing prose (2-4 paragraphs) covering:
+- How it works — mechanics, processes, algorithms
+- Why it matters — practical relevance, stakes
+- Evidence — real-world examples, data points, cases
+- Tensions — what's debated, what's uncertain, edge cases
 
-## Why it matters
-The practical relevance. Use a bulleted list (dash-prefixed) with
-short punchy points.
+Do NOT use sub-headings within Context. Write naturally as connected
+paragraphs. If the concept is truly atomic, Context fits in 2-3 paragraphs.
 
-## In practice
-Use a bulleted list (dash-prefixed). Real-world examples, applications, cases.
-Draw from the source entries and literature cited above.
-
-## Connections
-Use a bulleted list (dash-prefixed). Wikilinks to related Entry notes
-and MoCs. Use 'obsidian search' to find related existing notes.
+## Links
+Wikilinks to related Concept notes, Entry notes, and MoCs.
+Use a bulleted list (dash-prefixed).
+Use 'obsidian search' to find related existing notes.
 Link to entries in 04-Wiki/entries/, concepts in 04-Wiki/concepts/, and MoCs in 04-Wiki/mocs/.
 
-## Open questions
-Use a numbered list (1., 2., 3.). Gaps, debates, or unknowns about
-this concept.
-
-=== CHINESE Concept ===
+=== CHINESE Concept — Evergreen Format ===
 
 Frontmatter must include language: zh:
   - title: "<中文概念名>"
@@ -63,6 +59,7 @@ Frontmatter must include language: zh:
   - type: concept
   - language: zh
   - status: review
+  - sources: ["[[source-note-name]]"] — 可选，此概念来源的笔记
   - tags: English tag values (tags stay in English always)
   - created: YYYY-MM-DD
   - last_updated: YYYY-MM-DD
@@ -70,23 +67,21 @@ Frontmatter must include language: zh:
 Body sections IN THIS ORDER — ALL BODY TEXT IN CHINESE:
 
 ## 核心概念
-用简洁的中文定义概念。像给好奇的朋友解释，不是写教科书。2-3句。
+一段概述，定义这个概念。通俗易懂，像给好奇的朋友解释。2-3句。
 
-## 运作机制
-用通俗语言解释原理。可以用类比。用编号列表（顺序流程）或破折号列表（非顺序组件）。
+## 背景
+连贯的正文（2-4段），涵盖：
+- 运作机制——原理、流程、算法
+- 为什么重要——实际意义、利害关系
+- 实际案例——真实例子、数据、应用场景
+- 争议与不确定性——有争论的地方、边界情况
 
-## 为什么重要
-实用意义。用破折号列表，简短有力。
-
-## 实际案例
-用破折号列表。真实世界的例子、应用、案例。
+不要在"背景"内使用子标题。自然连贯地书写。如果概念足够原子化，
+背景部分2-3段即可。
 
 ## 关联
-用破折号列表。Wikilinks到相关的条目笔记和MoC。
-用 'obsidian search' 找现有相关笔记。
+Wikilinks到相关的概念笔记、条目笔记和MoC。
+用破折号列表。用 'obsidian search' 找现有相关笔记。
 链接到 04-Wiki/entries/、04-Wiki/concepts/ 和 04-Wiki/mocs/ 中的笔记。
-
-## 开放问题
-编号列表。关于这个概念的缺口、争议或未知。
 
 ALL prose must be humanized before writing.
