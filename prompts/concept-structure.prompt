@@ -2,6 +2,11 @@ CONCEPT NOTE STRUCTURE — follow EXACTLY for every note in 04-Wiki/concepts/:
 
 Check the `language:` field in frontmatter. If zh, use the Chinese template.
 
+FILE NAMING:
+- Chinese concept → Chinese filename (e.g. 潮汕钱庄网络.md, 做空权.md)
+- English concept → English kebab-case (e.g. prediction-markets.md)
+- NEVER use URL slugs or English translations for Chinese concepts
+
 === ENGLISH Concept (default) ===
 
 Frontmatter:

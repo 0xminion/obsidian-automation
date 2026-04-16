@@ -9,61 +9,53 @@ Frontmatter:
   - date_created: YYYY-MM-DD
   - date_updated: YYYY-MM-DD
   - tags: the topic tag repeated, plus 'map-of-content'
+  NOTE: Do NOT put wikilink lists in frontmatter. Keep frontmatter YAML simple.
+  All resource lists go in the body as markdown.
+
+HEADING FORMAT: Always use "English / 中文" format for ALL section headings.
+Examples: "Overview / 概述", "Core Concepts / 核心概念", "Market Manipulation / 市场操纵"
 
 === BILINGUAL MoC (default for most MoCs) ===
 
-When a MoC bridges Chinese and English resources, organize by language group.
+When a MoC bridges Chinese and English resources, organize by TOPIC not by language.
 Each resource gets a description IN ITS OWN LANGUAGE.
 
 Body:
   # <Topic Name> — 知识图谱
 
-  ## 概述 / Overview
-  <2-3 sentence synthesized summary. Can be bilingual if the topic spans both languages.>
+  ## Overview / 概述
+  <2-3 sentence synthesized summary.>
 
-  ## 中文资源 — <Category Name>
+  ## <English Category> / <中文分类>
 
-  - [[Chinese Entry 1]]（English Title if applicable）— <Chinese description, 1 sentence>
-  - [[Chinese Entry 2]] — <Chinese description>
+  - [[Entry Name]] — <description in entry's own language>
+  - [[条目名称]] — <中文描述>
 
-  ## 中文概念 — <Category Name>
+  ## <Another Category> / <另一个分类>
 
-  - [[Chinese Concept 1]]（English Name）— <Chinese description>
-  - [[Chinese Concept 2]] — <Chinese description>
+  - [[Concept Name]] — <English description>
+  - [[概念名称]] — <中文描述>
 
-  ## English Resources — <Category Name>
-
-  - [[English Entry 1]] — <English description, 1 sentence>
-  - [[English Entry 2]] — <English description>
-
-  ## English Concepts
-
-  - [[English Concept 1]] — <English description>
-
-  ## 关联图谱 / Cross-References
-  <ASCII or text diagram showing how Chinese and English resources connect through bridge concepts>
-  The pipeline links Chinese operational analysis with English technical infrastructure
-  through shared concepts.
+  ## Cross-References / 关联图谱
+  <ASCII or text diagram showing how notes connect>
 
 === MONOLINGUAL MoC (for pure English or pure Chinese topic pools) ===
 
-If a MoC covers ONLY English or ONLY Chinese resources, use the standard structure:
+If a MoC covers ONLY English or ONLY Chinese resources:
 
   # <Topic Name> — Map of Content
 
-  ## Overview
+  ## Overview / 概述
   <2-3 sentence synthesized summary.>
 
-  ## Core Concepts
+  ## Core Concepts / 核心概念
   - [[Concept note]] — 1-sentence summary
 
-  ## Related Entries
+  ## Related Entries / 关联条目
   - [[Entry note]] — 1-sentence summary
 
-  ## Open Threads
-  - Questions that remain unanswered
-
-  ## Notes
-  <Optional deeper commentary about the state of knowledge on this topic.>
+  ## Cross-References / 关联图谱
+  - Connections to other MoCs and topics
 
 ALL MoC prose must be humanized before writing.
+ALL section headings use "English / 中文" format consistently.

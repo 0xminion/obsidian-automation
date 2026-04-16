@@ -14,9 +14,16 @@ tags:
 ## 概述 / Overview
 <2-3 sentence synthesized summary of what this topic covers. Can be bilingual if bridging languages.>
 
-## 中文资源 — <Category Name>
+## Core Concepts / 核心概念
 
-- [[Chinese Entry]]（English Title）— <Chinese description>
+- [[Concept Note]] — <1-sentence summary>
+
+## Related Entries / 关联条目
+
+- [[Entry Note]] — <1-sentence summary>
+
+## Cross-References / 关联图谱
+<ASCII diagram or description of how notes connect>
 
 ## 中文概念 — <Category Name>
 

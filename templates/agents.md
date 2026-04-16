@@ -56,13 +56,24 @@ When processing Chinese-language sources:
 - **Chinese sources stay Chinese in ALL 04-Wiki content** — Sources, Entries, Concepts all in Chinese. NEVER translate Chinese source content to English for wiki body text.
 - **Chinese content goes through full pipeline** — read Chinese source → write Chinese entry → create/update Chinese concepts. NOT translation from English output.
 - **Tags are always English** regardless of source language.
-- **File names are always English.**
+- **File names match the content language** — Chinese titles get Chinese filenames (e.g. `潮汕钱庄网络.md`), English titles get English kebab-case (e.g. `the-measles-market-on-kalshi.md`). Use `title_to_filename()` from common.sh which handles both.
 - **YAML frontmatter keys are always English** (`title:`, `source:`, `tags:`, `status:`).
 - **Wikilinks can be in either language** depending on the linked note's language.
+- **MoC headings use `English / 中文` format** consistently (e.g. `Overview / 概述`, `Market Manipulation / 市场操纵`).
 - **MoCs are bilingual bridges** — Chinese descriptions for Chinese resources, English for English resources. Mixed according to integration linkages, NOT pure one language.
 - **Non-Chinese/non-English resources** (except Chinese) — translate and store in English for integration.
 - **Entry template for Chinese sources**: use `template: chinese` with `language: zh` in frontmatter. Sections: 摘要, 关键洞察 (核心发现/其他要点), 图表, 开放问题, 关联概念.
 - **Concept template for Chinese**: use `language: zh` in frontmatter. Sections: 核心概念, 运作机制, 为什么重要, 实际案例, 关联, 开放问题.
+
+### File Naming Convention
+
+Use `title_to_filename()` from `lib/common.sh`:
+
+- **Papers**: actual paper title (e.g. `How manipulable are prediction markets.md`, NOT `arxiv-2503.03312.md`)
+- **Chinese articles**: Chinese title (e.g. `潮汕钱庄与东南亚黑金网络.md`, NOT `chaoshan-money-networks.md`)
+- **English articles**: kebab-case from title (e.g. `the-measles-market-on-kalshi.md`)
+- **NEVER** use URL slugs (`X-functionspaceHQ-2039554933024776516`) or domain prefixes (`www.oddchain.com_p_...`)
+- Source and Entry for the same content should have matching filenames
 
 ## Note Structures
 

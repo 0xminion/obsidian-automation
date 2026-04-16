@@ -277,7 +277,14 @@ check_template_sections() {
     procedural)
       for section in "## Summary" "## Prerequisites" "## Steps" "## Gotchas" "## Linked concepts"; do
         if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
-          missing_sections="${missing_sections}    - ${section}\n"
+          missing_sections="${missing_sections}    - ${section}\\n"
+        fi
+      done
+      ;;
+    chinese)
+      for section in "## 摘要" "## 关键洞察" "## 开放问题" "## 关联概念"; do
+        if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
+          missing_sections="${missing_sections}    - ${section}\\n"
         fi
       done
       ;;

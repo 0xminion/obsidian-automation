@@ -113,6 +113,15 @@ Auto-detect: source lib/extract.sh && extract_content "$url_or_path"
 
 lib/extract.sh is sourced by process-inbox.sh automatically.
 
+NAMING CONVENTIONS (critical — apply to ALL Source and Entry filenames):
+- Use title_to_filename() from lib/common.sh
+- Chinese titles → Chinese filenames (潮汕钱庄网络.md)
+- English titles → kebab-case (the-measles-market-on-kalshi.md)
+- Papers → actual paper title (How manipulable are prediction markets.md)
+- NEVER use URL slugs (X-functionspaceHQ-2039554933024776516) or domain prefixes
+- Source and Entry for same content should match filenames
+- MoC headings: always "English / 中文" format (Overview / 概述)
+
 RETRY BEHAVIOR:
 If any step fails (API call, file operation, parsing), try an alternative
 approach before giving up. Be resourceful.

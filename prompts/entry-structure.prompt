@@ -3,6 +3,13 @@ ENTRY NOTE STRUCTURE — follow EXACTLY for every note in 04-Wiki/entries/:
 Check the `template:` field in frontmatter. Default is `standard`.
 Check the `language:` field. If zh, use the Chinese template.
 
+FILE NAMING:
+- Match source filename — if source is `潮汕钱庄网络.md`, entry should be similar
+- Chinese title → Chinese filename (普通人如何识别庄家：链上信号框架与做空权平权.md)
+- English title → English kebab-case (the-measles-market-on-kalshi-settlement-coin-flip.md)
+- Papers → actual paper title (How manipulable are prediction markets.md)
+- NEVER use URL slugs (X-functionspaceHQ-2039554933024776516)
+
 === TEMPLATE: standard (default, English) ===
 
 Frontmatter (YAML) must include:
