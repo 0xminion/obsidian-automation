@@ -31,7 +31,7 @@ unset _env_candidate
 # ═══════════════════════════════════════════════════════════
 VAULT_PATH="${VAULT_PATH:-$HOME/MyVault}"
 LOG_FILE="$VAULT_PATH/Meta/Scripts/processing.log"
-AGENT_CMD="${AGENT_CMD:-claude -p}"
+AGENT_CMD="${AGENT_CMD:-hermes}"
 MAX_RETRIES="${MAX_RETRIES:-3}"
 
 mkdir -p "$VAULT_PATH/Meta/Scripts"

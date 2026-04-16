@@ -11,8 +11,8 @@
 # Dependencies: defuddle, liteparse (both in PATH)
 # ============================================================================
 
-SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-source "$SCRIPT_DIR/common.sh"
+_EXTRACT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_EXTRACT_DIR/common.sh"
 
 # ═══════════════════════════════════════════════════════════
 # WEB / URL / HTML / X-TWITTER EXTRACTION
