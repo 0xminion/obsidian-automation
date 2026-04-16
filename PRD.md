@@ -17,6 +17,8 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 - No vault health dashboard or full reindex capability
 - Inline prompt templates buried in shell scripts
 - Schema (agents.md) doesn't co-evolve with the wiki
+- No transcript extraction for YouTube videos or podcasts
+- Config files (dashboard, tag-registry, wiki-index) require manual updates
 
 ## Goals
 
@@ -30,6 +32,8 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 8. Externalize prompts for maintainability
 9. Enable schema co-evolution
 10. Maintain backward compatibility with v2.1 vaults
+11. Add universal transcript extraction for YouTube and podcasts
+12. Auto-update config files after ingest (dashboard, tag-registry, wiki-index)
 
 ## Non-Goals
 
@@ -188,13 +192,47 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 - Review written to `schema-review.md`
 - agents.md documents the co-evolution workflow
 
+### R11: Universal Transcript Extraction
+
+**Problem:** No automated way to extract transcripts from YouTube videos or podcast episodes. Manual transcription is time-consuming and inconsistent.
+
+**Solution:** Implement intelligent fallback chains for transcript extraction:
+- **YouTube:** existing transcript → TranscriptAPI (primary) → Supadata (fallback) → local Whisper (last resort)
+- **Podcasts:** existing transcript → AssemblyAI (fallback)
+- Cache transcripts for 30 days to avoid redundant API calls
+- Output in markdown with metadata, timestamps, and speaker labels
+
+**Acceptance Criteria:**
+- `extract-transcript.sh` script supports both YouTube and podcast extraction
+- `process-inbox.sh` automatically detects YouTube URLs and podcast files
+- Transcripts cached at `~/.hermes/cache/transcripts/` with 30-day expiry
+- YouTube fallback chain: TranscriptAPI → Supadata → Whisper
+- Podcast fallback: check existing → AssemblyAI
+- Markdown output with proper frontmatter for Obsidian integration
+
+### R12: Post-Ingest Auto-Updates
+
+**Problem:** Config files (dashboard.md, tag-registry.md, wiki-index.md) require manual updates and quickly become stale.
+
+**Solution:** Automatically update config files after each ingest run:
+- `dashboard.md` — regenerated after every ingest
+- `tag-registry.md` — rebuilt with actual tag usage counts
+- `wiki-index.md` — full rebuild if ≥5 notes processed (avoids overhead on small runs)
+
+**Acceptance Criteria:**
+- `process-inbox.sh` calls `vault-stats.sh` after processing
+- `process-inbox.sh` calls `update-tag-registry.sh` after processing
+- `process-inbox.sh` calls `reindex.sh` if ≥5 notes processed
+- New `update-tag-registry.sh` script scans all notes and rebuilds tag registry
+- Config files stay in sync without manual intervention
+
 ## Technical Architecture
 
 ### Scripts Reference
 
 | Script | Purpose | Status |
 |---|---|---|
-| `process-inbox.sh` | Ingest: Source → Entry → Concepts → MoCs. Supports `--interactive` flag | v2.2 |
+| `process-inbox.sh` | Ingest: Source → Entry → Concepts → MoCs. Supports `--interactive` flag. Auto-updates dashboard, tag-registry, wiki-index | v2.2 |
 | `review-pass.sh` | Review processed entries: `--untouched`, `--last N`, `--topic TAG`, `--entry NAME`, `--interactive` | v2.2 |
 | `compile-pass.sh` | Cross-link, concept convergence, MoC rebuild, index rebuild, typed edges, schema review | v2.2 |
 | `query-vault.sh` | Q&A with compound-back: answers expand wiki + update existing pages | v2.2 |
@@ -202,11 +240,14 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 | `vault-stats.sh` | Dashboard: vault size, growth, review status, health indicators | v2.2 |
 | `reindex.sh` | Full rebuild of wiki-index.md from scratch | v2.2 |
 | `setup-git-hooks.sh` | Install git hooks for auto-commit and WIP protection | v2.2 |
+| `update-tag-registry.sh` | Rebuild tag-registry.md with actual tag usage counts from all notes | v2.2 |
+| `extract-transcript.sh` | Standalone transcript extraction for YouTube and podcasts | v2.2 |
 
 ### File Structure (v2.2)
 ```
 ├── lib/
 │   ├── common.sh              # shared functions
+│   ├── extract.sh             # content extraction (defuddle, liteparse, tavily)
 │   └── transcribe.sh          # transcription abstraction (AssemblyAI + local whisper)
 ├── prompts/                   # externalized prompts
 │   ├── common-instructions.prompt
@@ -219,7 +260,7 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 │   ├── review-update.prompt
 │   └── podcast-structure.prompt
 ├── scripts/
-│   ├── process-inbox.sh       # ingest with --interactive
+│   ├── process-inbox.sh       # ingest with --interactive, auto-updates config
 │   ├── review-pass.sh         # interactive entry review
 │   ├── compile-pass.sh        # cross-links, edges, schema review
 │   ├── query-vault.sh         # Q&A with compound-back
@@ -227,6 +268,8 @@ v2.1 implements all of Karpathy's checklist items but has issues:
 │   ├── vault-stats.sh         # dashboard generation
 │   ├── reindex.sh             # full index rebuild
 │   ├── setup-git-hooks.sh     # git initialization + hooks
+│   ├── update-tag-registry.sh # tag registry rebuild
+│   ├── extract-transcript.sh  # standalone transcript extraction
 │   └── migrate-vault.sh       # optional: adopt existing vaults into v2 format
 ├── templates/
 │   ├── Entry.md
@@ -256,8 +299,13 @@ common.sh ← process-inbox.sh
          ← vault-stats.sh
          ← reindex.sh
          ← transcribe.sh
+         ← update-tag-registry.sh
+         ← extract-transcript.sh
 
 transcribe.sh ← process-inbox.sh (podcast processing)
+             ← extract-transcript.sh
+
+extract.sh ← process-inbox.sh (content extraction)
 
 prompts/*.prompt ← process-inbox.sh (via load_prompt)
                   ← compile-pass.sh (via load_prompt)
@@ -265,17 +313,28 @@ prompts/*.prompt ← process-inbox.sh (via load_prompt)
                   ← review-pass.sh (via load_prompt)
 
 load_prompt() ← all scripts that use externalized prompts
+
+# Post-ingest auto-updates (baked into process-inbox.sh)
+process-inbox.sh → vault-stats.sh (if processed > 0)
+                → update-tag-registry.sh (if processed > 0)
+                → reindex.sh (if processed >= 5)
 ```
 
 ## Migration from v2.1 to v2.2
 
-1. Copy new files: `lib/common.sh`, `prompts/*.prompt`, new scripts
+1. Copy new files: `lib/common.sh`, `lib/extract.sh`, `prompts/*.prompt`, new scripts
 2. Replace existing scripts with v2.2 versions
 3. Add `reviewed: null` and `review_notes: null` to existing Entry frontmatter (run reindex.sh)
 4. Add `template: standard` to existing Entry frontmatter (optional, defaults to standard)
 5. Initialize `edges.tsv` (done automatically by setup_directory_structure)
 6. Run `setup-git-hooks.sh` if vault isn't git-tracked
-7. No breaking changes — v2.1 vaults work without modification
+7. Copy new scripts: `update-tag-registry.sh`, `extract-transcript.sh`
+8. No breaking changes — v2.1 vaults work without modification
+
+**New in v2.2:**
+- Config files (dashboard, tag-registry, wiki-index) now auto-update after ingest
+- YouTube URLs and podcast files in inbox are automatically transcribed
+- Transcript extraction available via `extract-transcript.sh` for standalone use
 
 ## Testing Strategy
 
@@ -295,3 +354,5 @@ load_prompt() ← all scripts that use externalized prompts
 | Phase 5 | Git hooks + externalized prompts | Done |
 | Phase 6 | Schema co-evolution + compile updates | Done |
 | Phase 7 | README + docs + code review | Done |
+| Phase 8 | Transcript extraction system (YouTube + podcasts) | Done |
+| Phase 9 | Post-ingest auto-updates (dashboard, tag-registry, wiki-index) | Done |

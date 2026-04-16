@@ -654,6 +654,24 @@ fi
 log "Inbox processing complete (v2.2). Processed: $processed, Skipped: $skipped, Failed: $failed"
 log "URL index now has $(wc -l < "$URL_INDEX") entries"
 
+# ═══════════════════════════════════════════════════════════
+# POST-INGEST: Update config files
+# ═══════════════════════════════════════════════════════════
+if [ "$processed" -gt 0 ]; then
+  log "Updating dashboard, tag-registry, and wiki-index..."
+  
+  # Update dashboard
+  bash "$SCRIPT_DIR/vault-stats.sh" 2>/dev/null && log "Dashboard updated" || log "Dashboard update failed"
+  
+  # Update tag registry
+  bash "$SCRIPT_DIR/update-tag-registry.sh" 2>/dev/null && log "Tag registry updated" || log "Tag registry update failed"
+  
+  # Full wiki-index rebuild (only if >5 notes processed to avoid overhead)
+  if [ "$processed" -ge 5 ]; then
+    bash "$SCRIPT_DIR/reindex.sh" 2>/dev/null && log "Wiki index rebuilt" || log "Wiki index rebuild failed"
+  fi
+fi
+
 # Git auto-commit
 auto_commit "ingest" "Processed $processed sources (skipped $skipped, failed $failed)"
 

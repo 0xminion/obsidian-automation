@@ -4,6 +4,15 @@ Automated knowledge management system that turns raw web content, PDFs, and YouT
 
 ## What's New in v2.2
 
+- **Transcript extraction system** — universal YouTube and podcast transcript extraction with intelligent fallback chains
+  - YouTube: existing → TranscriptAPI (primary) → Supadata (fallback) → local Whisper (last resort)
+  - Podcasts: existing transcript → AssemblyAI (fallback)
+  - Markdown output with metadata, timestamps, speaker labels
+  - Cache management with 30-day expiry
+- **Post-ingest auto-updates** — config files stay in sync automatically
+  - `dashboard.md` — updated after every ingest
+  - `tag-registry.md` — rebuilt with actual tag usage counts
+  - `wiki-index.md` — full rebuild if ≥5 notes processed (avoids overhead on small runs)
 - **Podcast support** (`process-inbox.sh`) — ingest podcast episodes via AssemblyAI transcription (100hrs/month free) with local whisper fallback
 - **Collision detection** — `check_collision()` / `resolve_collision()` prevent overwriting existing notes
 - **Vault migration** (`migrate-vault.sh`) — adopt existing Obsidian vaults into v2 format with scan/dry-run/execute modes
@@ -48,15 +57,17 @@ Automated knowledge management system that turns raw web content, PDFs, and YouT
 
 | Script | Purpose |
 |---|---|
-| `process-inbox.sh` | Ingest: Source → Entry → Concepts → MoCs. Supports `--interactive` flag |
+| `process-inbox.sh` | Ingest: Source → Entry → Concepts → MoCs. Supports `--interactive` flag. Auto-updates dashboard, tag-registry, wiki-index |
 | `review-pass.sh` | Review processed entries: `--untouched`, `--last N`, `--topic TAG`, `--entry NAME`, `--interactive` |
 | `compile-pass.sh` | Cross-link, concept convergence, MoC rebuild, index rebuild, typed edges, schema review |
 | `query-vault.sh` | Q&A with compound-back: answers expand wiki + update existing pages |
-| `lint-vault.sh` | 9 health checks: orphans, unreviewed, stale, broken links, empty, drift, edges |
+| `lint-vault.sh` | 10 health checks: orphans, unreviewed, stale, broken links, empty, template sections, drift, edges |
 | `vault-stats.sh` | Dashboard: vault size, growth, review status, health indicators |
 | `reindex.sh` | Full rebuild of wiki-index.md from scratch |
 | `setup-git-hooks.sh` | Install git hooks for auto-commit and WIP protection |
-
+| `update-tag-registry.sh` | Rebuild tag-registry.md with actual tag usage counts from all notes |
+| `extract-transcript.sh` | Standalone transcript extraction for YouTube and podcasts |
+| `migrate-vault.sh` | Adopt existing Obsidian vaults into v2 format (scan/dry-run/execute) |
 ## Entry Note Templates
 
 Use the `template:` frontmatter field to select:
@@ -82,6 +93,51 @@ Concept X	Entry Y	tested_by	Entry Y provides empirical evidence
 Types: `extends`, `contradicts`, `supports`, `supersedes`, `tested_by`, `depends_on`, `inspired_by`
 
 Built automatically during compile-pass. Also added during queries and reviews.
+
+## Transcript Extraction
+
+The system includes universal transcript extraction for YouTube videos and podcasts.
+
+### YouTube Flow
+```
+existing transcript → TranscriptAPI (primary) → Supadata (fallback) → local Whisper (last resort)
+```
+
+**Features:**
+- Check cache and vault before API calls
+- 1 credit per transcript (TranscriptAPI), 100 free credits
+- Local Whisper fallback (no API cost, 2-10 min processing)
+- Timestamps and metadata preservation
+
+### Podcast Flow
+```
+existing transcript → AssemblyAI (fallback)
+```
+
+**Features:**
+- Searches RSS feeds, show notes, podcast websites first
+- AssemblyAI: speaker identification, punctuation, paragraph detection
+- 100 hours/month free tier
+
+### Usage
+```bash
+# Place YouTube URLs or podcast audio files in 01-Raw/
+# process-inbox.sh automatically detects and extracts transcripts
+
+# Or use standalone script:
+bash scripts/extract-transcript.sh youtube "VIDEO_URL"
+bash scripts/extract-transcript.sh podcast "AUDIO_FILE" --name "Podcast" --episode "Episode"
+```
+
+### Output Format
+Both YouTube and podcasts output markdown with:
+- Title and source metadata
+- Extraction method and timestamp
+- Full transcript text
+- Speaker labels (if available)
+- Proper frontmatter for Obsidian integration
+
+Transcripts are cached at `~/.hermes/cache/transcripts/` with 30-day expiry.
 
 ## Quick Start
 
@@ -128,14 +184,14 @@ VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/reindex.sh
 
 ```
 Daily:    Drop sources in 01-Raw/, run process-inbox.sh
+          → Auto-updates: dashboard.md, tag-registry.md, wiki-index.md (if ≥5 notes)
           Drop questions in 03-Queries/, run query-vault.sh
 
 Weekly:   Run compile-pass.sh (cross-links, concept merge, edges, schema review)
           Run review-pass.sh --untouched (review key entries)
           Run lint-vault.sh (check health)
-          Run vault-stats.sh (check dashboard)
 
-Monthly:  Run reindex.sh (if lint flags drift)
+Monthly:  Run reindex.sh (if lint flags drift — not usually needed due to auto-rebuild)
           Review Meta/Scripts/schema-review.md (from compile)
 ```
 

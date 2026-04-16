@@ -281,7 +281,7 @@ is_document_file() {
 is_twitter_url() {
   local url="$1"
   case "$url" in
-    *x.com/*|*twitter.com/*) return 0 ;;
+    https://x.com/*|http://x.com/*|https://*.x.com/*|http://*.x.com/*|https://twitter.com/*|http://twitter.com/*|https://*.twitter.com/*|http://*.twitter.com/*) return 0 ;;
     *) return 1 ;;
   esac
 }

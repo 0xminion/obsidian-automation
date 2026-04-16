@@ -18,7 +18,7 @@ set -uo pipefail
 # Safely extract a field from JSON. Handles escaped quotes, unicode, etc.
 # Usage: value=$(json_field "$json_string" "field_name")
 json_field() {
-  echo "$1" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$2',''))" 2>/dev/null || true
+  echo "$1" | python3 -c "import sys,json; print(json.load(sys.stdin).get(sys.argv[1],''))" "$2" 2>/dev/null || true
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -345,19 +345,19 @@ transcribe_audio() {
 
   case "$TRANSCRIBE_BACKEND" in
     assemblyai)
-      transcript=$(transcribe_assemblyai "$audio_file" 2>/dev/null) && rc=0 || rc=$?
+      transcript=$(transcribe_assemblyai "$audio_file") && rc=0 || rc=$?
       if [ $rc -ne 0 ]; then
         log "AssemblyAI failed, attempting local fallback..."
         echo "WARNING: AssemblyAI failed, trying local whisper fallback..." >&2
-        transcript=$(transcribe_local "$audio_file" 2>/dev/null) && rc=0 || rc=$?
+        transcript=$(transcribe_local "$audio_file") && rc=0 || rc=$?
       fi
       ;;
     local)
-      transcript=$(transcribe_local "$audio_file" 2>/dev/null) && rc=0 || rc=$?
+      transcript=$(transcribe_local "$audio_file") && rc=0 || rc=$?
       if [ $rc -ne 0 ]; then
         log "Local whisper failed, attempting AssemblyAI fallback..."
         echo "WARNING: Local whisper failed, trying AssemblyAI fallback..." >&2
-        transcript=$(transcribe_assemblyai "$audio_file" 2>/dev/null) && rc=0 || rc=$?
+        transcript=$(transcribe_assemblyai "$audio_file") && rc=0 || rc=$?
       fi
       ;;
     *)

@@ -178,6 +178,19 @@ is_youtube_link() {
   [[ "$content" =~ ^https?://(www\.)?(youtube\.com|youtu\.be)/ ]]
 }
 
+is_podcast_file() {
+  local file="$1"
+  # Check if file is an audio file or contains podcast indicators
+  [[ "${1##*.}" =~ ^(mp3|m4a|ogg|wav|flac|aac)$ ]] && return 0
+  
+  # Check if file contains podcast-related keywords
+  local content
+  content=$(cat "$file" 2>/dev/null)
+  [[ "$content" =~ (podcast|episode|\.mp3|\.m4a|rss\.feeds) ]] && return 0
+  
+  return 1
+}
+
 # Extract URL from an inbox file
 extract_url_from_file() {
   local file="$1"
@@ -209,12 +222,19 @@ PARSER ROUTING:
 - Primary: Use Defuddle for any URLs and applicable file-to-markdown conversions.
 - Fallback: If Defuddle fails, fall back to LiteParse:
     lit parse <file> --format text
-- YouTube links: Use TranscriptAPI (primary) with Supadata (fallback).
+YouTube links: Use full hierarchy: existing → TranscriptAPI → Supadata → local Whisper.
   Primary: curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=VIDEO_URL&format=text&include_timestamp=false&send_metadata=true'
-    -H 'Authorization: Bearer \$TRANSCRIPT_API_KEY'
-  Fallback: curl -s 'https://api.supadata.ai/v1/youtube/transcript?url=VIDEO_URL&text=true&lang=en'
+    -H 'Authorization: Bearer \$TRAN...KEY'
+  Fallback 1: curl -s 'https://api.supadata.ai/v1/youtube/transcript?url=VIDEO_URL&text=true&lang=en'
     -H 'x-api-key: \$SUPADATA_API_KEY'
+  Fallback 2 (last resort): yt-dlp + local Whisper
+    yt-dlp -x --audio-format mp3 -o "/tmp/%(id)s.%(ext)s" VIDEO_URL
+    whisper "/tmp/VIDEO_ID.mp3" --model medium --language en --output_format txt
   Then convert the transcript to clean markdown.
+
+Podcast links: Check for existing transcript, then use AssemblyAI.
+  Check RSS feed show notes, podcast website, or existing vault notes first.
+  Fallback: Upload audio to AssemblyAI for transcription with speaker labels.
 
 TAG CONSOLIDATION:
 Before creating new tags, ALWAYS search existing tags in the vault first:
@@ -349,20 +369,31 @@ FILE: '$file'
 URL: $url
 
 STEP 1 — FETCH TRANSCRIPT
-Use TranscriptAPI as the PRIMARY provider, with Supadata as FALLBACK.
+Use full hierarchy: existing → TranscriptAPI → Supadata → local Whisper.
+
+**Step 0 — Check for existing transcript:**
+- Search vault for existing notes about this video
+- Check ~/.hermes/cache/transcripts/youtube/ for cached transcripts
+- If found, use existing content and skip to Step 2
 
 **Primary — TranscriptAPI (\$TRANSCRIPT_API_KEY env var):**
-  curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=$url&format=text&include_timestamp=false&send_metadata=true' \\
-    -H 'Authorization: Bearer \$TRANSCRIPT_API_KEY'
+  curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=$url&format=text&include_timestamp=false&send_metadata=true' \
+    -H 'Authorization: Bearer \$TRAN...KEY'
 Extract the transcript text and metadata (title, author).
 
-**Fallback — Supadata (\$SUPADATA_API_KEY env var):**
-  curl -s 'https://api.supadata.ai/v1/youtube/transcript?url=$url&text=true&lang=en' \\
+**Fallback 1 — Supadata (\$SUPADATA_API_KEY env var):**
+  curl -s 'https://api.supadata.ai/v1/youtube/transcript?url=$url&text=true&lang=en' \
     -H 'x-api-key: \$SUPADATA_API_KEY'
 Supadata returns JSON with 'content' (plain text transcript when text=true).
 If HTTP 202, poll the returned jobId at /v1/youtube/transcript/{jobId}.
 
-If BOTH providers fail, create the Source note with the URL and mark
+**Fallback 2 — Local Whisper (last resort):**
+If both APIs fail, download audio and transcribe locally:
+  yt-dlp -x --audio-format mp3 -o "/tmp/%(id)s.%(ext)s" "$url"
+  whisper "/tmp/VIDEO_ID.mp3" --model medium --language en --output_format txt
+Clean up temporary files after transcription.
+
+If ALL methods fail, create the Source note with the URL and mark
 status: needs-transcript.
 
 Convert the transcript into clean, readable markdown paragraphs.
@@ -393,6 +424,124 @@ new MoC:
 STEP 6 — ARCHIVE
 Move original inbox file to '06-Archive/processed-inbox/'.
 Register the URL in the index: append '\$url\t<source-note-path>' to
+'$URL_INDEX'.
+"
+}
+
+# ═══════════════════════════════════════════════════════════
+# PROCESS: Podcasts (existing transcript → AssemblyAI fallback)
+# ═══════════════════════════════════════════════════════════
+process_podcast() {
+  local file="$1"
+  local podcast_name=""
+  local episode_title=""
+  local audio_file=""
+  
+  # Extract metadata from file
+  if [[ "${file##*.}" =~ ^(mp3|m4a|ogg|wav|flac|aac)$ ]]; then
+    audio_file="$file"
+    # Try to extract podcast name from filename
+    basename=$(basename "$file" | sed 's/\.[^.]*$//')
+    podcast_name=$(echo "$basename" | cut -d'-' -f1 | tr '_' ' ')
+    episode_title=$(echo "$basename" | cut -d'-' -f2- | tr '_' ' ')
+  else
+    # Parse markdown file for podcast metadata
+    podcast_name=$(grep -i "podcast:" "$file" | head -1 | cut -d: -f2- | xargs)
+    episode_title=$(grep -i "episode:" "$file" | head -1 | cut -d: -f2- | xargs)
+    audio_file=$(grep -i "audio:" "$file" | head -1 | cut -d: -f2- | xargs)
+  fi
+  
+  # Default names if not found
+  [[ -z "$podcast_name" ]] && podcast_name="Unknown Podcast"
+  [[ -z "$episode_title" ]] && episode_title="Unknown Episode"
+  
+  local cache_key=$(echo "${podcast_name}_${episode_title}" | md5sum | cut -d' ' -f1)
+  
+  # Idempotency: skip if already processed
+  if source_exists_for_url "podcast://$cache_key"; then
+    log "SKIP (duplicate): Podcast — file: $file (already in sources)"
+    mkdir -p "$VAULT_PATH/06-Archive/processed-inbox"
+    mv "$file" "$VAULT_PATH/06-Archive/processed-inbox/" 2>/dev/null || true
+    return 0
+  fi
+
+  run_with_retry "Podcast — file: $file" "
+$COMMON_INSTRUCTIONS
+
+TASK: Process a podcast episode.
+FILE: '$file'
+PODCAST: $podcast_name
+EPISODE: $episode_title
+AUDIO: $audio_file
+
+STEP 1 — FETCH TRANSCRIPT
+Use full hierarchy: existing → AssemblyAI.
+
+**Step 0 — Check for existing transcript:**
+- Search vault for existing notes about this podcast/episode
+- Check podcast RSS feed show notes for transcript links
+- Search podcast website for transcripts
+- Check ~/.hermes/cache/transcripts/podcasts/ for cached transcripts
+- If found, use existing content and skip to Step 2
+
+**Fallback — AssemblyAI (\$ASSEMBLYAI_API_KEY env var):**
+If no existing transcript found, transcribe with AssemblyAI:
+  # Upload audio
+  UPLOAD_URL=\$(curl -s -X POST 'https://api.assemblyai.com/v2/upload' \\
+    -H 'Authorization: \$ASSEMBLYAI_API_KEY' \\
+    -H 'Content-Type: application/octet-stream' \\
+    --data-binary '@$audio_file' | jq -r '.upload_url')
+  
+  # Request transcription with speaker labels
+  TRANSCRIPT_ID=\$(curl -s -X POST 'https://api.assemblyai.com/v2/transcript' \\
+    -H 'Authorization: \$ASSEMBLYAI_API_KEY' \\
+    -H 'Content-Type: application/json' \\
+    -d '{\"audio_url\": \"'\$UPLOAD_URL'\", \"speaker_labels\": true}' | jq -r '.id')
+  
+  # Poll for completion
+  while true; do
+    STATUS=\$(curl -s \"https://api.assemblyai.com/v2/transcript/\$TRANSCRIPT_ID\" \\
+      -H 'Authorization: \$ASSEMBLYAI_API_KEY' | jq -r '.status')
+    [[ \"\$STATUS\" == \"completed\" ]] && break
+    [[ \"\$STATUS\" == \"error\" ]] && exit 1
+    sleep 5
+  done
+  
+  # Get final transcript
+  curl -s \"https://api.assemblyai.com/v2/transcript/\$TRANSCRIPT_ID\" \\
+    -H 'Authorization: \$ASSEMBLYAI_API_KEY' | jq -r '.text'
+
+If ALL methods fail, create the Source note and mark status: needs-transcript.
+
+Convert the transcript into clean, readable markdown paragraphs.
+Include speaker labels if available from AssemblyAI.
+
+STEP 2 — CREATE SOURCE NOTE
+Create a Source note in '01-Sources/' with:
+  - Podcast name, episode title, audio source
+  - The full transcript as markdown in the 'Original content' section
+  - Frontmatter: title, source_url, source_type: podcast, author (podcast name), tags, status: processed
+
+STEP 3 — CREATE DISTILLED NOTE
+$DISTILLED_STRUCTURE
+Draft the full Distilled note from the transcript content.
+Humanize all prose, then write to '02-Distilled/'.
+
+STEP 4 — CREATE ATOMIC NOTES
+$ATOMIC_RULES
+Extract standalone ideas from the podcast content.
+Draft each, humanize, then write to '03-Atomic/'.
+
+STEP 5 — UPDATE MoCs
+Search existing MoCs for relevant topic matches. For each matching or
+new MoC:
+- Add wikilinks to the new Distilled and Atomic notes
+- Include a 1-sentence summary for each new link (not just wikilinks)
+- Humanize all MoC prose
+
+STEP 6 — ARCHIVE
+Move original inbox file to '06-Archive/processed-inbox/'.
+Register in the index: append 'podcast://$cache_key\t<source-note-path>' to
 '$URL_INDEX'.
 "
 }
@@ -572,6 +721,8 @@ for file in "$VAULT_PATH/00-Inbox/raw"/*; do
 
   if is_youtube_link "$file"; then
     process_youtube "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
+  elif is_podcast_file "$file"; then
+    process_podcast "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
   elif is_url_file "$file"; then
     process_url "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
   else
