@@ -565,7 +565,11 @@ title_to_filename() {
 QMD_CMD="${QMD_CMD:-$(command -v qmd 2>/dev/null || echo "")}"
 QMD_COLLECTION="${QMD_COLLECTION:-concepts}"
 QMD_EMBED_MODEL="${QMD_EMBED_MODEL:-hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf}"
-export QMD_CMD QMD_COLLECTION QMD_EMBED_MODEL
+QMD_DAEMON_URL="${QMD_DAEMON_URL:-http://localhost:8181/mcp}"
+export QMD_CMD QMD_COLLECTION QMD_EMBED_MODEL QMD_DAEMON_URL
+
+# Path to the qmd wrapper script
+_QMD_WRAPPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/qmd_wrapper.py"
 
 # Check if qmd is available and concepts collection is indexed
 qmd_available() {
@@ -576,15 +580,37 @@ qmd_available() {
   echo "$status_out" | grep -q "$QMD_COLLECTION"
 }
 
+# Check if qmd daemon is running and responsive
+qmd_daemon_health() {
+  [ -f "$_QMD_WRAPPER" ] || return 1
+  python3 "$_QMD_WRAPPER" health 2>/dev/null | grep -q "daemon:ok"
+}
+
 # Semantic concept search via qmd query
 # Usage: results_json=$(qmd_concept_search "source content preview" 8 0.3)
 # Returns: JSON array of {score, file, title} objects
 # Falls back to empty array if qmd unavailable or errors
+#
+# Strategy: daemon (fast BM25 ~0.07s) → CLI (slow ~15-46s with model load)
 qmd_concept_search() {
   local query_text="$1"
   local max_results="${2:-8}"
   local min_score="${3:-0.3}"
 
+  # Try daemon first (fast lex/BM25 search, model in memory)
+  if qmd_daemon_health && [ -f "$_QMD_WRAPPER" ]; then
+    local daemon_result
+    daemon_result=$(QMD_DAEMON_URL="$QMD_DAEMON_URL" python3 "$_QMD_WRAPPER" query \
+      "$query_text" --collection "$QMD_COLLECTION" \
+      --limit "$max_results" --min-score "$min_score" --json 2>/dev/null) || true
+    if [ -n "$daemon_result" ] && echo "$daemon_result" | python3 -c "import json,sys; r=json.load(sys.stdin); sys.exit(0 if r else 1)" 2>/dev/null; then
+      echo "$daemon_result"
+      return 0
+    fi
+    log "WARN: daemon query returned empty, falling back to CLI"
+  fi
+
+  # CLI fallback
   if ! qmd_available; then
     log "WARN: qmd not available, returning empty concept matches"
     echo "[]"
@@ -662,12 +688,54 @@ except Exception:
 }
 
 # Batch concept search: search all sources against concepts collection
+# Batch concept search for all sources in manifest
 # Usage: matches_json=$(qmd_batch_concept_search "$manifest_json")
 # Input: JSON array of {hash, title, content} objects
 # Output: JSON object {hash: [concept_names]} — same format as old Python matcher
+#
+# Strategy: daemon (fast per-query ~0.07s) → CLI fallback (~15s per query)
 qmd_batch_concept_search() {
   local manifest_json="$1"
 
+  # Try daemon-first batch query via wrapper
+  if qmd_daemon_health && [ -f "$_QMD_WRAPPER" ]; then
+    local daemon_result
+    daemon_result=$(echo "$manifest_json" | QMD_DAEMON_URL="$QMD_DAEMON_URL" QMD_CMD="$QMD_CMD" python3 -c "
+import json, sys, os
+sys.path.insert(0, os.path.dirname('$_QMD_WRAPPER') or '.')
+from importlib.util import spec_from_file_location, module_from_spec
+spec = spec_from_file_location('qmd_wrapper', '$_QMD_WRAPPER')
+mod = module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+manifest = json.load(sys.stdin)
+matches = {}
+for entry in manifest:
+    h = entry['hash']
+    query = f\"{entry.get('title', '')} {entry.get('content', '')[:500]}\".strip()[:800]
+    if not query:
+        matches[h] = []
+        continue
+    # Try daemon first (fast lex search)
+    results = mod.daemon_query(query, collection=os.environ.get('QMD_COLLECTION', 'concepts'),
+                               limit=8, min_score=0.3, no_rerank=True)
+    if not results:
+        # Fallback to CLI
+        results = mod.cli_query(query, collection=os.environ.get('QMD_COLLECTION', 'concepts'),
+                                limit=8, min_score=0.3, no_rerank=True)
+    names = [r['name'] for r in results if r.get('name')]
+    matches[h] = names[:8]
+print(json.dumps(matches))
+" 2>/dev/null) || true
+
+    if [ -n "$daemon_result" ] && echo "$daemon_result" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
+      echo "$daemon_result"
+      return 0
+    fi
+    log "WARN: daemon batch query failed, falling back to CLI"
+  fi
+
+  # CLI fallback
   if ! qmd_available; then
     log "WARN: qmd unavailable, returning empty matches for all sources"
     echo "$manifest_json" | python3 -c "
