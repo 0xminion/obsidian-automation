@@ -51,10 +51,18 @@ Core concept → Context (flowing prose) → Links
 
 ## Naming (in code: `title_to_filename`)
 
+**Source filenames MUST be the content's actual title — NOT the platform, author handle, or tweet/post ID.**
+
 - Chinese titles → Chinese filenames (潮汕钱庄与东南亚黑金网络...)
 - English titles → kebab-case (the-measles-market-on-kalshi...)
 - Papers → actual paper titles (How manipulable are prediction markets...)
-- Never URL slugs (❌ X-functionspaceHQ-2039554933024776516)
+- Tweets → first meaningful sentence or topic (Skill Chaining - Why Skills Should Be Actions)
+- Blog posts → article title (Ruled by Precession)
+- YouTube → video title (Secret History #7 - Death by Meritocracy)
+- ❌ NEVER: "Tweet - username - tweetID.md"
+- ❌ NEVER: "Blog - domain-slug.md"
+- ❌ NEVER: "YouTube - VIDEO_ID.md"
+- ❌ NEVER: URL slugs (X-functionspaceHQ-2039554933024776516)
 
 ## Critical Rules
 

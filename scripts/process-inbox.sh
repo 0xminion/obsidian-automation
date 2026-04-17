@@ -217,6 +217,11 @@ Create a Source note in '04-Wiki/sources/' with:
   - Full transcript as markdown in 'Original content' section
   - Frontmatter: title, source_url, source_type: youtube, author, tags, status: processed
 
+FILENAME: Use the video's ACTUAL TITLE as the filename (from transcript metadata or oEmbed).
+- NOT "YouTube - VIDEO_ID.md" or "YouTube - JU_8fJjtGxA.md"
+- Example: "Secret History #7 - Death by Meritocracy.md"
+- Call title_to_filename() from lib/common.sh with the video title.
+
 STEP 3 — CREATE ENTRY NOTE
 $ENTRY_STRUCTURE
 Draft the full Entry note from the transcript.
@@ -334,6 +339,11 @@ Create a Source note in '04-Wiki/sources/' with:
   - Full transcript as markdown in 'Original content' section
   - Frontmatter: title, source_url, source_type: podcast, author, date_captured, tags, status: processed
 
+FILENAME: Use the episode's ACTUAL TITLE as the filename — not show name + episode ID.
+- NOT "Podcast - showname - 123.md"
+- Example: "Why Prediction Markets Beat Polls.md"
+- Call title_to_filename() from lib/common.sh with the episode title.
+
 STEP 5 — CREATE ENTRY NOTE
 $ENTRY_STRUCTURE
 Draft the full Entry note from the transcript.
@@ -426,6 +436,13 @@ Create a Source note in '04-Wiki/sources/' with extracted markdown.
 Frontmatter: title, source_url, source_type, author, date_captured, tags, status: processed
 IMPORTANT: Wikilinks in YAML frontmatter MUST be quoted.
 
+FILENAME: Use the content's ACTUAL TITLE as the filename — not the URL slug, domain prefix, or platform name.
+- Tweet by @realmcore about skill chaining → "Skill Chaining - Why Skills Should Be Actions.md" (from content title)
+- Blog post "Ruled by Precession" on hananyss.substack.com → "Ruled by Precession.md" (from content title)
+- NOT "Tweet - realmcore - 2039382343581147414.md" or "Blog - hanan.md"
+- Call title_to_filename() from lib/common.sh with the extracted title.
+- If the content has no clear title, use the first meaningful sentence >10 chars from the body.
+
 STEP 3 — CREATE ENTRY NOTE
 $ENTRY_STRUCTURE
 Draft the full Entry note. Humanize all prose, write to '04-Wiki/entries/'.
@@ -516,6 +533,10 @@ STEP 2 — CREATE SOURCE NOTE
 Create a Source note in '04-Wiki/sources/' with extracted markdown.
 Frontmatter: title, author, source_type, tags, status: processed
 
+FILENAME: Use the content's ACTUAL TITLE as the filename — not the file slug or domain prefix.
+- Call title_to_filename() from lib/common.sh with the extracted title.
+- If no clear title, use the first meaningful sentence >10 chars.
+
 STEP 3 — CREATE ENTRY NOTE
 $ENTRY_STRUCTURE
 Draft the full Entry note. Humanize all prose, write to '04-Wiki/entries/'.
@@ -582,6 +603,10 @@ possibly with frontmatter (source_url, title).
 STEP 1 — CREATE SOURCE NOTE
 Extract source_url from frontmatter if present.
 If no Source exists for this URL, create one in '04-Wiki/sources/'.
+
+FILENAME: Use the content's ACTUAL TITLE as the filename — not URL slugs or platform prefixes.
+- Check clipping frontmatter for `title:` field first
+- Call title_to_filename() from lib/common.sh with the title.
 
 STEP 2 — CREATE ENTRY NOTE
 $ENTRY_STRUCTURE
