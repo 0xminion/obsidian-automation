@@ -81,6 +81,11 @@ print('')
     return
   fi
 
+  # Check for null values in YAML (Obsidian doesn't render null well)
+  if echo "$yaml" | grep -qE ':\s*null\s*$' 2>/dev/null; then
+    report_violation "$file" "frontmatter" "YAML contains 'null' value — use empty string instead (reviewed: \"\")"
+  fi
+
   # Check quoted wikilinks in YAML (source: "[[note]]")
   if echo "$yaml" | grep -qE 'source: \[\[' 2>/dev/null; then
     if ! echo "$yaml" | grep -qE 'source: "\[\[' 2>/dev/null; then
@@ -237,6 +242,52 @@ check_no_overwrites() {
   fi
 }
 
+# Check 6: Markdown formatting (H1 title, blank lines after headings)
+check_markdown_format() {
+  local file="$1"
+  local content
+  content=$(cat "$file")
+
+  # Extract body (after frontmatter)
+  local body
+  body=$(python3 -c "
+import sys, re
+with open(sys.argv[1]) as f:
+    content = f.read()
+m = re.match(r'^---\n.*?\n---\n(.*)', content, re.DOTALL)
+if m:
+    sys.stdout.write(m.group(1))
+else:
+    sys.stdout.write(content)
+" "$file" 2>/dev/null)
+
+  if [ -z "$body" ]; then return; fi
+
+  # Check 1: First non-empty line should be H1 title
+  local first_line
+  first_line=$(echo "$body" | grep -m1 -v '^\s*$' 2>/dev/null)
+  if [ -n "$first_line" ] && [[ ! "$first_line" =~ ^#\  ]]; then
+    report_violation "$file" "format" "Body must start with H1 title (# Title), found: ${first_line:0:60}"
+  fi
+
+  # Check 2: Blank line after ## headings
+  local line_num=0
+  local prev_was_heading=false
+  while IFS= read -r line; do
+    line_num=$((line_num + 1))
+    if [[ "$line" =~ ^## ]]; then
+      prev_was_heading=true
+    elif [ "$prev_was_heading" = true ]; then
+      if [ -n "$line" ]; then
+        report_violation "$file" "format" "Missing blank line after heading at line $((line_num - 1)): next line has content"
+      fi
+      prev_was_heading=false
+    else
+      prev_was_heading=false
+    fi
+  done <<< "$body"
+}
+
 # ═══════════════════════════════════════════════════════════
 # MAIN VALIDATION LOOP
 # ═══════════════════════════════════════════════════════════
@@ -256,6 +307,7 @@ while IFS= read -r file; do
   check_stubs "$file"
   check_tags "$file"
   check_no_overwrites "$file"
+  check_markdown_format "$file"
 
 done < <(find "${find_args[@]}" 2>/dev/null | sort)
 

@@ -17,8 +17,8 @@ Frontmatter (YAML) must include:
   - source: "[[<source-note-name>]]"  (MUST be quoted wikilink)
   - date_entry: YYYY-MM-DD
   - status: review
-  - reviewed: null
-  - review_notes: null
+  - reviewed: ""
+  - review_notes: ""
   - template: standard
   - aliases: []
   - tags: minimum 5, maximum 10 topic-specific tags, always start with:
@@ -30,6 +30,12 @@ Frontmatter (YAML) must include:
 
 BEFORE choosing tags: run 'obsidian tags sort=count counts' and reuse
 existing tags wherever a match exists. Only mint a new tag if nothing fits.
+
+FORMAT RULES (CRITICAL):
+- The first line of the body MUST be `# <Title>` (H1 heading matching frontmatter title)
+- There MUST be a blank line after the H1 heading
+- There MUST be a blank line after EVERY `##` or `###` sub-heading (before content)
+- There MUST be a blank line BEFORE every `##` or `###` sub-heading
 
 Body sections IN THIS ORDER (use ## and ### markdown headings):
 

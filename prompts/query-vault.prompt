@@ -35,8 +35,8 @@ INSTRUCTIONS:
    title: "Answer: <query topic>"
    source: "[[{QUERY_NAME}]]"
    date_entry: {TODAY}
-   reviewed: null
-   review_notes: null
+   reviewed: ""
+   review_notes: ""
    tags:
      - entry
      - topic-tag-1

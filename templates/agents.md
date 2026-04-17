@@ -77,6 +77,33 @@ Use `title_to_filename()` from `lib/common.sh`:
 
 ## Note Structures
 
+### Markdown Formatting Rules (CRITICAL)
+
+ALL notes (sources, entries, concepts, MoCs) MUST follow these formatting rules:
+
+1. **H1 title**: The first line of the body MUST be `# <Title>` (H1 heading matching frontmatter title)
+2. **Blank line after H1**: There MUST be a blank line after the H1 heading
+3. **Blank line after sub-headings**: There MUST be a blank line after EVERY `##` or `###` sub-heading (before content starts)
+4. **Blank line before sub-headings**: There MUST be a blank line BEFORE every `##` or `###` sub-heading
+
+Example:
+```
+---
+title: "Example Note"
+...
+---
+
+# Example Note
+
+## Section One
+
+Content here...
+
+## Section Two
+
+Content here...
+```
+
 ### Source Note (`04-Wiki/sources/`)
 
 ```yaml
@@ -112,8 +139,8 @@ tags:
   - topic-tag-1
   - topic-tag-2
 status: review
-reviewed: null
-review_notes: null
+reviewed: ""
+review_notes: ""
 template: standard
 aliases: []
 ---
@@ -297,7 +324,7 @@ Auto-detect: `source lib/extract.sh && extract_content "$url_or_path"`
 
 1. Parse source (Defuddle for URLs, TranscriptAPI for YouTube, LiteParse for files, transcribe.sh for podcasts)
 2. Create Source note in `04-Wiki/sources/`
-3. Create Entry note in `04-Wiki/entries/` (with reviewed: null)
+3. Create Entry note in `04-Wiki/entries/` (with reviewed: "")
 4. Create/update Concept notes in `04-Wiki/concepts/` (check existing first!)
 5. Update relevant MoC notes in `04-Wiki/mocs/`
 6. Update `06-Config/wiki-index.md`
@@ -362,7 +389,7 @@ Steps:
 Run health checks:
 
 1. Orphaned notes (no incoming wikilinks)
-2. Unreviewed entries (reviewed: null)
+2. Unreviewed entries (reviewed: "")
 3. Stale reviews (status: review older than 14 days)
 4. Broken wikilinks (link targets don't exist)
 5. Empty or near-empty notes (< 50 chars body)
