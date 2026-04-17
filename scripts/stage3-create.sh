@@ -234,6 +234,17 @@ done
 
 log "Post-processing..."
 
+# Validate agent output quality
+log "Running output validation..."
+validate_result=0
+bash "$SCRIPT_DIR/validate-output.sh" --since "/tmp/extracted/manifest.json" 2>> "$LOG_FILE" || validate_result=$?
+if [ "$validate_result" -ne 0 ]; then
+  log "WARN: Output validation found violations — check log for details"
+  echo "WARNING: Some files have validation violations. Check processing.log for details."
+else
+  log "Output validation passed"
+fi
+
 # Rebuild wiki-index
 if [ "$plan_count" -ge 1 ]; then
   log "Rebuilding wiki-index..."
@@ -299,4 +310,7 @@ if [ "$failed_agents" -gt "$plan_count" ]; then
   failed_agents="$plan_count"
 fi
 
+if [ "$failed_agents" -gt 0 ]; then
+  exit 1
+fi
 exit 0

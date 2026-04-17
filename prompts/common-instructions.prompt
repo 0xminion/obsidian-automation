@@ -119,16 +119,14 @@ If defuddle fails, try liteparse, then browser screenshot as last resort.
 
 CONCEPT CONVERGENCE (critical — prevent duplicate concepts):
 Before creating ANY new concept note in 04-Wiki/concepts/:
-1. Search existing concepts via semantic search:
-   qmd query "concept description or content preview" --json -n 8 --min-score 0.3 -c concepts --no-rerank
-   This returns ranked matches with similarity scores.
+1. Check the CONCEPT_CONVERGENCE block in each source — semantic matches are pre-fetched.
+   Scores indicate similarity: >0.5 = likely same concept, 0.2-0.5 = tangential.
 2. If an existing concept has score >0.5, it likely covers the same idea — UPDATE it:
    - Add the new entry to its 关联/Links section
    - Refresh the body if the new source adds insight
    - Do NOT create a duplicate
 3. Scores 0.2-0.5 are tangential — consider linking but don't merge unless substantively the same
 4. Only create new if the concept is truly novel (no existing concept covers it)
-5. CONCEPT_CONVERGENCE data in batch prompts is pre-fetched — check it before creating
 
 BATCH PROCESSING (10+ sources):
 1. Process sources sequentially — never skip or summarize

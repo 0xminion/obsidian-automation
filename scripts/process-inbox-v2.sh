@@ -11,7 +11,7 @@
 # Run scripts/setup-qmd.sh to initialize the concept index.
 #
 # Usage:
-#   ./process-inbox-v2.sh [--vault PATH] [--parallel N] [--dry-run]
+#   ./process-inbox-v2.sh [--vault PATH] [--parallel N] [--dry-run] [--review] [--resume]
 #
 # Benefits over v1:
 #   - Extraction is shell-only (never touches LLM)
@@ -34,14 +34,30 @@ PARALLEL="${PARALLEL:-3}"
 DRY_RUN=false
 
 # Parse args
+REVIEW_MODE=false
+RESUME_MODE=false
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --vault)    VAULT_PATH="$2"; shift 2 ;;
     --parallel) PARALLEL="$2"; shift 2 ;;
     --dry-run)  DRY_RUN=true; shift ;;
+    --review)   REVIEW_MODE=true; shift ;;
+    --resume)   RESUME_MODE=true; shift ;;
+    --help|-h)
+      echo "Usage: ./process-inbox-v2.sh [--vault PATH] [--parallel N] [--dry-run] [--review] [--resume]"
+      echo "  --review  Run stages 1+2, save plans to vault for manual review"
+      echo "  --resume  Skip stages 1+2, use reviewed plans from vault"
+      exit 0 ;;
     *)          echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
+
+# --review and --resume are mutually exclusive
+if $REVIEW_MODE && $RESUME_MODE; then
+  echo "ERROR: --review and --resume are mutually exclusive"
+  exit 1
+fi
 
 # ═══════════════════════════════════════════════════════════
 # PRE-FLIGHT CHECKS
@@ -90,12 +106,50 @@ if $DRY_RUN; then
 fi
 
 # Clean up stale extraction data
-rm -rf /tmp/extracted
+if ! $RESUME_MODE; then
+  rm -rf /tmp/extracted
+fi
 mkdir -p /tmp/extracted
 
+# Initialize timing variables (set before conditional to avoid unbound var under set -u)
+stage1_start=$(date +%s)
+stage2_start=$(date +%s)
+stage1_duration=0
+stage2_duration=0
+
 # ═══════════════════════════════════════════════════════════
-# STAGE 1: EXTRACT (shell, no agent)
+# RESUME MODE: Load reviewed plans from vault
 # ═══════════════════════════════════════════════════════════
+
+if $RESUME_MODE; then
+  REVIEW_FILE="$VAULT_PATH/07-WIP/plans-review.json"
+  if [ ! -f "$REVIEW_FILE" ]; then
+    echo "ERROR: No reviewed plans found at $REVIEW_FILE"
+    echo "Run with --review first to generate plans for review."
+    exit 1
+  fi
+
+  plan_count=$(python3 -c "import json; print(len(json.load(open('$REVIEW_FILE'))))")
+  echo ""
+  echo "━━━ Resuming from reviewed plans ($plan_count plans) ━━━"
+
+  cp "$REVIEW_FILE" /tmp/extracted/plans.json
+
+  # Stage 3 needs extraction data — verify it exists
+  if [ ! -f /tmp/extracted/manifest.json ]; then
+    echo "ERROR: Extraction data missing. Cannot resume without Stage 1 output."
+    echo "Run the full pipeline first (without --resume)."
+    exit 1
+  fi
+
+  # Skip to Stage 3 (timing vars already initialized above)
+fi
+
+# ═══════════════════════════════════════════════════════════
+# STAGE 1: EXTRACT (shell, no agent) — skipped in --resume
+# ═══════════════════════════════════════════════════════════
+
+if ! $RESUME_MODE; then
 
 echo ""
 echo "━━━ Stage 1/3: Extract ━━━"
@@ -114,7 +168,7 @@ fi
 echo "Stage 1 complete: ${stage1_duration}s"
 
 # ═══════════════════════════════════════════════════════════
-# STAGE 2: PLAN (1 agent, concept pre-search)
+# STAGE 2: PLAN (1 agent, concept pre-search) — skipped in --resume
 # ═══════════════════════════════════════════════════════════
 
 echo ""
@@ -132,6 +186,40 @@ if [ $stage2_result -ne 0 ]; then
 fi
 
 echo "Stage 2 complete: ${stage2_duration}s"
+
+fi  # end if ! RESUME_MODE
+
+# ═══════════════════════════════════════════════════════════
+# REVIEW GATE (optional — pauses for plan review)
+# ═══════════════════════════════════════════════════════════
+
+if $REVIEW_MODE; then
+  REVIEW_FILE="$VAULT_PATH/07-WIP/plans-review.json"
+  mkdir -p "$VAULT_PATH/07-WIP"
+  cp /tmp/extracted/plans.json "$REVIEW_FILE"
+
+  plan_count=$(python3 -c "import json; print(len(json.load(open('$REVIEW_FILE'))))")
+
+  echo ""
+  echo "╔══════════════════════════════════════════════╗"
+  echo "║  Review Mode — Plans Ready for Inspection    ║"
+  echo "╠══════════════════════════════════════════════╣"
+  echo "║                                              ║"
+  echo "║  Plans saved to: $REVIEW_FILE"
+  echo "║  Count: $plan_count plans"
+  echo "║                                              ║"
+  echo "║  Review and edit the plans, then run:        ║"
+  echo "║  ./process-inbox-v2.sh --resume              ║"
+  echo "║                                              ║"
+  echo "║  Each plan has: hash, title, language,       ║"
+  echo "║  template, tags, concept_updates,            ║"
+  echo "║  concept_new, moc_targets                    ║"
+  echo "║                                              ║"
+  echo "╚══════════════════════════════════════════════╝"
+  echo ""
+
+  exit 0
+fi
 
 # ═══════════════════════════════════════════════════════════
 # STAGE 3: CREATE (N parallel agents)

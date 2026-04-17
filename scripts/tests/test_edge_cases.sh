@@ -319,10 +319,10 @@ fi
 # Test: build_batch_prompt.py enforces no-stub rule
 # ═══════════════════════════════════════════════════════════════════════════
 test_start "build_batch_prompt.py includes no-stub instruction"
-if grep -q "NO stubs" "$PIPELINE_DIR/build_batch_prompt.py" 2>/dev/null; then
+if grep -qi "NO stubs\|no stubs" "$PIPELINE_DIR/../prompts/common-instructions.prompt" 2>/dev/null; then
   test_pass
 else
-  test_fail "build_batch_prompt.py missing no-stub instruction"
+  test_fail "common-instructions.prompt missing no-stub instruction"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════

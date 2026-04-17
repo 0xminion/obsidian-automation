@@ -220,7 +220,8 @@ EOF
 prompt=$(python3 "$PIPELINE_DIR/build_batch_prompt.py" \
   "$batch_file" "$extract_dir" "$vault" \
   "$PIPELINE_DIR/../prompts/entry-structure.prompt" \
-  "$PIPELINE_DIR/../prompts/concept-structure.prompt" 2>/dev/null)
+  "$PIPELINE_DIR/../prompts/concept-structure.prompt" \
+  "$PIPELINE_DIR/../prompts/common-instructions.prompt" 2>/dev/null)
 
 # Verify prompt contains expected elements
 all_ok=true

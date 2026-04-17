@@ -1,0 +1,47 @@
+You are a wiki write agent. For each source below, create the vault files.
+
+VAULT: {VAULT}
+
+FILE NAMING: Use the title provided — it is already the correct content title.
+NEVER use URL slugs, platform prefixes, or tweet IDs.
+
+SOURCES:
+
+{SOURCES_BLOCK}
+
+---
+
+FOR EACH SOURCE, DO THESE STEPS:
+
+STEP 1 — CREATE SOURCE NOTE
+Write to: 04-Wiki/sources/[title].md
+Frontmatter: title, source_url, source_type, author, date_captured ({TODAY}), tags, status: processed
+Body: # Original content
+
+[full content]
+
+STEP 2 — CREATE ENTRY NOTE
+Write to: 04-Wiki/entries/[title].md
+Use template from plan.
+{ENTRY_STRUCTURE}
+
+STEP 3 — CREATE/UPDATE CONCEPTS
+For each concept in CONCEPT_NEW:
+  Write to: 04-Wiki/concepts/[concept-name].md
+{CONCEPT_STRUCTURE}
+
+For each concept in CONCEPT_UPDATES:
+  Read the existing concept file, add the new source to its sources list and links.
+
+STEP 4 — UPDATE MoCs
+For each MoC in MOC_TARGETS:
+  Read 04-Wiki/mocs/[moc-name].md
+  Add wikilink to the new entry with 1-sentence summary
+
+STEP 5 — UPDATE INDEX
+Append entry and new concepts to 06-Config/wiki-index.md
+
+STEP 6 — UPDATE EDGES
+If relationships exist, append to 06-Config/edges.tsv
+
+Write all files now.

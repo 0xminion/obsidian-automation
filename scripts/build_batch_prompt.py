@@ -1,9 +1,28 @@
 #!/usr/bin/env python3
-"""Stage 3 helper: Build per-batch prompts from plans + extracted content + concept convergence."""
+"""Stage 3 helper: Build per-batch prompts from plans + extracted content + concept convergence.
+
+Composes the agent prompt from modular .prompt files instead of inline strings.
+This is the single source of truth for prompt construction — rules live in prompts/.
+"""
 import json, os, sys
 from datetime import date
 
-def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file, concept_template_file, common_instructions_file=None, convergence_file=None):
+PROMPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'prompts')
+
+
+def load_prompt(name, prompt_dir=None):
+    """Load a prompt file by name. Returns content or empty string."""
+    d = prompt_dir or PROMPT_DIR
+    path = os.path.join(d, f"{name}.prompt")
+    if os.path.exists(path):
+        with open(path) as f:
+            return f.read()
+    return ""
+
+
+def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file,
+                       concept_template_file, common_instructions_file=None,
+                       convergence_file=None, prompt_dir=None):
     with open(batch_file) as f:
         plans = json.load(f)
 
@@ -12,11 +31,16 @@ def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file, conc
     with open(concept_template_file) as f:
         concept_structure = f.read()
 
-    # W8 fix: load common-instructions
+    # Load common-instructions (shared rules for all agents)
     common = ""
     if common_instructions_file and os.path.exists(common_instructions_file):
         with open(common_instructions_file) as f:
             common = f.read()
+    # Substitute vault path placeholder
+    common = common.replace("{VAULT_PATH}", vault)
+
+    # Load batch-create prompt template (workflow steps + agent framing)
+    batch_create = load_prompt("batch-create", prompt_dir)
 
     # Load concept convergence data (qmd semantic matches)
     convergence = {}
@@ -24,9 +48,9 @@ def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file, conc
         with open(convergence_file) as f:
             convergence = json.load(f)
 
-    # W5 fix: dynamic date
     today = date.today().isoformat()
 
+    # Build per-source data blocks
     sources_block = ""
     for plan in plans:
         h = plan["hash"]
@@ -56,7 +80,11 @@ def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file, conc
             conv_lines = "\n".join(
                 f"  - {m['concept']} (score: {m['score']})" for m in conv_matches
             )
-            convergence_block = f"\nCONCEPT_CONVERGENCE (semantic matches — check for duplicates before creating new):\n{conv_lines}\n"
+            convergence_block = (
+                f"\nCONCEPT_CONVERGENCE "
+                f"(semantic matches — check for duplicates before creating new):\n"
+                f"{conv_lines}\n"
+            )
 
         sources_block += f"""
 ══════════════════════════════════════
@@ -76,72 +104,29 @@ CONTENT:
 ══════════════════════════════════════
 """
 
+    # Compose: common-instructions + batch-create (with variable substitution)
+    # The batch-create prompt uses {VAULT}, {SOURCES_BLOCK}, {ENTRY_STRUCTURE},
+    # {CONCEPT_STRUCTURE}, {TODAY} placeholders.
+    batch_filled = batch_create
+    batch_filled = batch_filled.replace("{VAULT}", vault)
+    batch_filled = batch_filled.replace("{SOURCES_BLOCK}", sources_block)
+    batch_filled = batch_filled.replace("{ENTRY_STRUCTURE}", entry_structure)
+    batch_filled = batch_filled.replace("{CONCEPT_STRUCTURE}", concept_structure)
+    batch_filled = batch_filled.replace("{TODAY}", today)
+
+    # Final prompt: shared rules first, then agent-specific instructions
     prompt = f"""{common}
 
-You are a wiki write agent. For each source below, create the vault files.
-
-VAULT: {vault}
-
-FILE NAMING: Use the title provided — it is already the correct content title.
-NEVER use URL slugs, platform prefixes, or tweet IDs.
-
-SOURCES:{sources_block}
-
----
-
-FOR EACH SOURCE, DO THESE STEPS:
-
-STEP 1 — CREATE SOURCE NOTE
-Write to: 04-Wiki/sources/[title].md
-Frontmatter: title, source_url, source_type, author, date_captured ({today}), tags, status: processed
-Body: # Original content\n\n[full content]
-
-STEP 2 — CREATE ENTRY NOTE
-Write to: 04-Wiki/entries/[title].md
-Use template from plan.
-{entry_structure}
-
-STEP 3 — CREATE/UPDATE CONCEPTS
-For each concept in CONCEPT_NEW:
-  Write to: 04-Wiki/concepts/[concept-name].md
-{concept_structure}
-
-For each concept in CONCEPT_UPDATES:
-  Read the existing concept file, add the new source to its sources list and links.
-
-STEP 4 — UPDATE MoCs
-For each MoC in MOC_TARGETS:
-  Read 04-Wiki/mocs/[moc-name].md
-  Add wikilink to the new entry with 1-sentence summary
-
-STEP 5 — UPDATE INDEX
-Append entry and new concepts to 06-Config/wiki-index.md
-
-STEP 6 — UPDATE EDGES
-If relationships exist, append to 06-Config/edges.tsv
-
-STEP 7 — ARCHIVE
-Move original inbox file to 08-Archive-Raw/
-
-CRITICAL RULES:
-- NO stubs — every section must have real content
-- Tags must be topic-specific English (never x.com, tweet, source)
-- YAML wikilinks MUST be quoted: source: "[[note]]"
-- Chinese content → write entries/concepts in Chinese
-- YAML keys stay English, tag values stay English
-- NEVER overwrite existing files — check first
-- Content too large → chunk it, never write lazy disclaimers
-- Draft content → humanize → write final file (I4: humanizer required)
-- CONCEPT CONVERGENCE: For each concept in CONCEPT_NEW, check CONCEPT_CONVERGENCE
-  semantic matches. If a match has score >0.5, that concept likely already exists —
-  UPDATE it instead of creating a duplicate. Scores 0.2-0.5 are tangential —
-  consider linking but don't merge unless substantively the same idea.
-
-Write all files now."""
+{batch_filled}"""
 
     return prompt
 
+
 if __name__ == "__main__":
+    if len(sys.argv) < 6:
+        print("Usage: build_batch_prompt.py <batch_file> <extract_dir> <vault> <entry_template> <concept_template> [common_instructions] [convergence_file]", file=sys.stderr)
+        sys.exit(1)
+
     batch_file = sys.argv[1]
     extract_dir = sys.argv[2]
     vault = sys.argv[3]
@@ -150,5 +135,8 @@ if __name__ == "__main__":
     common_instructions = sys.argv[6] if len(sys.argv) > 6 else None
     convergence_file = sys.argv[7] if len(sys.argv) > 7 else None
 
-    prompt = build_batch_prompt(batch_file, extract_dir, vault, entry_template, concept_template, common_instructions, convergence_file)
+    prompt = build_batch_prompt(
+        batch_file, extract_dir, vault, entry_template, concept_template,
+        common_instructions, convergence_file
+    )
     print(prompt)
