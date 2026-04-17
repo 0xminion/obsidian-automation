@@ -11,6 +11,12 @@
 
 set -uo pipefail
 
+# C2 fix: guard against double-sourcing
+if [ -n "${_COMMON_SH_LOADED:-}" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+_COMMON_SH_LOADED=1
+
 # ═══════════════════════════════════════════════════════════
 # LOAD .env FILE (secrets, API keys)
 # ═══════════════════════════════════════════════════════════
