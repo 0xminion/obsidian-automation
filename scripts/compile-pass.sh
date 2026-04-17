@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.1: Compile Pass — Incremental wiki improvement (Karpathy-style)
+# v2.1.0: Compile Pass — Incremental wiki improvement (Karpathy-style)
 # ============================================================================
-# Changes from v2.0.1:
+# Changes from v1:
 #   - Sources common library (lib/common.sh)
 #   - Fixed duplicate Operation 5/7 bug
 #   - Added Operation 7: Typed edges construction (edges.tsv)

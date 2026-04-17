@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.1: Extraction Library — Content extraction with failover
+# v2.1.0: Extraction Library — Content extraction with failover
 # ============================================================================
 # Source this file: source lib/extract.sh
 #

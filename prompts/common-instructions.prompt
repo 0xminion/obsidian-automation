@@ -1,5 +1,5 @@
 VAULT LOCATION: {VAULT_PATH}
-VAULT STRUCTURE (v2.0.1):
+VAULT STRUCTURE (v2.1.0):
   01-Raw/             — New sources to process (URLs, PDFs, files)
   02-Clippings/       — Web clipper saves (already markdown)
   03-Queries/         — Q&A questions (drop .md files here)
@@ -67,7 +67,7 @@ BILINGUAL PIPELINE RULES (English + Chinese):
    - Entries: write 摘要 (Summary), 核心发现 (Core Insights), 其他要点 (Other Takeaways), 关联概念 (Linked Concepts) — all Chinese body text
    - Concepts: Chinese explanation body, Chinese section headers
    - YAML frontmatter keys stay English, tag VALUES stay English
-   - File names stay English
+   - File names match content language (Chinese titles → Chinese filenames, English titles → kebab-case)
    - Wikilinks can be either language
    Go through the full pipeline end-to-end in Chinese — NEVER translate to English then back.
 
@@ -90,7 +90,7 @@ BILINGUAL PIPELINE RULES (English + Chinese):
 
 TAG CONSOLIDATION:
 Before creating new tags, ALWAYS search existing tags in the vault first:
-  obsidian tags sort=count counts
+  grep -h '^tags:' "$VAULT_PATH"/04-Wiki/**/*.md | sort | uniq -c | sort -rn
 Reuse existing tags wherever possible. Only mint a new tag if nothing fits.
 
 EXTRACTION PRIORITY (content parsing from URLs/files):

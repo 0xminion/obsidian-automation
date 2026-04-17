@@ -1,22 +1,22 @@
 # ⚠️ DEPRECATED — v1
 
 **Status:** Archived, no longer maintained  
-**Replaced by:** v2.2 (root scripts/, lib/, prompts/)
+**Replaced by:** v2.1.0 (root scripts/, lib/, prompts/)
 
 This directory contains the original v1 implementation kept for reference only.
 
-**Do not use v1 scripts in production.** Use the v2.2 scripts in the root `scripts/` directory instead.
+**Do not use v1 scripts in production.** Use the v2.1.0 scripts in the root `scripts/` directory instead.
 
-## What moved to v2.2:
+## What moved to v2.1.0:
 
-| v1 Location | v2.2 Location |
+| v1 Location | v2.1.0 Location |
 |-------------|---------------|
 | `v1/scripts/process-inbox.sh` | `scripts/process-inbox.sh` |
 | `v1/scripts/extract-transcript.sh` | `scripts/extract-transcript.sh` |
 | `v1/skills/transcript-extraction.md` | `skills/transcript-extraction.md` |
 | `v1/skills/transcriptapi.md` | `skills/transcriptapi.md` |
 
-## Key differences in v2.2:
+## Key differences in v2.1.0:
 - Shared library (`lib/common.sh`) — no code duplication
 - Externalized prompts (`prompts/*.prompt`)
 - Proper lock management with PID-based stale detection

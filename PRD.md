@@ -89,7 +89,7 @@ Format (both languages):
 
 6. **Topic-specific tags** — blocklist rejects platform names (x.com, tweet, http, url, link). Tags describe content, not source.
 
-7. **3-column edges** — `source<tab>relation<tab>target` format for edges.tsv.
+7. **4-column edges** — `source<tab>target<tab>type<tab>description` format for edges.tsv.
 
 8. **Self-contained automation** — no external cron. Run process-inbox.sh, everything updates.
 

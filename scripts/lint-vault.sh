@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.1: Lint Vault — Karpathy-style health checks on the wiki
+# v2.1.0: Lint Vault — Karpathy-style health checks on the wiki
 # ============================================================================
-# Changes from v2.0.1:
+# Changes from v1:
 #   - Sources common library (lib/common.sh)
 #   - Removed mandatory ELI5 section check (now template-aware)
 #   - Added review status check (entries older than 7 days, unreviewed)
@@ -299,21 +299,21 @@ check_template_sections() {
     procedural)
       for section in "## Summary" "## Prerequisites" "## Steps" "## Gotchas" "## Linked concepts"; do
         if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
-          missing_sections="${missing_sections}    - ${section}\\n"
+          missing_sections="${missing_sections}    - ${section}\n"
         fi
       done
       ;;
     chinese)
       for section in "## 摘要" "## 核心发现" "## 其他要点" "## 图表" "## 开放问题" "## 关联概念"; do
         if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
-          missing_sections="${missing_sections}    - ${section}\\n"
+          missing_sections="${missing_sections}    - ${section}\n"
         fi
       done
       ;;
     bilingual)
       for section in "## Summary / 摘要" "## Key Insights / 关键洞察" "## Diagrams / 图表" "## Open Questions / 开放问题" "## Linked Concepts / 关联概念"; do
         if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
-          missing_sections="${missing_sections}    - ${section}\\n"
+          missing_sections="${missing_sections}    - ${section}\n"
         fi
       done
       ;;

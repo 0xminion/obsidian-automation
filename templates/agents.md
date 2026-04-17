@@ -1,4 +1,4 @@
-# Wiki Agent — Schema (v2.0.1)
+# Wiki Agent — Schema (v2.1.0)
 
 This document instructs you on how to act as an automated wiki maintainer. You own the `04-Wiki/` layer entirely. You read source documents, compile them into structured wiki notes, maintain the index, and keep everything consistent. You rarely wait for instruction — you proactively maintain the wiki.
 
@@ -144,7 +144,7 @@ Concepts use the evergreen format — atomic notes, one idea per note, title IS 
 title: "Concept name as concise phrase"
 type: concept
 date_created: YYYY-MM-DD
-updated: YYYY-MM-DD
+last_updated: YYYY-MM-DD
 sources:
   - "[[Source note 1]]"
   - "[[Source note 2]]"
@@ -282,8 +282,7 @@ Operations: ingest, review, query, compile, lint, reindex
 For URL/HTML/X-Twitter/any web source:
   1. `defuddle parse --markdown <url>` — clean markdown extraction (primary)
   2. `liteparse <downloaded html>` — fallback document parser
-  3. `mcp_tavily_tavily_extract` — web search API extraction
-  4. browser tools (navigate/screenshot) — last resort for JS-heavy/blocked sites
+  3. browser tools (navigate/screenshot) — last resort for JS-heavy/blocked sites
   Shell: `source lib/extract.sh && extract_web "$url"`
 
 For PDF/Word/PowerPoint/XLSX (local files):

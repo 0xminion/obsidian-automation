@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.1: Common Library — Shared functions for all wiki scripts
+# v2.1.0: Common Library — Shared functions for all wiki scripts
 # ============================================================================
 # Source this file from any script: source "$(dirname "$0")/../lib/common.sh"
 # Or: source "$SCRIPT_DIR/lib/common.sh"

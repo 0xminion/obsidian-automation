@@ -17,7 +17,7 @@ Scan all Entry and Concept notes. Find notes that:
 For each pair of related notes that don't already link to each other,
 add a wikilink in the appropriate section:
 - Entry notes: add to 'Linked concepts' section
-- Concept notes: add to 'References' section (Related Concepts or Entries)
+- Concept notes: add to 'Links' section (Related Concepts or Entries)
 Search the note content to verify the link doesn't already exist.
 
 ## OPERATION 2: Concept Convergence (MERGE near-duplicates)
@@ -106,7 +106,7 @@ Create a report at 'Meta/Scripts/compile-duplicate-report.md':
 
 Review Entry notes and check if any should use a non-standard template.
 The `template:` frontmatter field selects the body structure:
-- standard (default): Summary, ELI5 insights, Diagrams, Open questions, Linked concepts
+- standard (default): Summary, Core insights, Other takeaways, Diagrams (optional), Open questions, Linked concepts
 - technical: Summary, Key Findings, Data/Evidence, Methodology, Limitations, Linked concepts
 - comparison: Summary, Side-by-Side, Pros/Cons, Verdict, Linked concepts
 - procedural: Summary, Prerequisites, Steps, Gotchas, Linked concepts

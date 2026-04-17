@@ -11,7 +11,7 @@ tags:
 
 # {{title}} — 知识图谱
 
-## 概述 / Overview
+## Overview / 概述
 <2-3 sentence synthesized summary of what this topic covers. Can be bilingual if bridging languages.>
 
 ## Core Concepts / 核心概念

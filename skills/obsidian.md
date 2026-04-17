@@ -20,7 +20,7 @@ User message contains "obsidian" AND a URL or file path.
 echo "$URL" > "$VAULT_PATH/01-Raw/$SANITIZED_NAME.url"
 
 # 2. Run pipeline (handles extraction, Entry, Concept, MoC, edges, wiki-index)
-cd /home/linuxuser/workspaces/gamma/obsidian-automation
+cd "$(dirname "$0")/.."
 VAULT_PATH="$VAULT_PATH" bash scripts/process-inbox.sh
 ```
 
@@ -94,6 +94,6 @@ Updating codebase alone is NOT complete — vault content must match.
 
 - Lock file: `rm /tmp/obsidian-process-inbox-*.lock`
 - Defuddle not found: `npm install -g defuddle`
-- Medium blocked: fallback to tavily extract
+- Medium blocked: fallback to liteparse → browser screenshot
 - SCRIPT_DIR bug: extract.sh uses `_EXTRACT_DIR`, not inherited `SCRIPT_DIR`
 - Sync: `npx obsidian-headless sync --path /home/linuxuser/MyVault`

@@ -132,7 +132,7 @@ source "$_EXTRACT_DIR/common.sh"
 | Prompt paths resolve correctly | ✅ |
 | Template YAML valid | ✅ |
 | .env has required vars | ✅ |
-| Version consistency | ⚠️ Skill v2.0.1 vs README v2.0.1 |
+| Version consistency | ✅ |
 | CODE_REVIEW.md clean | ✅ |
 | Git hooks functional | ✅ |
 
@@ -151,7 +151,16 @@ source "$_EXTRACT_DIR/common.sh"
 All CRITICAL and WARNING items are fixed and pushed. The remaining INFO items are documented as acceptable (portability notes, style observations). No action required on INFO items.
 
 **Remaining work (non-urgent):**
-1. Fix lint-vault.sh integer expression errors (line 372/377)
-2. Update README/PRD version to v2.0.1
-3. Audit prompts for hermes invocation compatibility
-4. Add stale lock auto-detection to process-inbox.sh
+1. ~~Fix lint-vault.sh integer expression errors (line 372/377)~~ ✅ DONE
+2. ~~Update README/PRD version to v2.0.1~~ ✅ DONE
+3. ~~Audit prompts for hermes invocation compatibility~~ ✅ DONE
+4. ~~Add stale lock auto-detection to process-inbox.sh~~ ✅ DONE
+5. ~~Make `ob sync` conditional in stage3-create.sh (check `command -v ob`)~~ ✅ DONE (M10)
+6. ~~Add QMD_CMD, QMD_COLLECTION, EXTRACT_TIMEOUT, PARALLEL to .env.example~~ ✅ DONE (L1)
+7. ~~Add `*.pyc` to .gitignore~~ ✅ DONE (L2)
+8. ~~Fix hardcoded path in skills/obsidian.md~~ ✅ DONE (L3)
+9. ~~Fix v1/README.md version reference (v2.2 → v2.1.0)~~ ✅ DONE (L4)
+10. ~~Fix common-instructions.prompt `obsidian tags` reference~~ ✅ DONE (L6)
+11. ~~Add test_qmd_integration.sh to run_all_tests.sh~~ ✅ DONE (L10)
+
+All audit items resolved.

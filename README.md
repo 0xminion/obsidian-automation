@@ -98,10 +98,10 @@ Topic hubs with synthesized summaries. Flexible section structure — organize b
 
 ## Typed Edges (`edges.tsv`)
 
-3-column tab-separated relationships between notes:
+4-column tab-separated relationships between notes:
 
 ```
-source<tab>relation<tab>target
+source<tab>target<tab>type<tab>description
 ```
 
 Built automatically during compile-pass. Also added during queries and reviews.

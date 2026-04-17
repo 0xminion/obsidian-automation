@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.1: Obsidian Inbox Processor — Karpathy-style LLM Knowledge Base
+# v2.1.0: Obsidian Inbox Processor — Karpathy-style LLM Knowledge Base
 # ============================================================================
 # Watches raw/ and clippings/, processes each file through
 # Defuddle (URLs, primary), LiteParse (fallback), or TranscriptAPI (YouTube),
 # creates Source note → Entry note → Concept notes → updates MoCs.
 #
-# Changes from v2.0.1:
+# Changes from v1:
 #   - Sources common library (lib/common.sh) — no more duplicated retry/log code
 #   - --interactive flag for conversational ingestion
 #   - Externalized prompt templates (prompts/*.prompt)

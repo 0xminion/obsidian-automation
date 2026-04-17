@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.1: Query Vault — Q&A against the wiki knowledge base (Karpathy-style)
+# v2.1.0: Query Vault — Q&A against the wiki knowledge base (Karpathy-style)
 # ============================================================================
-# Changes from v2.0.1:
+# Changes from v1:
 #   - Sources common library (lib/common.sh)
 #   - Query-compound-back: after creating answer Entry, LLM also updates
 #     existing wiki pages with newly-discovered connections

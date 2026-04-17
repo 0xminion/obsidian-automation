@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.1: Extract Transcript — Universal transcript extraction for YouTube and podcasts
+# v2.1.0: Extract Transcript — Universal transcript extraction for YouTube and podcasts
 # ============================================================================
 # Intelligent fallback chains:
 #   YouTube: existing → TranscriptAPI (primary) → Supadata (fallback) → Whisper (last resort)

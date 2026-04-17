@@ -59,13 +59,11 @@ if [ ! -d "$VAULT_PATH/01-Raw" ]; then
 fi
 
 # W2 fix: acquire lock to prevent concurrent runs
-LOCK_FILE="/tmp/obsidian-process-inbox-v2.lock"
-if ! mkdir "$LOCK_FILE" 2>/dev/null; then
-  echo "ERROR: Another pipeline run is in progress (lock: $LOCK_FILE)"
-  echo "If stale, run: rmdir $LOCK_FILE"
+if ! acquire_lock "process-inbox-v2"; then
+  echo "ERROR: Another pipeline run is in progress"
+  echo "If stale, run: rmdir /tmp/obsidian-process-inbox-v2-*.lock"
   exit 1
 fi
-trap 'rmdir "$LOCK_FILE" 2>/dev/null' EXIT
 
 inbox_count=$(find "$VAULT_PATH/01-Raw" -name "*.url" 2>/dev/null | wc -l)
 

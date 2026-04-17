@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.2: Stage 1 — Batch Extract (no agent, pure shell)
+# v2.1.0: Stage 1 — Batch Extract (no agent, pure shell)
 # ============================================================================
 # Extracts all URLs from the inbox and saves content to /tmp/extracted/.
 # No LLM involved — defuddle, transcriptapi, curl only.

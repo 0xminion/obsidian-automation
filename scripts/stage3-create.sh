@@ -283,9 +283,13 @@ for file in "$VAULT_PATH/01-Raw"/*.url; do
 done
 log "Archived $archived inbox files"
 
-# Sync vault
-log "Syncing vault..."
-ob sync --path "$VAULT_PATH" >> "$LOG_FILE" 2>&1 || log "WARN: vault sync failed"
+# Sync vault (only if ob CLI is available)
+if command -v ob &>/dev/null; then
+  log "Syncing vault..."
+  ob sync --path "$VAULT_PATH" >> "$LOG_FILE" 2>&1 || log "WARN: vault sync failed"
+else
+  log "WARN: ob CLI not found, skipping vault sync"
+fi
 
 log "=== Stage 3 complete: $plan_count sources, $failed_agents failed ==="
 echo "Created: $((plan_count - failed_agents)) | Failed: $failed_agents"
