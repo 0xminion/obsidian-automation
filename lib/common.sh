@@ -545,3 +545,197 @@ title_to_filename() {
       | head -c 120
   fi
 }
+
+# ═══════════════════════════════════════════════════════════
+# QMD INTEGRATION — Semantic concept search via qmd
+# ═══════════════════════════════════════════════════════════
+# Uses qmd (https://github.com/tobi/qmd) with Qwen3-Embedding-0.6B-Q8
+# for semantic concept matching instead of keyword grep.
+#
+# Prerequisites:
+#   1. npm install -g @tobilu/qmd
+#   2. qmd collection add <vault>/04-Wiki/concepts --name concepts
+#   3. qmd embed
+#   See scripts/setup-qmd.sh for automated setup.
+#
+# Environment:
+#   QMD_EMBED_MODEL  — Override embedding model (default: Qwen3-Embedding-0.6B-Q8)
+#   QMD_CMD          — Path to qmd binary (default: auto-detect from PATH)
+
+QMD_CMD="${QMD_CMD:-$(command -v qmd 2>/dev/null || echo "")}"
+QMD_COLLECTION="${QMD_COLLECTION:-concepts}"
+QMD_EMBED_MODEL="${QMD_EMBED_MODEL:-hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf}"
+export QMD_CMD QMD_COLLECTION QMD_EMBED_MODEL
+
+# Check if qmd is available and concepts collection is indexed
+qmd_available() {
+  [ -n "$QMD_CMD" ] && [ -x "$QMD_CMD" ] || return 1
+  # Use temp file to avoid pipefail interaction with qmd's non-zero exit (Vulkan warnings)
+  local status_out
+  status_out=$(timeout 30 "$QMD_CMD" status 2>/dev/null) || true
+  echo "$status_out" | grep -q "$QMD_COLLECTION"
+}
+
+# Semantic concept search via qmd query
+# Usage: results_json=$(qmd_concept_search "source content preview" 8 0.3)
+# Returns: JSON array of {score, file, title} objects
+# Falls back to empty array if qmd unavailable or errors
+qmd_concept_search() {
+  local query_text="$1"
+  local max_results="${2:-8}"
+  local min_score="${3:-0.3}"
+
+  if ! qmd_available; then
+    log "WARN: qmd not available, returning empty concept matches"
+    echo "[]"
+    return 1
+  fi
+
+  # Run qmd query — suppress Vulkan build warnings (node-llama-cpp noise)
+  # NOTE: cmake/Vulkan warnings go to stdout (not stderr), so we strip them
+  # Use printf to prevent shell expansion of special chars in query_text
+  local result
+  result=$(printf '%s' "$query_text" | xargs -0 "$QMD_CMD" query \
+    --json -n "$max_results" --min-score "$min_score" \
+    -c "$QMD_COLLECTION" --no-rerank \
+    2>/dev/null) || {
+    log "WARN: qmd query failed for: ${query_text:0:80}"
+    echo "[]"
+    return 1
+  }
+
+  # Strip cmake/node-llama-cpp noise from stdout
+  # cmake/Vulkan warnings contain '[' chars — find actual JSON array start
+  # JSON results always start with '[\n  {\n    "docid"' pattern
+  result=$(echo "$result" | python3 -c "
+import sys, json
+text = sys.stdin.read()
+# Find the JSON array: look for pattern '[\n  {\n' or '[\n{\n'
+for marker in ['[\n  {', '[\n{']:
+    idx = text.find(marker)
+    if idx >= 0:
+        try:
+            parsed = json.loads(text[idx:].rstrip())
+            print(json.dumps(parsed))
+            sys.exit(0)
+        except json.JSONDecodeError:
+            continue
+# Fallback: try parsing entire output
+try:
+    parsed = json.loads(text.strip())
+    print(json.dumps(parsed))
+except Exception:
+    print('[]')
+" 2>/dev/null) || { echo "[]"; return 1; }
+
+  # Validate output is valid JSON array
+  if echo "$result" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
+    echo "$result"
+  else
+    log "WARN: qmd returned non-JSON output"
+    echo "[]"
+    return 1
+  fi
+}
+
+# Extract concept names from qmd results
+# Usage: concept_names=$(qmd_results_to_names "$qmd_json")
+# Returns: JSON array of concept name strings, e.g. ["prediction-markets","forecasting"]
+qmd_results_to_names() {
+  local qmd_json="$1"
+  echo "$qmd_json" | python3 -c "
+import json, sys
+try:
+    results = json.load(sys.stdin)
+    names = []
+    for r in results:
+        # qmd returns file paths like 'qmd://concepts/prediction-markets.md'
+        f = r.get('file', '')
+        # Extract concept name from path (basename without extension)
+        name = f.split('/')[-1].replace('.md', '') if '/' in f else f.replace('.md', '')
+        if name and name not in names:
+            names.append(name)
+    print(json.dumps(names))
+except Exception:
+    print('[]')
+" 2>/dev/null || echo "[]"
+}
+
+# Batch concept search: search all sources against concepts collection
+# Usage: matches_json=$(qmd_batch_concept_search "$manifest_json")
+# Input: JSON array of {hash, title, content} objects
+# Output: JSON object {hash: [concept_names]} — same format as old Python matcher
+qmd_batch_concept_search() {
+  local manifest_json="$1"
+
+  if ! qmd_available; then
+    log "WARN: qmd unavailable, returning empty matches for all sources"
+    echo "$manifest_json" | python3 -c "
+import json, sys
+manifest = json.load(sys.stdin)
+print(json.dumps({e['hash']: [] for e in manifest}))
+"
+    return 1
+  fi
+
+  echo "$manifest_json" | python3 -c "
+import json, sys, subprocess, os
+
+manifest = json.load(sys.stdin)
+qmd_cmd = os.environ.get('QMD_CMD', 'qmd')
+collection = os.environ.get('QMD_COLLECTION', 'concepts')
+
+matches = {}
+for entry in manifest:
+    h = entry['hash']
+    # Build search query from title + content preview (first 500 chars)
+    title = entry.get('title', '')
+    content = entry.get('content', '')[:500]
+    query = f'{title} {content}'.strip()[:800]
+
+    if not query:
+        matches[h] = []
+        continue
+
+    try:
+        result = subprocess.run(
+            [qmd_cmd, 'query', query, '--json', '-n', '8', '--min-score', '0.3',
+             '-c', collection, '--no-rerank'],
+            capture_output=True, text=True, timeout=300
+        )
+        # Strip cmake/Vulkan noise from stdout — find actual JSON array start
+        stdout_clean = result.stdout
+        for marker in ['[\n  {', '[\n{']:
+            idx = stdout_clean.find(marker)
+            if idx >= 0:
+                try:
+                    json.loads(stdout_clean[idx:].rstrip())
+                    stdout_clean = stdout_clean[idx:].rstrip()
+                    break
+                except json.JSONDecodeError:
+                    continue
+        else:
+            # Fallback: try parsing entire output as-is
+            try:
+                json.loads(stdout_clean.strip())
+                stdout_clean = stdout_clean.strip()
+            except Exception:
+                stdout_clean = '[]'
+
+        if result.returncode == 0 and stdout_clean.startswith('['):
+            qmd_results = json.loads(stdout_clean)
+            names = []
+            for r in qmd_results:
+                f = r.get('file', '')
+                name = f.split('/')[-1].replace('.md', '') if '/' in f else f.replace('.md', '')
+                if name and name not in names:
+                    names.append(name)
+            matches[h] = names[:8]
+        else:
+            matches[h] = []
+    except Exception:
+        matches[h] = []
+
+print(json.dumps(matches))
+" 2>/dev/null || echo "{}"
+}

@@ -1,4 +1,4 @@
-# v2.0.1: Obsidian AI-Automated PKM Vault — Karpathy-Style Wiki
+# v2.1.0: Obsidian AI-Automated PKM Vault — Karpathy-Style Wiki
 
 Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a self-compiling wiki. Inspired by Andrej Karpathy's "LLM Knowledge Bases" approach.
 
@@ -197,6 +197,41 @@ All scripts source this. Provides:
 - `auto_commit()` — git auto-commit with structured messages
 - `load_prompt()` — load prompt templates from `prompts/*.prompt` files
 - `check_collision()` / `resolve_collision()` — prevent note overwrites
+- `qmd_concept_search()` — semantic concept search via qmd + Qwen3-Embedding-0.6B-Q8
+- `qmd_results_to_names()` — extract concept names from qmd results
+- `qmd_batch_concept_search()` — batch semantic search for manifest entries
+
+## v2 Pipeline (3-Stage Architecture)
+
+The v2 pipeline (`process-inbox-v2.sh`) replaces the monolithic v1 with:
+- **Stage 1** (`stage1-extract.sh`): Shell-only extraction. Routes URLs by type. No LLM.
+- **Stage 2** (`stage2-plan.sh`): Semantic concept pre-search via qmd, then 1 planning agent.
+- **Stage 3** (`stage3-create.sh`): Concept convergence search + N parallel write agents.
+
+### Semantic Concept Search (qmd)
+
+Concept matching uses [qmd](https://github.com/tobi/qmd) with **Qwen3-Embedding-0.6B-Q8** for semantic similarity instead of keyword grep.
+
+Setup (one-time):
+```bash
+bash scripts/setup-qmd.sh
+```
+
+This installs qmd, downloads the 639MB embedding model, and indexes your concepts collection.
+
+Manual commands:
+```bash
+# Index concepts (after adding new concept files)
+qmd update
+
+# Re-embed (after changing model)
+qmd embed -f
+
+# Test search
+qmd query "prediction markets" --json -n 5 --min-score 0.3 -c concepts --no-rerank
+```
+
+The pipeline auto-detects qmd availability and falls back gracefully if not installed.
 
 ## Notes
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.2: Stage 3 — Create Batch (parallel write-only agents)
-# ============================================================================
+# v2.1.0: Stage 3 — Create Batch (parallel write-only agents)
+# ============================================================================#
 # Takes plans + extracted content from Stage 2, spawns parallel agents
 # to write Source, Entry, Concept, MoC files. No extraction, no searching.
+# Concept convergence uses pre-fetched qmd semantic matches.
 #
 # Usage: ./stage3-create.sh [--vault PATH] [--parallel N]
 #
@@ -74,6 +75,99 @@ for i in range(parallel):
 "
 
 # ═══════════════════════════════════════════════════════════
+# CONCEPT CONVERGENCE SEARCH (qmd, per-plan)
+# ═══════════════════════════════════════════════════════════
+# For each plan, search existing concepts to help the agent find
+# near-duplicates before creating new concepts.
+
+log "Running concept convergence search via qmd..."
+convergence_dir="/tmp/extracted/convergence"
+rm -rf "$convergence_dir"
+mkdir -p "$convergence_dir"
+
+for convergence_batch in "$batch_dir"/batch_*.json; do
+  [ -f "$convergence_batch" ] || continue
+  conv_batch_name=$(basename "$convergence_batch" .json)
+
+  python3 -c "
+import json, os, subprocess
+
+qmd_cmd = os.environ.get('QMD_CMD', 'qmd')
+collection = os.environ.get('QMD_COLLECTION', 'concepts')
+
+with open('$convergence_batch') as f:
+    plans = json.load(f)
+
+batch_convergence = {}
+for plan in plans:
+    h = plan['hash']
+    concept_new = plan.get('concept_new', [])
+    concept_updates = plan.get('concept_updates', [])
+
+    extract_file = os.path.join('$EXTRACT_DIR', f'{h}.json')
+    content_preview = ''
+    if os.path.exists(extract_file):
+        with open(extract_file) as ef:
+            ext = json.load(ef)
+            content_preview = ext.get('content', '')[:500]
+
+    title = plan.get('title', '')
+    query_parts = [title] + concept_new + concept_updates + [content_preview]
+    query = ' '.join(p for p in query_parts if p)[:800]
+
+    if not query.strip():
+        batch_convergence[h] = []
+        continue
+
+    try:
+        result = subprocess.run(
+            [qmd_cmd, 'query', query, '--json', '-n', '5', '--min-score', '0.2',
+             '-c', collection, '--no-rerank'],
+            capture_output=True, text=True, timeout=300
+        )
+        # Strip cmake/Vulkan noise from stdout — find actual JSON array start
+        stdout_clean = result.stdout
+        for marker in ['[\n  {', '[\n{']:
+            idx = stdout_clean.find(marker)
+            if idx >= 0:
+                try:
+                    json.loads(stdout_clean[idx:].rstrip())
+                    stdout_clean = stdout_clean[idx:].rstrip()
+                    break
+                except json.JSONDecodeError:
+                    continue
+        else:
+            try:
+                json.loads(stdout_clean.strip())
+                stdout_clean = stdout_clean.strip()
+            except Exception:
+                stdout_clean = '[]'
+
+        if result.returncode == 0 and stdout_clean.startswith('['):
+            qmd_results = json.loads(stdout_clean)
+            matches = []
+            for r in qmd_results:
+                f = r.get('file', '')
+                name = f.split('/')[-1].replace('.md', '') if '/' in f else f.replace('.md', '')
+                score = r.get('score', 0)
+                if name:
+                    matches.append({'concept': name, 'score': round(score, 3)})
+            batch_convergence[h] = matches
+        else:
+            batch_convergence[h] = []
+    except Exception:
+        batch_convergence[h] = []
+
+out_file = os.path.join('$convergence_dir', '${conv_batch_name}.json')
+with open(out_file, 'w') as f:
+    json.dump(batch_convergence, f, indent=2, ensure_ascii=False)
+total = sum(len(v) for v in batch_convergence.values())
+print(f'  {conv_batch_name}: {total} convergence matches')
+" 2>/dev/null || log "WARN: convergence search failed for $conv_batch_name"
+done
+log "Concept convergence search complete"
+
+# ═══════════════════════════════════════════════════════════
 # SPAWN PARALLEL AGENTS
 # ═══════════════════════════════════════════════════════════
 
@@ -86,10 +180,14 @@ for batch_file in "$batch_dir"/batch_*.json; do
   batch_name=$(basename "$batch_file" .json)
   output_file="/tmp/extracted/${batch_name}_output.txt"
 
-  # Build prompt using Python helper
+  # Build prompt using Python helper (includes concept convergence data)
   log "Building prompt for $batch_name..."
+  convergence_file="$convergence_dir/${batch_name}.json"
+  if [ ! -f "$convergence_file" ]; then
+    convergence_file=""
+  fi
   batch_prompt=$(python3 "$SCRIPT_DIR/build_batch_prompt.py" \
-    "$batch_file" "$EXTRACT_DIR" "$VAULT_PATH" "$ENTRY_TEMPLATE" "$CONCEPT_TEMPLATE" "$COMMON_INSTRUCTIONS")
+    "$batch_file" "$EXTRACT_DIR" "$VAULT_PATH" "$ENTRY_TEMPLATE" "$CONCEPT_TEMPLATE" "$COMMON_INSTRUCTIONS" "$convergence_file")
 
   echo "$batch_prompt" > "/tmp/extracted/${batch_name}_prompt.md"
   prompt_size=${#batch_prompt}

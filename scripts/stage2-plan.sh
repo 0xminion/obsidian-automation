@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.2: Stage 2 — Plan Batch (1 agent, concept pre-search)
-# ============================================================================
-# Takes extracted content from Stage 1, pre-searches concepts via grep,
+# v2.1.0: Stage 2 — Plan Batch (1 agent, semantic concept pre-search)
+# ============================================================================#
+# Takes extracted content from Stage 1, pre-searches concepts via qmd
+# (semantic embedding search with Qwen3-Embedding-0.6B-Q8),
 # spawns a single planning agent to produce per-source creation plans.
 #
 # Usage: ./stage2-plan.sh [--vault PATH]
@@ -30,29 +31,10 @@ fi
 log "=== Stage 2: Plan Batch ==="
 
 # ═══════════════════════════════════════════════════════════
-# STEP 1: PRE-SEARCH EXISTING CONCEPTS (grep, no agent)
+# STEP 1: PRE-SEARCH EXISTING CONCEPTS (qmd semantic search)
 # ═══════════════════════════════════════════════════════════
 
-# Build keyword index from existing concepts
-log "Building concept keyword index..."
-concept_keywords=$(mktemp)
-trap 'rm -f "$concept_keywords"' EXIT  # I3 fix: cleanup on exit
-
-if [ -d "$CONCEPTS_DIR" ]; then
-  for cf in "$CONCEPTS_DIR"/*.md; do
-    [ -f "$cf" ] || continue
-    cname=$(basename "$cf" .md)
-    {
-      echo "$cname"
-      head -30 "$cf" | grep -v '^---' | grep -v '^#' | head -5
-    } >> "$concept_keywords"
-  done
-fi
-
-concept_count=$(wc -l < "$concept_keywords")
-log "Indexed $concept_count concept entries for search"
-
-# Build existing MoC list
+# Build existing MoC list (still needed for plan prompt)
 moc_list=""
 if [ -d "$MOCS_DIR" ]; then
   for mf in "$MOCS_DIR"/*.md; do
@@ -63,45 +45,31 @@ if [ -d "$MOCS_DIR" ]; then
   done
 fi
 
-# For each extracted source, find matching concepts
-log "Pre-searching concept matches per source..."
-concept_matches_json=$(python3 -c "
-import json, sys, os
+# Semantic concept matching via qmd (Qwen3-Embedding-0.6B-Q8)
+# Falls back to empty matches if qmd unavailable
+log "Pre-searching concept matches via qmd (semantic)..."
+manifest_json=$(cat "$MANIFEST")
+concept_matches_json=$(qmd_batch_concept_search "$manifest_json" 2>/dev/null)
 
+# Validate output
+if [ -z "$concept_matches_json" ] || ! echo "$concept_matches_json" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
+  log "WARN: qmd concept search returned invalid output, falling back to empty matches"
+  concept_matches_json=$(python3 -c "
+import json, sys
 with open('$MANIFEST') as f:
     manifest = json.load(f)
-
-concept_dir = '$CONCEPTS_DIR'
-concept_files = []
-if os.path.isdir(concept_dir):
-    for f in sorted(os.listdir(concept_dir)):
-        if f.endswith('.md'):
-            concept_files.append(f.replace('.md', ''))
-
-matches = {}
-for entry in manifest:
-    h = entry['hash']
-    content_lower = entry.get('content', '').lower()[:5000]
-    title_lower = entry.get('title', '').lower()
-    combined = title_lower + ' ' + content_lower
-
-    matched = []
-    for concept in concept_files:
-        keywords = concept.lower().replace('-', ' ').replace('_', ' ').split()
-        if concept.lower() in combined:
-            matched.append(concept)
-        else:
-            kw_hits = sum(1 for kw in keywords if len(kw) > 3 and kw in combined)
-            if kw_hits >= 2:
-                matched.append(concept)
-
-    matches[h] = matched[:8]
-
-print(json.dumps(matches))
+print(json.dumps({e['hash']: [] for e in manifest}))
 ")
+fi
 
 echo "$concept_matches_json" > /tmp/extracted/concept_matches.json
-log "Concept matching complete"
+matched_count=$(echo "$concept_matches_json" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+total = sum(len(v) for v in d.values())
+print(total)
+" 2>/dev/null || echo "0")
+log "Concept matching complete: $matched_count total matches across all sources"
 
 # ═══════════════════════════════════════════════════════════
 # STEP 2: BUILD SLIM PROMPT (no extraction, no search)
@@ -166,7 +134,7 @@ RULES:
 - language: Chinese content → \"zh\", everything else → \"en\"
 - template: Data/methodology/findings → \"technical\". Narrative/philosophical → \"standard\". Chinese → \"chinese\".
 - tags: Topic-specific English only. NO: x.com, tweet, source, url
-- concept_matches are pre-found — confirm which are real matches vs false positives
+- concept_matches are pre-found via semantic search — rank-sorted by relevance, confirm which are real matches vs tangential
 - concept_new: only if genuinely new concept
 - Be concise. Output ONLY the JSON array, no explanation.
 

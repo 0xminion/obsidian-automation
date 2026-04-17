@@ -1,8 +1,8 @@
-# PRD: obsidian-automation v2.0.1
+# PRD: obsidian-automation v2.1.0
 
 ## Executive Summary
 
-v2.0.1 is the self-contained Obsidian vault automation system that turns raw web content into a structured, interconnected wiki. Pipeline: Source → Entry → Concept → MoC. All automation baked into scripts, no external cron dependencies.
+v2.1.0 is the self-contained Obsidian vault automation system that turns raw web content into a structured, interconnected wiki. Pipeline: Source → Entry → Concept → MoC. All automation baked into scripts, no external cron dependencies. Concept matching uses semantic search (qmd + Qwen3-Embedding-0.6B-Q8) instead of keyword grep.
 
 ## Problem Statement
 

@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.0.2: Process Inbox v2 — 3-stage pipeline orchestrator
+# v2.1.0: Process Inbox v2 — 3-stage pipeline orchestrator
 # ============================================================================
 # Replaces the monolithic process-inbox.sh with a staged architecture:
 #   Stage 1: Extract (shell, no agent) — ~10s for 16 URLs
-#   Stage 2: Plan   (1 agent, batched) — concept pre-search + plan
-#   Stage 3: Create (N agents, parallel) — write files only
+#   Stage 2: Plan   (1 agent, batched) — semantic concept pre-search + plan
+#   Stage 3: Create (N agents, parallel) — write files + concept convergence
+#
+# Concept matching uses qmd + Qwen3-Embedding-0.6B-Q8 (semantic search).
+# Run scripts/setup-qmd.sh to initialize the concept index.
 #
 # Usage:
 #   ./process-inbox-v2.sh [--vault PATH] [--parallel N] [--dry-run]
 #
 # Benefits over v1:
 #   - Extraction is shell-only (never touches LLM)
-#   - Concept search is grep-based (agent doesn't search 59 files)
+#   - Concept search is semantic (qmd embeddings, not grep)
 #   - Per-agent prompt: ~5K chars (vs ~18K in v1)
 #   - Parallelizable: 3 agents × 6 sources = 18 sources/round
 #   - 900s timeout per agent (vs 600s in v1)

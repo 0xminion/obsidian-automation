@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Stage 3 helper: Build per-batch prompts from plans + extracted content."""
+"""Stage 3 helper: Build per-batch prompts from plans + extracted content + concept convergence."""
 import json, os, sys
 from datetime import date
 
-def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file, concept_template_file, common_instructions_file=None):
+def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file, concept_template_file, common_instructions_file=None, convergence_file=None):
     with open(batch_file) as f:
         plans = json.load(f)
 
@@ -17,6 +17,12 @@ def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file, conc
     if common_instructions_file and os.path.exists(common_instructions_file):
         with open(common_instructions_file) as f:
             common = f.read()
+
+    # Load concept convergence data (qmd semantic matches)
+    convergence = {}
+    if convergence_file and os.path.exists(convergence_file):
+        with open(convergence_file) as f:
+            convergence = json.load(f)
 
     # W5 fix: dynamic date
     today = date.today().isoformat()
@@ -43,6 +49,15 @@ def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file, conc
         concept_new = json.dumps(plan.get("concept_new", []))
         moc_targets = json.dumps(plan.get("moc_targets", []))
 
+        # Concept convergence data (semantic matches from qmd)
+        conv_matches = convergence.get(h, [])
+        convergence_block = ""
+        if conv_matches:
+            conv_lines = "\n".join(
+                f"  - {m['concept']} (score: {m['score']})" for m in conv_matches
+            )
+            convergence_block = f"\nCONCEPT_CONVERGENCE (semantic matches — check for duplicates before creating new):\n{conv_lines}\n"
+
         sources_block += f"""
 ══════════════════════════════════════
 SOURCE: {title}
@@ -55,7 +70,7 @@ TEMPLATE: {template}
 TAGS: {tags}
 CONCEPT_UPDATES: {concept_updates}
 CONCEPT_NEW: {concept_new}
-MOC_TARGETS: {moc_targets}
+MOC_TARGETS: {moc_targets}{convergence_block}
 CONTENT:
 {content}
 ══════════════════════════════════════
@@ -117,6 +132,10 @@ CRITICAL RULES:
 - NEVER overwrite existing files — check first
 - Content too large → chunk it, never write lazy disclaimers
 - Draft content → humanize → write final file (I4: humanizer required)
+- CONCEPT CONVERGENCE: For each concept in CONCEPT_NEW, check CONCEPT_CONVERGENCE
+  semantic matches. If a match has score >0.5, that concept likely already exists —
+  UPDATE it instead of creating a duplicate. Scores 0.2-0.5 are tangential —
+  consider linking but don't merge unless substantively the same idea.
 
 Write all files now."""
 
@@ -129,6 +148,7 @@ if __name__ == "__main__":
     entry_template = sys.argv[4]
     concept_template = sys.argv[5]
     common_instructions = sys.argv[6] if len(sys.argv) > 6 else None
+    convergence_file = sys.argv[7] if len(sys.argv) > 7 else None
 
-    prompt = build_batch_prompt(batch_file, extract_dir, vault, entry_template, concept_template, common_instructions)
+    prompt = build_batch_prompt(batch_file, extract_dir, vault, entry_template, concept_template, common_instructions, convergence_file)
     print(prompt)
