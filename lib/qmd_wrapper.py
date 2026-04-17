@@ -103,8 +103,8 @@ def daemon_query(query_text: str, collection: str = "concepts", limit: int = 8,
                  min_score: float = 0.3, no_rerank: bool = True) -> list:
     """Query via daemon MCP. Returns list of {file, score, snippet}.
     
-    Daemon excels at lex (BM25) queries (~70ms). Vec queries on CPU are slow
-    either way, so we use lex-only via daemon for speed.
+    Uses vec (semantic) search — slower than lex (~95s on CPU) but provides
+    semantic understanding beyond keyword matching.
     """
     session_id = _curl_init()
     if not session_id:
@@ -113,8 +113,8 @@ def daemon_query(query_text: str, collection: str = "concepts", limit: int = 8,
     # Send initialized notification
     _curl_request({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}, session_id)
 
-    # Daemon: lex-only for speed. Vec on CPU is ~60s regardless.
-    searches = [{"type": "lex", "query": query_text}]
+    # Vec search for semantic understanding
+    searches = [{"type": "vec", "query": query_text}]
 
     result = _curl_request({
         "jsonrpc": "2.0",
@@ -129,7 +129,7 @@ def daemon_query(query_text: str, collection: str = "concepts", limit: int = 8,
                 "intent": query_text[:200],
             },
         },
-    }, session_id, timeout=30)
+    }, session_id, timeout=150)
 
     if "error" in result:
         return []
@@ -150,20 +150,16 @@ def daemon_query(query_text: str, collection: str = "concepts", limit: int = 8,
 
 def cli_query(query_text: str, collection: str = "concepts", limit: int = 8,
               min_score: float = 0.3, no_rerank: bool = True) -> list:
-    """Query via CLI subprocess. Returns same format as daemon_query."""
+    """Query via CLI subprocess (vec search). Returns same format as daemon_query."""
     cmd = [
         QMD_CMD, "query", query_text,
         "--json", "-n", str(limit),
         "--min-score", str(min_score),
         "-c", collection,
     ]
-    if no_rerank:
-        cmd.append("--no-rerank")
 
-    t0 = time.time()
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT)
-        elapsed = time.time() - t0
 
         # Strip cmake/Vulkan noise from stdout (find JSON array start)
         stdout_clean = result.stdout
@@ -189,18 +185,65 @@ def cli_query(query_text: str, collection: str = "concepts", limit: int = 8,
                 })
         return matches
     except Exception as e:
-        print(f"CLI query failed: {e}", file=sys.stderr)
+        print(f"CLI vec query failed: {e}", file=sys.stderr)
+        return []
+
+
+def cli_lex_query(query_text: str, collection: str = "concepts", limit: int = 8,
+                  min_score: float = 0.3) -> list:
+    """Last resort: BM25 keyword search via CLI (no model inference)."""
+    cmd = [
+        QMD_CMD, "query", query_text,
+        "--json", "-n", str(limit),
+        "--min-score", str(min_score),
+        "-c", collection,
+        "--no-rerank",
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        stdout_clean = result.stdout
+        for marker in ['[\n  {', '[\n{']:
+            idx = stdout_clean.find(marker)
+            if idx >= 0:
+                try:
+                    json.loads(stdout_clean[idx:].rstrip())
+                    stdout_clean = stdout_clean[idx:].rstrip()
+                    break
+                except json.JSONDecodeError:
+                    continue
+
+        data = json.loads(stdout_clean)
+        matches = []
+        for r in data:
+            if isinstance(r, dict) and r.get("score", 0) >= min_score:
+                matches.append({
+                    "name": os.path.basename(r.get("file", r.get("path", ""))).replace(".md", ""),
+                    "file": r.get("file", r.get("path", "")),
+                    "score": round(r.get("score", 0), 3),
+                    "snippet": str(r.get("snippet", ""))[:200],
+                })
+        return matches
+    except Exception as e:
+        print(f"CLI lex query failed: {e}", file=sys.stderr)
         return []
 
 
 def smart_query(query_text: str, **kwargs) -> list:
-    """Try daemon first, fall back to CLI."""
+    """Priority: daemon vec → CLI vec → CLI lex (BM25 last resort)."""
+    # 1. Daemon vec (semantic, ~95s, model in memory)
     if daemon_health():
         result = daemon_query(query_text, **kwargs)
         if result:
             return result
-        # Daemon returned empty — might be a model issue, try CLI
-    return cli_query(query_text, **kwargs)
+
+    # 2. CLI vec (semantic, ~95s, cold model load)
+    result = cli_query(query_text, **kwargs)
+    if result:
+        return result
+
+    # 3. CLI lex (BM25 keyword, ~46s, last resort)
+    return cli_lex_query(query_text, **kwargs)
 
 
 def batch_query(queries: list, **kwargs) -> dict:

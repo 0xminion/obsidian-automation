@@ -591,13 +591,13 @@ qmd_daemon_health() {
 # Returns: JSON array of {score, file, title} objects
 # Falls back to empty array if qmd unavailable or errors
 #
-# Strategy: daemon (fast BM25 ~0.07s) → CLI (slow ~15-46s with model load)
+# Priority: daemon vec → CLI vec → CLI lex (BM25 last resort)
 qmd_concept_search() {
   local query_text="$1"
   local max_results="${2:-8}"
   local min_score="${3:-0.3}"
 
-  # Try daemon first (fast lex/BM25 search, model in memory)
+  # 1. Daemon vec (semantic, ~95s, model in memory)
   if qmd_daemon_health && [ -f "$_QMD_WRAPPER" ]; then
     local daemon_result
     daemon_result=$(QMD_DAEMON_URL="$QMD_DAEMON_URL" python3 "$_QMD_WRAPPER" query \
@@ -607,36 +607,21 @@ qmd_concept_search() {
       echo "$daemon_result"
       return 0
     fi
-    log "WARN: daemon query returned empty, falling back to CLI"
+    log "WARN: daemon vec query empty, falling back to CLI vec"
   fi
 
-  # CLI fallback
-  if ! qmd_available; then
-    log "WARN: qmd not available, returning empty concept matches"
-    echo "[]"
-    return 1
-  fi
+  # 2. CLI vec (semantic, ~95s, cold model load)
+  if qmd_available; then
+    local cli_result
+    cli_result=$(printf '%s' "$query_text" | xargs -0 "$QMD_CMD" query \
+      --json -n "$max_results" --min-score "$min_score" \
+      -c "$QMD_COLLECTION" \
+      2>/dev/null) || true
 
-  # Run qmd query — suppress Vulkan build warnings (node-llama-cpp noise)
-  # NOTE: cmake/Vulkan warnings go to stdout (not stderr), so we strip them
-  # Use printf to prevent shell expansion of special chars in query_text
-  local result
-  result=$(printf '%s' "$query_text" | xargs -0 "$QMD_CMD" query \
-    --json -n "$max_results" --min-score "$min_score" \
-    -c "$QMD_COLLECTION" --no-rerank \
-    2>/dev/null) || {
-    log "WARN: qmd query failed for: ${query_text:0:80}"
-    echo "[]"
-    return 1
-  }
-
-  # Strip cmake/node-llama-cpp noise from stdout
-  # cmake/Vulkan warnings contain '[' chars — find actual JSON array start
-  # JSON results always start with '[\n  {\n    "docid"' pattern
-  result=$(echo "$result" | python3 -c "
+    # Strip cmake noise
+    cli_result=$(echo "$cli_result" | python3 -c "
 import sys, json
 text = sys.stdin.read()
-# Find the JSON array: look for pattern '[\n  {\n' or '[\n{\n'
 for marker in ['[\n  {', '[\n{']:
     idx = text.find(marker)
     if idx >= 0:
@@ -646,22 +631,48 @@ for marker in ['[\n  {', '[\n{']:
             sys.exit(0)
         except json.JSONDecodeError:
             continue
-# Fallback: try parsing entire output
-try:
-    parsed = json.loads(text.strip())
-    print(json.dumps(parsed))
-except Exception:
-    print('[]')
-" 2>/dev/null) || { echo "[]"; return 1; }
+print('[]')
+" 2>/dev/null) || cli_result="[]"
 
-  # Validate output is valid JSON array
-  if echo "$result" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
-    echo "$result"
-  else
-    log "WARN: qmd returned non-JSON output"
-    echo "[]"
-    return 1
+    if [ -n "$cli_result" ] && echo "$cli_result" | python3 -c "import json,sys; r=json.load(sys.stdin); sys.exit(0 if r else 1)" 2>/dev/null; then
+      echo "$cli_result"
+      return 0
+    fi
+    log "WARN: CLI vec query empty, falling back to CLI lex (BM25)"
   fi
+
+  # 3. CLI lex (BM25 keyword, ~46s, last resort)
+  if qmd_available; then
+    local lex_result
+    lex_result=$(printf '%s' "$query_text" | xargs -0 "$QMD_CMD" query \
+      --json -n "$max_results" --min-score "$min_score" \
+      -c "$QMD_COLLECTION" --no-rerank \
+      2>/dev/null) || true
+
+    lex_result=$(echo "$lex_result" | python3 -c "
+import sys, json
+text = sys.stdin.read()
+for marker in ['[\n  {', '[\n{']:
+    idx = text.find(marker)
+    if idx >= 0:
+        try:
+            parsed = json.loads(text[idx:].rstrip())
+            print(json.dumps(parsed))
+            sys.exit(0)
+        except json.JSONDecodeError:
+            continue
+print('[]')
+" 2>/dev/null) || lex_result="[]"
+
+    if [ -n "$lex_result" ] && echo "$lex_result" | python3 -c "import json,sys; r=json.load(sys.stdin); sys.exit(0 if r else 1)" 2>/dev/null; then
+      echo "$lex_result"
+      return 0
+    fi
+  fi
+
+  log "WARN: all qmd query methods failed, returning empty"
+  echo "[]"
+  return 1
 }
 
 # Extract concept names from qmd results
