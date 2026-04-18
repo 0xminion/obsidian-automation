@@ -46,35 +46,45 @@ _log() { echo "[$(date '+%H:%M:%S')] $*" >&2; }
 # ═══════════════════════════════════════════════════════════
 
 extract_youtube_transcript() {
-  local video_id="$1"
+  local url="$1"
+  local video_id="$2"
 
-  # TranscriptAPI (primary)
+  # TranscriptAPI (primary) — MUST pass full URL, not bare video_id
   if [ -n "${TRANSCRIPT_API_KEY:-}" ]; then
-    local response
-    response=$(curl -s --max-time "$EXTRACT_TIMEOUT" \
-      "https://transcriptapi.com/api/v2/youtube/transcript?video_url=${video_id}&format=text&include_timestamp=true&send_metadata=true" \
-      -H "Authorization: Bearer $TRANSCRIPT_API_KEY" 2>/dev/null)
+    local response http_code
+    response=$(curl -s --max-time "$EXTRACT_TIMEOUT" -w "\n%{http_code}" \
+      "https://transcriptapi.com/api/v2/youtube/transcript?video_url=${url}&format=text&include_timestamp=true&send_metadata=true" \
+      -H "Authorization: Bearer $TRANSCRIPT_API_KEY" 2>&1) || true
 
-    local http_code
-    http_code=$(echo "$response" | python3 -c "import json,sys; d=json.load(sys.stdin); print('200')" 2>/dev/null || echo "000")
+    http_code=$(echo "$response" | tail -1)
+    local body
+    body=$(echo "$response" | sed '$d')
 
-    if [ "$http_code" = "200" ]; then
-      echo "$response"
+    if [ "$http_code" = "200" ] && [ -n "$body" ] && [ "${#body}" -gt 50 ]; then
+      echo "$body"
       return 0
     fi
+    _log "TranscriptAPI returned HTTP $http_code for $video_id"
   fi
 
   # Supadata (fallback)
   if [ -n "${SUPADATA_API_KEY:-}" ]; then
-    local response
-    response=$(curl -s --max-time "$EXTRACT_TIMEOUT" \
-      "https://api.supadata.ai/v1/youtube/transcript?url=https://www.youtube.com/watch?v=${video_id}&text=true" \
-      -H "x-api-key: $SUPADATA_API_KEY" 2>/dev/null)
+    local response http_code
+    response=$(curl -s --max-time "$EXTRACT_TIMEOUT" -w "\n%{http_code}" \
+      -X POST "https://api.supadata.ai/v1/youtube/transcript" \
+      -H "x-api-key: $SUPADATA_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{\"video_url\": \"https://www.youtube.com/watch?v=${video_id}\", \"format\": \"text\"}" 2>&1) || true
 
-    if [ -n "$response" ] && [ "${#response}" -gt 100 ]; then
-      echo "$response"
+    http_code=$(echo "$response" | tail -1)
+    local body
+    body=$(echo "$response" | sed '$d')
+
+    if [ "$http_code" = "200" ] && [ -n "$body" ] && [ "${#body}" -gt 50 ]; then
+      echo "$body"
       return 0
     fi
+    _log "Supadata returned HTTP $http_code for $video_id"
   fi
 
   return 1
@@ -83,6 +93,206 @@ extract_youtube_transcript() {
 extract_youtube_metadata() {
   local url="$1"
   curl -s "https://www.youtube.com/oembed?url=${url}&format=json" 2>/dev/null
+}
+
+# ═══════════════════════════════════════════════════════════
+# PODCAST EXTRACTION
+# ═══════════════════════════════════════════════════════════
+
+is_podcast_url() {
+  [[ "$1" =~ podcasts\.apple\.com ]] || [[ "$1" =~ feeds\. ]] || [[ "$1" =~ podbean\.com ]] || [[ "$1" =~ anchor\.fm ]] || [[ "$1" =~ spotify\.com/episode ]]
+}
+
+# Extract Apple Podcast episode ID and lookup via iTunes API
+extract_apple_podcast_info() {
+  local url="$1"
+  # Extract podcast ID and episode ID from URL like:
+  # https://podcasts.apple.com/us/podcast/NAME/idPODCAST_ID?i=EPISODE_ID
+  local podcast_id episode_id
+  podcast_id=$(echo "$url" | grep -oP 'id\K[0-9]+' | head -1)
+  episode_id=$(echo "$url" | grep -oP '[?&]i=\K[0-9]+' | head -1)
+
+  if [ -z "$podcast_id" ]; then
+    _log "Could not extract podcast ID from Apple Podcasts URL"
+    return 1
+  fi
+
+  # iTunes Lookup API — returns podcast metadata + feed URL
+  local lookup_response
+  lookup_response=$(curl -s "https://itunes.apple.com/lookup?id=${podcast_id}&entity=podcast" 2>/dev/null) || true
+
+  local feed_url podcast_name
+  feed_url=$(echo "$lookup_response" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['results'][0].get('feedUrl',''))" 2>/dev/null || true)
+  podcast_name=$(echo "$lookup_response" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['results'][0].get('collectionName',''))" 2>/dev/null || true)
+
+  if [ -z "$feed_url" ]; then
+    _log "iTunes Lookup returned no feed URL for podcast $podcast_id"
+    return 1
+  fi
+
+  echo "${feed_url}|${podcast_name}|${episode_id}"
+  return 0
+}
+
+# Parse RSS feed to find episode audio URL and description
+extract_podcast_episode_from_rss() {
+  local feed_url="$1"
+  local episode_id="$2"
+  local tmp_rss
+  tmp_rss=$(mktemp /tmp/podcast-rss-XXXXXX.xml)
+
+  if ! curl -sL --max-time 30 "$feed_url" -o "$tmp_rss" 2>/dev/null; then
+    rm -f "$tmp_rss"
+    return 1
+  fi
+
+  # Try to match by iTunes episode ID if available
+  local audio_url description ep_title
+  if [ -n "$episode_id" ]; then
+    audio_url=$(python3 -c "
+import xml.etree.ElementTree as ET, sys
+tree = ET.parse('$tmp_rss')
+for item in tree.iter('item'):
+    eid = item.find('{http://www.itunes.com/dtds/podcast-1.0.dtd}episode')
+    guid = item.find('guid')
+    if guid is not None and '$episode_id' in (guid.text or ''):
+        enclosure = item.find('enclosure')
+        if enclosure is not None:
+            print(enclosure.get('url', ''))
+        break
+    # Also check link
+    link = item.find('link')
+    if link is not None and '$episode_id' in (link.text or ''):
+        enclosure = item.find('enclosure')
+        if enclosure is not None:
+            print(enclosure.get('url', ''))
+        break
+" 2>/dev/null || true)
+  fi
+
+  # Fallback: get the latest episode audio URL
+  if [ -z "$audio_url" ]; then
+    audio_url=$(python3 -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('$tmp_rss')
+for item in tree.iter('item'):
+    enclosure = item.find('enclosure')
+    if enclosure is not None:
+        print(enclosure.get('url', ''))
+        break
+" 2>/dev/null || true)
+  fi
+
+  # Get episode description
+  description=$(python3 -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('$tmp_rss')
+for item in tree.iter('item'):
+    desc = item.find('description')
+    if desc is not None and desc.text:
+        print(desc.text[:5000])
+        break
+" 2>/dev/null || true)
+
+  # Get episode title
+  ep_title=$(python3 -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('$tmp_rss')
+for item in tree.iter('item'):
+    title = item.find('title')
+    if title is not None and title.text:
+        print(title.text)
+        break
+" 2>/dev/null || true)
+
+  rm -f "$tmp_rss"
+
+  echo "${audio_url}|||SEPARATOR|||${description}|||SEPARATOR|||${ep_title}"
+  return 0
+}
+
+extract_podcast_url() {
+  local url="$1"
+  local out_file="${2:-/tmp/podcast_extract_out.json}"
+
+  _log "Extracting podcast: $url"
+
+  local url_hash
+  url_hash=$(echo -n "$url" | md5sum | cut -c1-12)
+
+  local feed_url="" podcast_name="" episode_id="" audio_url="" description="" ep_title=""
+
+  # Step 1: Get RSS feed URL via iTunes Lookup
+  local apple_info
+  apple_info=$(extract_apple_podcast_info "$url" 2>/dev/null || true)
+  if [ -n "$apple_info" ]; then
+    feed_url=$(echo "$apple_info" | cut -d'|' -f1)
+    podcast_name=$(echo "$apple_info" | cut -d'|' -f2)
+    episode_id=$(echo "$apple_info" | cut -d'|' -f3)
+  fi
+
+  # Step 2: Parse RSS for episode content
+  if [ -n "$feed_url" ]; then
+    local rss_data
+    rss_data=$(extract_podcast_episode_from_rss "$feed_url" "$episode_id" 2>/dev/null || true)
+    if [ -n "$rss_data" ]; then
+      audio_url=$(echo "$rss_data" | cut -d'|' -f1)
+      description=$(echo "$rss_data" | sed 's/.*|||SEPARATOR|||//' | cut -d'|' -f1)
+      ep_title=$(echo "$rss_data" | sed 's/.*|||SEPARATOR|||.*|||SEPARATOR|||//')
+    fi
+  fi
+
+  # Step 3: Try to transcribe audio if available
+  local transcript=""
+  if [ -n "$audio_url" ] && command -v yt-dlp &>/dev/null && command -v whisper &>/dev/null; then
+    local tmp_audio
+    tmp_audio=$(mktemp /tmp/podcast-audio-XXXXXX.mp3)
+    _log "Downloading podcast audio for transcription..."
+    if timeout 120 yt-dlp -x --audio-format mp3 -o "$tmp_audio" "$audio_url" 2>/dev/null; then
+      _log "Transcribing podcast audio with Whisper..."
+      if timeout 300 whisper "$tmp_audio" --model base --language en --output_format txt --output_dir /tmp/ 2>/dev/null; then
+        local whisper_out="/tmp/$(basename "$tmp_audio" .mp3).txt"
+        if [ -f "$whisper_out" ] && [ -s "$whisper_out" ]; then
+          transcript=$(cat "$whisper_out")
+          rm -f "$whisper_out"
+        fi
+      fi
+    fi
+    rm -f "$tmp_audio"
+  fi
+
+  # Step 4: Assemble content and write to JSON file
+  local content=""
+  if [ -n "$transcript" ] && [ "${#transcript}" -gt 100 ]; then
+    content=$(printf "Podcast: %s\nEpisode: %s\nURL: %s\n\n## Transcript\n\n%s" \
+      "${podcast_name}" "${ep_title}" "$url" "$transcript")
+    _log "Podcast transcription OK (${#transcript} chars)"
+  elif [ -n "$description" ] && [ "${#description}" -gt 100 ]; then
+    content=$(printf "Podcast: %s\nEpisode: %s\nURL: %s\n\n## Description\n\n%s\n\nNote: Audio transcription unavailable. Description extracted from RSS feed." \
+      "${podcast_name}" "${ep_title}" "$url" "$description")
+    _log "Podcast: using RSS description (${#description} chars)"
+  else
+    content=$(printf "Podcast: %s\nEpisode: %s\nURL: %s\n\nNote: Could not extract transcript or description. Audio URL: %s" \
+      "${podcast_name}" "${ep_title}" "$url" "${audio_url:-unavailable}")
+    _log "WARN: Podcast extraction returned minimal content for $url"
+  fi
+
+  # Write structured output to file so caller doesn't have to parse multi-line stdout
+  echo "$content" > "/tmp/extracted/${url_hash:-podcast}_content.tmp"
+  python3 -c "
+import json, sys
+data = {
+    'content': open(sys.argv[1]).read(),
+    'podcast_name': sys.argv[2],
+    'episode_title': sys.argv[3],
+    'audio_url': sys.argv[4]
+}
+with open(sys.argv[5], 'w') as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+" "/tmp/extracted/${url_hash:-podcast}_content.tmp" "$podcast_name" "$ep_title" "$audio_url" "$out_file"
+  rm -f "/tmp/extracted/${url_hash:-podcast}_content.tmp"
+
+  return 0
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -154,23 +364,48 @@ extract_single_url() {
     author=$(echo "$yt_meta" | python3 -c "import json,sys; print(json.load(sys.stdin).get('author_name',''))" 2>/dev/null || true)
 
     local transcript_data
-    transcript_data=$(extract_youtube_transcript "$video_id" 2>/dev/null || true)
+    transcript_data=$(extract_youtube_transcript "$url" "$video_id" 2>/dev/null || true)
     if [ -n "$transcript_data" ]; then
       content=$(echo "$transcript_data" | python3 -c "
 import json, sys
-d = json.load(sys.stdin)
-if 'transcript' in d:
-    print(d['transcript'])
-elif 'content' in d:
-    print(d['content'])
-else:
-    print(json.dumps(d))
+try:
+    d = json.load(sys.stdin)
+    if 'transcript' in d:
+        print(d['transcript'])
+    elif 'content' in d:
+        print(d['content'])
+    else:
+        print(json.dumps(d))
+except:
+    print(sys.stdin.read())
 " 2>/dev/null || echo "$transcript_data")
     fi
 
     if [ -z "$content" ] || [ "${#content}" -lt 50 ]; then
       _log "WARN: YouTube transcript extraction failed for $video_id"
       content=$(printf "Title: %s\nAuthor: %s\nURL: %s\n\nNote: Full transcript unavailable (extraction failed)." "$title" "$author" "$url")
+    fi
+
+  elif is_podcast_url "$url"; then
+    # ── Podcast ──
+    source_type="podcast"
+    local podcast_json="/tmp/extracted/${url_hash}_podcast.json"
+    extract_podcast_url "$url" "$podcast_json" 2>/dev/null || true
+
+    if [ -f "$podcast_json" ]; then
+      content=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('content',''))" "$podcast_json" 2>/dev/null || true)
+      author=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('podcast_name',''))" "$podcast_json" 2>/dev/null || true)
+      local ep_title
+      ep_title=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('episode_title',''))" "$podcast_json" 2>/dev/null || true)
+      if [ -n "$ep_title" ]; then
+        title="$ep_title"
+      fi
+      rm -f "$podcast_json"
+    fi
+
+    if [ -z "$content" ] || [ "${#content}" -lt 50 ]; then
+      _log "WARN: Podcast extraction failed for $url"
+      content=$(printf "URL: %s\n\nNote: Podcast extraction failed." "$url")
     fi
 
   elif [[ "$url" =~ x\.com/ ]]; then
