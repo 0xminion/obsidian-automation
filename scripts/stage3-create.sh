@@ -90,10 +90,12 @@ for convergence_batch in "$batch_dir"/batch_*.json; do
   conv_batch_name=$(basename "$convergence_batch" .json)
 
   python3 -c "
-import json, os, subprocess
+import json, os, subprocess, sys
 
 qmd_cmd = os.environ.get('QMD_CMD', 'qmd')
 collection = os.environ.get('QMD_COLLECTION', 'concepts')
+sys.path.insert(0, os.path.dirname(os.environ.get('_QMD_WRAPPER', '.')) or '.')
+from qmd_wrapper import strip_qmd_noise
 
 with open('$convergence_batch') as f:
     plans = json.load(f)
@@ -125,23 +127,8 @@ for plan in plans:
              '-c', collection, '--no-rerank'],
             capture_output=True, text=True, timeout=300
         )
-        # Strip cmake/Vulkan noise from stdout — find actual JSON array start
-        stdout_clean = result.stdout
-        for marker in ['[\n  {', '[\n{']:
-            idx = stdout_clean.find(marker)
-            if idx >= 0:
-                try:
-                    json.loads(stdout_clean[idx:].rstrip())
-                    stdout_clean = stdout_clean[idx:].rstrip()
-                    break
-                except json.JSONDecodeError:
-                    continue
-        else:
-            try:
-                json.loads(stdout_clean.strip())
-                stdout_clean = stdout_clean.strip()
-            except Exception:
-                stdout_clean = '[]'
+        # Strip cmake/Vulkan noise (centralized)
+        stdout_clean = strip_qmd_noise(result.stdout)
 
         if result.returncode == 0 and stdout_clean.startswith('['):
             qmd_results = json.loads(stdout_clean)

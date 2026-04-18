@@ -34,8 +34,10 @@ EXTRACT_DIR="/tmp/extracted"
 mkdir -p "$EXTRACT_DIR"
 
 EXTRACT_TIMEOUT="${EXTRACT_TIMEOUT:-60}"
-extracted=0
-failed=0
+PARALLEL_JOBS="${EXTRACT_PARALLEL:-4}"
+
+# Log helper: write to stderr so xargs stdout stays clean for parallel jobs
+_log() { echo "[$(date '+%H:%M:%S')] $*" >&2; }
 
 # ═══════════════════════════════════════════════════════════
 # EXTRACTION FUNCTIONS
@@ -110,52 +112,46 @@ extract_title_from_content() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# MAIN EXTRACTION LOOP
+# SINGLE-URL EXTRACTION (runs in parallel)
 # ═══════════════════════════════════════════════════════════
 
-log "=== Stage 1: Batch Extract ==="
+extract_single_url() {
+  local url_file="$1"
 
-for file in "$VAULT_PATH/01-Raw"/*.url; do
-  [ -f "$file" ] || continue
-
-  filename=$(basename "$file")
-  url=$(cat "$file" | tr -d '\r\n')
-
-  # Generate hash for dedup
+  local filename url url_hash outfile
+  filename=$(basename "$url_file")
+  url=$(cat "$url_file" | tr -d '\r\n')
   url_hash=$(echo -n "$url" | md5sum | cut -c1-12)
   outfile="$EXTRACT_DIR/${url_hash}.json"
 
   # Skip if already extracted
   if [ -f "$outfile" ]; then
-    log "SKIP (already extracted): $filename"
-    continue
+    _log "SKIP (already extracted): $filename"
+    echo "SKIP|$url_hash"  # status line for aggregator
+    return 0
   fi
 
-  log "Extracting: $filename → $url"
+  _log "Extracting: $filename → $url"
 
-  content=""
-  title=""
-  author=""
-  source_type=""
+  local content="" title="" author="" source_type=""
 
   # Route by URL type
   if [[ "$url" =~ youtu(\.be|be\.com) ]]; then
     # ── YouTube ──
     source_type="youtube"
-    # Use sed for portability (W6: grep -oP is GNU-only)
+    local video_id
     video_id=$(echo "$url" | sed -n 's/.*[?&]v=\([a-zA-Z0-9_-]\{11\}\).*/\1/p; s/.*youtu\.be\/\([a-zA-Z0-9_-]\{11\}\).*/\1/p; s/.*shorts\/\([a-zA-Z0-9_-]\{11\}\).*/\1/p' | head -1)
 
     if [ -z "$video_id" ]; then
-      # Fallback: python3 regex (portable, more permissive)
       video_id=$(echo "$url" | python3 -c "import re,sys; m=re.search(r'[a-zA-Z0-9_-]{11}', sys.stdin.read()); print(m.group() if m else '')" 2>/dev/null || true)
     fi
 
-    # Get metadata
+    local yt_meta
     yt_meta=$(extract_youtube_metadata "$url")
     title=$(echo "$yt_meta" | python3 -c "import json,sys; print(json.load(sys.stdin).get('title',''))" 2>/dev/null || true)
     author=$(echo "$yt_meta" | python3 -c "import json,sys; print(json.load(sys.stdin).get('author_name',''))" 2>/dev/null || true)
 
-    # Get transcript
+    local transcript_data
     transcript_data=$(extract_youtube_transcript "$video_id" 2>/dev/null || true)
     if [ -n "$transcript_data" ]; then
       content=$(echo "$transcript_data" | python3 -c "
@@ -171,7 +167,7 @@ else:
     fi
 
     if [ -z "$content" ] || [ "${#content}" -lt 50 ]; then
-      log "WARN: YouTube transcript extraction failed for $video_id"
+      _log "WARN: YouTube transcript extraction failed for $video_id"
       content=$(printf "Title: %s\nAuthor: %s\nURL: %s\n\nNote: Full transcript unavailable (extraction failed)." "$title" "$author" "$url")
     fi
 
@@ -179,15 +175,13 @@ else:
     # ── X/Twitter — use extract_web from extract.sh (W10: use library) ──
     source_type="twitter"
     content=$(extract_web "$url" 2>/dev/null || true)
-    # Fallback to direct defuddle if extract_web fails
     if [ -z "$content" ] || [ "${#content}" -lt 50 ]; then
       content=$(timeout "$EXTRACT_TIMEOUT" defuddle parse "$url" --md 2>/dev/null || true)
     fi
-    # Use python3 for portable regex (W6 fix)
     author=$(echo "$url" | python3 -c "import re,sys; m=re.search(r'x\.com/([^/]+)', sys.stdin.read()); print(m.group(1) if m else 'unknown')" 2>/dev/null || echo "unknown")
 
     if [ -z "$content" ] || [ "${#content}" -lt 50 ]; then
-      log "WARN: Tweet extraction failed for $url"
+      _log "WARN: Tweet extraction failed for $url"
       content=$(printf "Author: @%s\nURL: %s\n\nNote: Content extraction failed." "$author" "$url")
     fi
 
@@ -195,13 +189,12 @@ else:
     # ── Blog / Generic URL — use extract_web from extract.sh (W10) ──
     source_type="web"
     content=$(extract_web "$url" 2>/dev/null || true)
-    # Fallback: direct defuddle
     if [ -z "$content" ] || [ "${#content}" -lt 50 ]; then
       content=$(timeout "$EXTRACT_TIMEOUT" defuddle parse "$url" --md 2>/dev/null || true)
     fi
 
     if [ -z "$content" ] || [ "${#content}" -lt 50 ]; then
-      log "WARN: Blog extraction failed for $url"
+      _log "WARN: Blog extraction failed for $url"
       content=$(printf "URL: %s\n\nNote: Content extraction failed." "$url")
     fi
   fi
@@ -210,8 +203,6 @@ else:
   if [ -z "$title" ]; then
     title=$(extract_title_from_content "$content" 2>/dev/null || true)
   fi
-
-  # Fallback title
   if [ -z "$title" ]; then
     title="$filename"
   fi
@@ -234,15 +225,75 @@ os.unlink(sys.argv[3])
 " "$url" "$title" "/tmp/extracted/${url_hash}_content.tmp" "$source_type" "${author:-unknown}" "$filename" "$outfile"
 
   if [ -f "$outfile" ] && [ -s "$outfile" ]; then
-    extracted=$((extracted + 1))
-    log "OK: $filename → $outfile (${#content} chars)"
+    _log "OK: $filename → $outfile (${#content} chars)"
+    echo "OK|$url_hash"
   else
-    failed=$((failed + 1))
-    log "FAIL: $filename — could not create extraction output"
+    _log "FAIL: $filename — could not create extraction output"
+    echo "FAIL|$url_hash"
   fi
+}
+
+# ═══════════════════════════════════════════════════════════
+# If sourced for parallel subshell execution, stop here (only functions needed)
+if [ "${STAGE1_PARALLEL:-0}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+# Export env vars for xargs subshells
+export EXTRACT_DIR EXTRACT_TIMEOUT VAULT_PATH
+
+# ═══════════════════════════════════════════════════════════
+# PARALLEL EXTRACTION
+# ═══════════════════════════════════════════════════════════
+
+_log "=== Stage 1: Batch Extract (parallel=$PARALLEL_JOBS) ==="
+
+# Collect all .url files
+url_files=()
+for file in "$VAULT_PATH/01-Raw"/*.url; do
+  [ -f "$file" ] || continue
+  url_files+=("$file")
 done
 
-log "=== Stage 1 complete: $extracted extracted, $failed failed ==="
+total_urls=${#url_files[@]}
+_log "Found $total_urls URLs to extract"
+
+if [ "$total_urls" -eq 0 ]; then
+  _log "No .url files found in inbox"
+  echo "Extracted: 0 | Failed: 0"
+  exit 0
+fi
+
+# Run extraction in parallel, collect status lines
+# Each subshell sources this same script file to get extract_single_url function,
+# then calls it with the URL file argument. Status goes to stdout for aggregation.
+mapfile -t status_lines < <(
+  printf '%s\n' "${url_files[@]}" | \
+  xargs -I{} -P "$PARALLEL_JOBS" bash -c '
+    # Source this same script to get the function definitions
+    # (only the function definitions run; the main body is guarded by STAGE1_PARALLEL)
+    export STAGE1_PARALLEL=1
+    source "$0"
+    extract_single_url "$1"
+  ' "$0" {}
+)
+
+# ═══════════════════════════════════════════════════════════
+# AGGREGATE RESULTS
+# ═══════════════════════════════════════════════════════════
+
+extracted=0
+failed=0
+
+for status in "${status_lines[@]}"; do
+  case "$status" in
+    OK\|*)     extracted=$((extracted + 1)) ;;
+    FAIL\|*)   failed=$((failed + 1)) ;;
+    SKIP\|*)   extracted=$((extracted + 1)) ;;  # already extracted counts as success
+  esac
+done
+
+_log "=== Stage 1 complete: $extracted extracted, $failed failed ==="
 
 # Write manifest (skip .tmp files)
 python3 -c "

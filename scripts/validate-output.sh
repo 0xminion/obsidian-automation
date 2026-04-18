@@ -24,7 +24,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --vault)  VAULT="$2"; shift 2 ;;
     --since)  SINCE="$2"; shift 2 ;;
-    --fix)    echo "ERROR: --fix not yet implemented"; exit 2 ;;
+    --fix)    FIX_MODE=true; shift ;;
     *)        echo "Unknown arg: $1"; exit 2 ;;
   esac
 done
@@ -289,6 +289,150 @@ else:
 }
 
 # ═══════════════════════════════════════════════════════════
+# FIX FUNCTIONS (--fix mode)
+# ═══════════════════════════════════════════════════════════
+
+fixes_applied=0
+
+report_fix() {
+  local file="$1"
+  local fix="$2"
+  fixes_applied=$((fixes_applied + 1))
+  echo "FIX|$file|$fix"
+}
+
+# Fix 1: YAML frontmatter — null values + unquoted wikilinks
+fix_frontmatter() {
+  local file="$1"
+  local changed=false
+
+  python3 -c "
+import sys, re
+
+with open(sys.argv[1]) as f:
+    content = f.read()
+
+original = content
+
+# Fix null values: 'key: null' → 'key: \"\"'
+content = re.sub(r'(:\s*)null(\s*$)', r'\1\"\"\2', content, flags=re.MULTILINE)
+
+# Fix unquoted wikilinks in YAML: source: [[note]] → source: \"[[note]]\"
+# Only within frontmatter
+fm_match = re.match(r'^(---\n)(.*?)(---\n)', content, re.DOTALL)
+if fm_match:
+    fm = fm_match.group(2)
+    fixed_fm = re.sub(r'(\[\[[^\]]+\]\])', r'\"\\1\"', fm)
+    # Avoid double-quoting: if already quoted, skip
+    fixed_fm = re.sub(r'\"\"(\[\[[^\]]+\]\])\"\"', r'\"\\1\"', fixed_fm)
+    content = fm_match.group(1) + fixed_fm + fm_match.group(3) + content[fm_match.end():]
+
+if content != original:
+    with open(sys.argv[1], 'w') as f:
+        f.write(content)
+    print('changed')
+" "$file" 2>/dev/null | grep -q 'changed' && changed=true
+
+  if $changed; then
+    report_fix "$file" "frontmatter: fixed null values or unquoted wikilinks"
+  fi
+}
+
+# Fix 2: Markdown format — blank lines after headings + H1 title
+fix_markdown_format() {
+  local file="$1"
+  local changed=false
+
+  python3 -c "
+import sys, re
+
+with open(sys.argv[1]) as f:
+    content = f.read()
+
+original = content
+
+# Split into frontmatter and body
+fm_match = re.match(r'^(---\n.*?\n---\n)(.*)', content, re.DOTALL)
+if fm_match:
+    frontmatter = fm_match.group(1)
+    body = fm_match.group(2)
+else:
+    frontmatter = ''
+    body = content
+
+# Fix 1: Ensure body starts with H1 title
+first_nonempty = ''
+for line in body.split('\n'):
+    if line.strip():
+        first_nonempty = line
+        break
+
+if first_nonempty and not first_nonempty.startswith('# '):
+    # Extract title from frontmatter
+    title_match = re.search(r'^title:\s*[\"'\'']?(.*?)[\"'\'']?\s*$', frontmatter, re.MULTILINE)
+    title = title_match.group(1) if title_match else 'Untitled'
+    body = f'# {title}\n\n{body}'
+
+# Fix 2: Add blank line after ## headings if missing
+lines = body.split('\n')
+fixed_lines = []
+i = 0
+while i < len(lines):
+    fixed_lines.append(lines[i])
+    if lines[i].startswith('## ') or lines[i].startswith('### '):
+        # Check if next line exists and is non-empty
+        if i + 1 < len(lines) and lines[i + 1].strip() != '' and not lines[i + 1].startswith('#'):
+            fixed_lines.append('')  # Insert blank line
+    i += 1
+body = '\n'.join(fixed_lines)
+
+# Fix 3: Ensure blank line before ## headings (if previous line is non-empty)
+lines = body.split('\n')
+fixed_lines = []
+for i, line in enumerate(lines):
+    if (line.startswith('## ') or line.startswith('### ')) and i > 0:
+        if fixed_lines and fixed_lines[-1].strip() != '':
+            fixed_lines.append('')
+    fixed_lines.append(line)
+body = '\n'.join(fixed_lines)
+
+# Normalize multiple blank lines to max 2
+body = re.sub(r'\n{3,}', '\n\n', body)
+
+content = frontmatter + body
+if content != original:
+    with open(sys.argv[1], 'w') as f:
+        f.write(content)
+    print('changed')
+" "$file" 2>/dev/null | grep -q 'changed' && changed=true
+
+  if $changed; then
+    report_fix "$file" "format: fixed blank lines and/or added H1 title"
+  fi
+}
+
+# Fix 3: Remove banned tags
+fix_banned_tags() {
+  local file="$1"
+  local changed=false
+  local content
+  content=$(cat "$file")
+
+  local banned_tags=("x.com" "tweet" "source" "http" "url" "link")
+  for tag in "${banned_tags[@]}"; do
+    if echo "$content" | grep -qE "^  - ${tag}$" 2>/dev/null; then
+      # Remove the banned tag line
+      local new_content
+      new_content=$(echo "$content" | sed "/^  - ${tag}$/d")
+      echo "$new_content" > "$file"
+      content="$new_content"
+      changed=true
+      report_fix "$file" "tags: removed banned tag '$tag'"
+    fi
+  done
+}
+
+# ═══════════════════════════════════════════════════════════
 # MAIN VALIDATION LOOP
 # ═══════════════════════════════════════════════════════════
 
@@ -301,6 +445,13 @@ fi
 while IFS= read -r file; do
   [ -f "$file" ] || continue
   files_checked=$((files_checked + 1))
+
+  # In fix mode, apply fixes first, then validate
+  if $FIX_MODE; then
+    fix_frontmatter "$file"
+    fix_markdown_format "$file"
+    fix_banned_tags "$file"
+  fi
 
   check_frontmatter "$file"
   check_sections "$file"
@@ -318,14 +469,20 @@ done < <(find "${find_args[@]}" 2>/dev/null | sort)
 echo "" >&2
 echo "━━━ Validation Report ━━━" >&2
 echo "Files checked: $files_checked" >&2
+if $FIX_MODE; then
+  echo "Fixes applied: $fixes_applied" >&2
+fi
 echo "Violations:    $violations" >&2
 echo "Warnings:      $warnings" >&2
 
 if [ "$violations" -gt 0 ]; then
   echo "" >&2
   echo "Status: FAILED — $violations violation(s) found" >&2
+  if $FIX_MODE; then
+    echo "Some issues were auto-fixed ($fixes_applied fixes), but $violations remain." >&2
+  fi
   echo "" >&2
-  echo "Run with --since <manifest.json> to check only files from the latest pipeline run." >&2
+  echo "Run with --fix to auto-repair safe issues (frontmatter, format, banned tags)." >&2
   exit 1
 else
   echo "" >&2

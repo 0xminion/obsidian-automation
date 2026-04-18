@@ -22,6 +22,36 @@ TIMEOUT = int(os.environ.get("QMD_TIMEOUT", "120"))
 QMD_CMD = os.environ.get("QMD_CMD", "qmd")
 
 
+def strip_qmd_noise(raw_output: str) -> str:
+    """Strip cmake/Vulkan build noise from qmd CLI stdout.
+
+    qmd's underlying node-llama-cpp writes cmake errors and Vulkan warnings
+    to stdout (not stderr) before the actual JSON output. This function
+    finds the real JSON array start and returns clean JSON.
+
+    Args:
+        raw_output: Raw stdout from a qmd CLI command.
+
+    Returns:
+        Clean JSON string (array or empty array '[]').
+    """
+    for marker in ['[\n  {', '[\n{']:
+        idx = raw_output.find(marker)
+        if idx >= 0:
+            try:
+                parsed = json.loads(raw_output[idx:].rstrip())
+                return json.dumps(parsed)
+            except json.JSONDecodeError:
+                continue
+    # Fallback: try parsing entire output as-is (no noise present)
+    try:
+        json.loads(raw_output.strip())
+        return raw_output.strip()
+    except Exception:
+        pass
+    return '[]'
+
+
 def _curl_request(payload: dict, session_id: str = "", timeout: int = TIMEOUT) -> dict:
     """Use curl for reliable MCP HTTP communication. Python urllib hangs on SSE responses."""
     import tempfile
@@ -161,17 +191,8 @@ def cli_query(query_text: str, collection: str = "concepts", limit: int = 8,
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT)
 
-        # Strip cmake/Vulkan noise from stdout (find JSON array start)
-        stdout_clean = result.stdout
-        for marker in ['[\n  {', '[\n{']:
-            idx = stdout_clean.find(marker)
-            if idx >= 0:
-                try:
-                    json.loads(stdout_clean[idx:].rstrip())
-                    stdout_clean = stdout_clean[idx:].rstrip()
-                    break
-                except json.JSONDecodeError:
-                    continue
+        # Strip cmake/Vulkan noise from stdout
+        stdout_clean = strip_qmd_noise(result.stdout)
 
         data = json.loads(stdout_clean)
         matches = []
@@ -202,16 +223,7 @@ def cli_lex_query(query_text: str, collection: str = "concepts", limit: int = 8,
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        stdout_clean = result.stdout
-        for marker in ['[\n  {', '[\n{']:
-            idx = stdout_clean.find(marker)
-            if idx >= 0:
-                try:
-                    json.loads(stdout_clean[idx:].rstrip())
-                    stdout_clean = stdout_clean[idx:].rstrip()
-                    break
-                except json.JSONDecodeError:
-                    continue
+        stdout_clean = strip_qmd_noise(result.stdout)
 
         data = json.loads(stdout_clean)
         matches = []
@@ -251,7 +263,7 @@ def batch_query(queries: list, **kwargs) -> dict:
     results = {}
 
     if daemon_health():
-        session_id = _daemon_init()
+        session_id = _curl_init()
         if session_id:
             for q in queries:
                 result = daemon_query(q, **kwargs)

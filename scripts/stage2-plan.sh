@@ -30,6 +30,102 @@ fi
 
 log "=== Stage 2: Plan Batch ==="
 
+# Load manifest early (needed by both dedup and concept search)
+manifest_json=$(cat "$MANIFEST")
+
+# ═══════════════════════════════════════════════════════════
+# STEP 0: SEMANTIC DEDUP CHECK
+# ═══════════════════════════════════════════════════════════
+# Before planning, check if any extracted source is a semantic duplicate
+# of an existing vault source (same content, different URL).
+# Uses content fingerprinting: first 800 chars normalized.
+
+log "Running semantic dedup check against existing sources..."
+
+dedup_json=$(python3 -c "
+import json, os, re, sys
+
+def fingerprint(text):
+    '''Normalize and extract content fingerprint.'''
+    # Strip whitespace, lowercase, take first 800 chars
+    normalized = re.sub(r'\s+', ' ', text.lower().strip())[:800]
+    return normalized
+
+def jaccard_similarity(fp1, fp2, ngram=3):
+    '''Character n-gram Jaccard similarity. O(n) with sets.'''
+    if not fp1 or not fp2:
+        return 0.0
+    ng1 = set(fp1[i:i+ngram] for i in range(len(fp1) - ngram + 1))
+    ng2 = set(fp2[i:i+ngram] for i in range(len(fp2) - ngram + 1))
+    if not ng1 or not ng2:
+        return 0.0
+    return len(ng1 & ng2) / len(ng1 | ng2)
+
+# Load manifest
+with open('$MANIFEST') as f:
+    manifest = json.load(f)
+
+# Build fingerprint index from existing sources
+sources_dir = '$VAULT_PATH/04-Wiki/sources'
+existing_fps = []
+if os.path.isdir(sources_dir):
+    for fname in os.listdir(sources_dir):
+        if not fname.endswith('.md'):
+            continue
+        fpath = os.path.join(sources_dir, fname)
+        try:
+            content = open(fpath).read()
+            # Extract body (after frontmatter)
+            m = re.match(r'^---\n.*?\n---\n(.*)', content, re.DOTALL)
+            body = m.group(1) if m else content
+            fp = fingerprint(body)
+            if len(fp) > 100:  # Skip empty/stub sources
+                existing_fps.append({'name': fname.replace('.md', ''), 'fp': fp})
+        except Exception:
+            continue
+
+# Check each manifest entry against existing sources
+duplicates = []
+for entry in manifest:
+    entry_fp = fingerprint(entry.get('content', ''))
+    if len(entry_fp) < 100:
+        continue
+    for existing in existing_fps:
+        sim = jaccard_similarity(entry_fp, existing['fp'])
+        if sim > 0.85:
+            duplicates.append({
+                'hash': entry['hash'],
+                'duplicate_of': existing['name'],
+                'similarity': round(sim, 3)
+            })
+            break
+
+print(json.dumps(duplicates))
+" 2>/dev/null) || dedup_json="[]"
+
+# Filter duplicates from manifest
+if [ "$dedup_json" != "[]" ] && [ -n "$dedup_json" ]; then
+  dup_count=$(echo "$dedup_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+  if [ "$dup_count" -gt 0 ]; then
+    log "Found $dup_count semantic duplicates — removing from pipeline"
+    echo "$dedup_json" >&2  # Log duplicates for debugging
+
+    # Remove duplicate entries from manifest
+    manifest_json=$(echo "$manifest_json" | python3 -c "
+import json, sys
+manifest = json.load(sys.stdin)
+dups = json.load(sys.argv[1])
+dup_hashes = {d['hash'] for d in dups}
+filtered = [e for e in manifest if e['hash'] not in dup_hashes]
+print(json.dumps(filtered))
+" "$dedup_json" 2>/dev/null) || true
+  else
+    log "No semantic duplicates found"
+  fi
+else
+  log "No semantic duplicates found"
+fi
+
 # ═══════════════════════════════════════════════════════════
 # STEP 1: PRE-SEARCH EXISTING CONCEPTS (qmd semantic search)
 # ═══════════════════════════════════════════════════════════
@@ -48,7 +144,6 @@ fi
 # Semantic concept matching via qmd (Qwen3-Embedding-0.6B-Q8)
 # Falls back to empty matches if qmd unavailable
 log "Pre-searching concept matches via qmd (semantic)..."
-manifest_json=$(cat "$MANIFEST")
 concept_matches_json=$(qmd_batch_concept_search "$manifest_json" 2>/dev/null)
 
 # Validate output

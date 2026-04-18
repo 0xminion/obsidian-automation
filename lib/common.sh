@@ -570,6 +570,18 @@ export QMD_CMD QMD_COLLECTION QMD_EMBED_MODEL QMD_DAEMON_URL
 
 # Path to the qmd wrapper script
 _QMD_WRAPPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/qmd_wrapper.py"
+export _QMD_WRAPPER
+
+# Strip cmake/Vulkan noise from qmd CLI output (centralized, single source of truth)
+# Usage: clean_json=$(_qmd_strip_noise "$raw_qmd_output")
+_qmd_strip_noise() {
+  echo "$1" | python3 -c "
+import sys, json
+sys.path.insert(0, '$(dirname "$_QMD_WRAPPER")')
+from qmd_wrapper import strip_qmd_noise
+print(strip_qmd_noise(sys.stdin.read()))
+" 2>/dev/null || echo '[]'
+}
 
 # Check if qmd is available and concepts collection is indexed
 qmd_available() {
@@ -618,21 +630,8 @@ qmd_concept_search() {
       -c "$QMD_COLLECTION" \
       2>/dev/null) || true
 
-    # Strip cmake noise
-    cli_result=$(echo "$cli_result" | python3 -c "
-import sys, json
-text = sys.stdin.read()
-for marker in ['[\n  {', '[\n{']:
-    idx = text.find(marker)
-    if idx >= 0:
-        try:
-            parsed = json.loads(text[idx:].rstrip())
-            print(json.dumps(parsed))
-            sys.exit(0)
-        except json.JSONDecodeError:
-            continue
-print('[]')
-" 2>/dev/null) || cli_result="[]"
+    # Strip cmake noise (centralized)
+    cli_result=$(_qmd_strip_noise "$cli_result") || cli_result="[]"
 
     if [ -n "$cli_result" ] && echo "$cli_result" | python3 -c "import json,sys; r=json.load(sys.stdin); sys.exit(0 if r else 1)" 2>/dev/null; then
       echo "$cli_result"
@@ -649,20 +648,8 @@ print('[]')
       -c "$QMD_COLLECTION" --no-rerank \
       2>/dev/null) || true
 
-    lex_result=$(echo "$lex_result" | python3 -c "
-import sys, json
-text = sys.stdin.read()
-for marker in ['[\n  {', '[\n{']:
-    idx = text.find(marker)
-    if idx >= 0:
-        try:
-            parsed = json.loads(text[idx:].rstrip())
-            print(json.dumps(parsed))
-            sys.exit(0)
-        except json.JSONDecodeError:
-            continue
-print('[]')
-" 2>/dev/null) || lex_result="[]"
+    # Strip cmake noise (centralized)
+    lex_result=$(_qmd_strip_noise "$lex_result") || lex_result="[]"
 
     if [ -n "$lex_result" ] && echo "$lex_result" | python3 -c "import json,sys; r=json.load(sys.stdin); sys.exit(0 if r else 1)" 2>/dev/null; then
       echo "$lex_result"
@@ -782,24 +769,10 @@ for entry in manifest:
              '-c', collection, '--no-rerank'],
             capture_output=True, text=True, timeout=300
         )
-        # Strip cmake/Vulkan noise from stdout — find actual JSON array start
-        stdout_clean = result.stdout
-        for marker in ['[\n  {', '[\n{']:
-            idx = stdout_clean.find(marker)
-            if idx >= 0:
-                try:
-                    json.loads(stdout_clean[idx:].rstrip())
-                    stdout_clean = stdout_clean[idx:].rstrip()
-                    break
-                except json.JSONDecodeError:
-                    continue
-        else:
-            # Fallback: try parsing entire output as-is
-            try:
-                json.loads(stdout_clean.strip())
-                stdout_clean = stdout_clean.strip()
-            except Exception:
-                stdout_clean = '[]'
+        # Strip cmake/Vulkan noise (centralized via qmd_wrapper.strip_qmd_noise)
+        sys.path.insert(0, os.path.dirname(os.environ.get('_QMD_WRAPPER', '.')) or '.')
+        from qmd_wrapper import strip_qmd_noise
+        stdout_clean = strip_qmd_noise(result.stdout)
 
         if result.returncode == 0 and stdout_clean.startswith('['):
             qmd_results = json.loads(stdout_clean)
