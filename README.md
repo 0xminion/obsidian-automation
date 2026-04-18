@@ -2,6 +2,8 @@
 
 Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a self-compiling wiki. Inspired by Andrej Karpathy's "LLM Knowledge Bases" approach.
 
+**Architecture:** 3-stage pipeline with parallel extraction, semantic concept search (qmd + Qwen3-Embedding-0.6B-Q8), and parallel write agents.
+
 ## Vault Structure
 
 ```
@@ -84,10 +86,10 @@ Topic hubs with synthesized summaries. Flexible section structure — organize b
 
 | Script | Purpose |
 |---|---|
-| `process-inbox.sh` | Ingest: Source → Entry → Concepts → MoCs. Supports `--interactive` flag. Auto-updates dashboard, tag-registry, wiki-index |
+| `process-inbox.sh` | **Primary pipeline.** 3-stage: Extract → Plan → Create. Supports `--review`, `--resume`, `--parallel N`, `--dry-run` |
 | `review-pass.sh` | Review processed entries: `--untouched`, `--last N`, `--topic TAG`, `--entry NAME`, `--interactive` |
-| `compile-pass.sh` | Cross-link, concept convergence, MoC rebuild, index rebuild, typed edges, schema review |
-| `query-vault.sh` | Q&A with compound-back: answers expand wiki + update existing pages |
+| `compile-pass.sh` | Cross-linking, concept convergence, MoC rebuild, edges, schema review |
+| `query-vault.sh` | Q&A with compound-back (answers update existing pages) |
 | `lint-vault.sh` | 12 health checks: orphans, unreviewed, stale, broken links, empty, concept structure, template sections, orphaned concepts, index drift, edges, stubs, tags |
 | `vault-stats.sh` | Dashboard: vault size, growth, review status, health indicators |
 | `reindex.sh` | Full rebuild of wiki-index.md from scratch |
@@ -95,6 +97,67 @@ Topic hubs with synthesized summaries. Flexible section structure — organize b
 | `update-tag-registry.sh` | Rebuild tag-registry.md with actual tag usage counts from all notes |
 | `extract-transcript.sh` | Standalone transcript extraction for YouTube and podcasts |
 | `migrate-vault.sh` | Adopt existing Obsidian vaults into v2 format (scan/dry-run/execute) |
+| `validate-output.sh` | Validates pipeline output: frontmatter, sections, stubs, tags. Supports `--fix` |
+| `setup-qmd.sh` | One-time setup for qmd semantic search (downloads embedding model, indexes concepts) |
+
+## 3-Stage Pipeline (`process-inbox.sh`)
+
+The pipeline replaces the monolithic v1 with a staged architecture:
+
+```
+Stage 1: Extract (shell, no agent) — ~10s for 16 URLs
+  → Pure shell extraction using defuddle/transcriptapi/curl
+  → No LLM involved
+  → Parallel extraction via xargs -P4 (configurable EXTRACT_PARALLEL)
+
+Stage 2: Plan (1 agent, semantic concept pre-search)
+  → Pre-searches concepts via qmd (semantic embeddings, not grep)
+  → Single planning agent produces per-source creation plans
+  → Handles bilingual detection, template selection, tag suggestions
+
+Stage 3: Create (N parallel agents)
+  → Parallel write agents (default 3, configurable --parallel N)
+  → Concept convergence uses pre-fetched qmd semantic matches
+  → Per-agent prompt: ~5K chars (vs ~18K in v1)
+  → Output validation via validate-output.sh runs automatically
+```
+
+### Pipeline Flags
+
+```bash
+./process-inbox.sh                          # Default: 3 parallel agents
+./process-inbox.sh --parallel 5             # 5 parallel agents
+./process-inbox.sh --dry-run                # Preview without executing
+./process-inbox.sh --review                 # Run Stages 1+2, save plans for manual review
+./process-inbox.sh --resume                 # Skip Stages 1+2, use reviewed plans from --review
+```
+
+### Semantic Concept Search (qmd)
+
+Concept matching uses [qmd](https://github.com/tobi/qmd) with **Qwen3-Embedding-0.6B-Q8** for semantic similarity instead of keyword grep.
+
+Setup (one-time):
+```bash
+bash scripts/setup-qmd.sh
+```
+
+This installs qmd, downloads the 639MB embedding model, and indexes your concepts collection.
+
+Search priority: daemon vector → CLI vector → BM25 (keyword fallback).
+
+Manual commands:
+```bash
+# Index concepts (after adding new concept files)
+qmd update
+
+# Re-embed (after changing model)
+qmd embed -f
+
+# Test search
+qmd query "prediction markets" --json -n 5 --min-score 0.3 -c concepts --no-rerank
+```
+
+The pipeline auto-detects qmd availability and falls back gracefully if not installed.
 
 ## Typed Edges (`edges.tsv`)
 
@@ -144,28 +207,36 @@ cp templates/*.md ~/MyVault/Meta/Templates/
 # 3. Set up git hooks (optional but recommended)
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/setup-git-hooks.sh
 
-# 4. Process (batch mode)
+# 4. Initialize qmd semantic search (one-time, optional but recommended)
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/setup-qmd.sh
+
+# 5. Process inbox (batch mode — default 3 parallel agents)
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh
 
-# 4b. Process (interactive — discuss each source)
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh --interactive
+# 5b. Process with more parallelism
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh --parallel 5
 
-# 5. Review unreviewed entries
+# 5c. Review mode — inspect plans before creation
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh --review
+# ... review plans in 07-WIP/plans-review.json ...
+VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh --resume
+
+# 6. Review unreviewed entries
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/review-pass.sh --untouched --interactive
 
-# 6. Compile (weekly)
+# 7. Compile (weekly)
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/compile-pass.sh
 
-# 7. Query
+# 8. Query
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/query-vault.sh
 
-# 8. Lint
+# 9. Lint
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/lint-vault.sh
 
-# 9. Stats
+# 10. Stats
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/vault-stats.sh
 
-# 10. Reindex (if index drift detected)
+# 11. Reindex (if index drift detected)
 VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/reindex.sh
 ```
 
@@ -173,6 +244,7 @@ VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/reindex.sh
 
 ```
 Daily:    Drop sources in 01-Raw/, run process-inbox.sh
+          → Pipeline: Extract → Plan → Create (parallel agents)
           → Auto-updates: dashboard.md, tag-registry.md, wiki-index.md (if ≥5 notes)
           Drop questions in 03-Queries/, run query-vault.sh
 
@@ -201,37 +273,15 @@ All scripts source this. Provides:
 - `qmd_results_to_names()` — extract concept names from qmd results
 - `qmd_batch_concept_search()` — batch semantic search for manifest entries
 
-## v2 Pipeline (3-Stage Architecture)
+## Output Validation
 
-The v2 pipeline (`process-inbox-v2.sh`) replaces the monolithic v1 with:
-- **Stage 1** (`stage1-extract.sh`): Shell-only extraction. Routes URLs by type. No LLM.
-- **Stage 2** (`stage2-plan.sh`): Semantic concept pre-search via qmd, then 1 planning agent.
-- **Stage 3** (`stage3-create.sh`): Concept convergence search + N parallel write agents.
+`validate-output.sh` runs automatically after Stage 3. It checks:
+- Frontmatter: required fields, YAML syntax, wikilink quoting
+- Sections: template sections present, no stubs
+- Tags: no banned tags (x.com, tweet, http, etc.)
+- Overwrites: collision detection
 
-### Semantic Concept Search (qmd)
-
-Concept matching uses [qmd](https://github.com/tobi/qmd) with **Qwen3-Embedding-0.6B-Q8** for semantic similarity instead of keyword grep.
-
-Setup (one-time):
-```bash
-bash scripts/setup-qmd.sh
-```
-
-This installs qmd, downloads the 639MB embedding model, and indexes your concepts collection.
-
-Manual commands:
-```bash
-# Index concepts (after adding new concept files)
-qmd update
-
-# Re-embed (after changing model)
-qmd embed -f
-
-# Test search
-qmd query "prediction markets" --json -n 5 --min-score 0.3 -c concepts --no-rerank
-```
-
-The pipeline auto-detects qmd availability and falls back gracefully if not installed.
+Use `validate-output.sh --fix` to auto-repair common issues (null values, unquoted wikilinks, missing H1).
 
 ## Notes
 

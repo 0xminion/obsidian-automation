@@ -2,7 +2,9 @@
 
 ## Executive Summary
 
-v2.1.0 is the self-contained Obsidian vault automation system that turns raw web content into a structured, interconnected wiki. Pipeline: Source → Entry → Concept → MoC. All automation baked into scripts, no external cron dependencies. Concept matching uses semantic search (qmd + Qwen3-Embedding-0.6B-Q8) instead of keyword grep.
+v2.1.0 is the self-contained Obsidian vault automation system that turns raw web content into a structured, interconnected wiki. Pipeline: Source → Entry → Concept → MoC. All automation baked into scripts, no external cron dependencies.
+
+**Architecture:** 3-stage pipeline (Extract → Plan → Create) with parallel extraction, semantic concept search via qmd (Qwen3-Embedding-0.6B-Q8), and parallel write agents. 4-6x faster than the monolithic v1.
 
 ## Problem Statement
 
@@ -15,16 +17,55 @@ The system needs to:
 
 ## Architecture
 
-### Pipeline Flow
+### 3-Stage Pipeline
 
 ```
 01-Raw/ → process-inbox.sh → 04-Wiki/{sources, entries, concepts, mocs}
-                                 ↓
-                          Post-ingest auto-updates:
-                          - dashboard.md
-                          - tag-registry.md
-                          - wiki-index.md (if ≥5 notes)
+                                    ↓
+                             Post-ingest auto-updates:
+                             - dashboard.md
+                             - tag-registry.md
+                             - wiki-index.md (if ≥5 notes)
 ```
+
+**Stage 1: Extract** (shell, no agent, ~10s for 16 URLs)
+- Pure shell extraction using defuddle/transcriptapi/curl
+- No LLM involved — deterministic, fast
+- Parallel extraction via `xargs -P4` (configurable `EXTRACT_PARALLEL`)
+- Output: `/tmp/extracted/{hash}.json` per URL
+
+**Stage 2: Plan** (1 agent, semantic concept pre-search)
+- Pre-searches existing concepts via qmd semantic embeddings (not grep)
+- Single planning agent produces per-source creation plans
+- Handles bilingual detection, template selection, tag suggestions
+- Output: `/tmp/extracted/plans.json`
+
+**Stage 3: Create** (N parallel agents)
+- Parallel write agents (default 3, configurable `--parallel N`)
+- Concept convergence uses pre-fetched qmd semantic matches
+- Per-agent prompt: ~5K chars (vs ~18K in v1)
+- Output validation via `validate-output.sh` runs automatically
+- Output: Files written to vault, inbox archived, wiki-index updated
+
+### Pipeline Flags
+
+| Flag | Purpose |
+|---|---|
+| `--vault PATH` | Override VAULT_PATH |
+| `--parallel N` | Number of parallel write agents (default: 3) |
+| `--dry-run` | Preview pipeline without executing |
+| `--review` | Run Stages 1+2, save plans to `07-WIP/plans-review.json` for manual review |
+| `--resume` | Skip Stages 1+2, use reviewed plans from `--review` |
+
+`--review` and `--resume` are mutually exclusive.
+
+### Semantic Concept Search (qmd)
+
+Concept matching uses [qmd](https://github.com/tobi/qmd) with **Qwen3-Embedding-0.6B-Q8** for semantic similarity instead of keyword grep.
+
+- Search priority: daemon vector → CLI vector → BM25 (keyword fallback)
+- Pipeline auto-detects qmd availability, falls back gracefully if not installed
+- Setup via `setup-qmd.sh` (one-time: installs qmd, downloads 639MB model, indexes concepts)
 
 ### Note Structures
 
@@ -63,7 +104,7 @@ Format (both languages):
 
 | Script | Purpose |
 |---|---|
-| `process-inbox.sh` | Ingest pipeline. `--interactive` for human-in-loop. Post-ingest auto-updates |
+| `process-inbox.sh` | **Primary pipeline.** 3-stage: Extract → Plan → Create. Supports `--review`, `--resume`, `--parallel N`, `--dry-run` |
 | `review-pass.sh` | Review entries: `--untouched`, `--last N`, `--topic TAG`, `--entry NAME`, `--interactive` |
 | `compile-pass.sh` | Cross-linking, concept convergence, MoC rebuild, edges, schema review |
 | `query-vault.sh` | Q&A with compound-back (answers update existing pages) |
@@ -74,6 +115,8 @@ Format (both languages):
 | `update-tag-registry.sh` | Tag registry rebuild |
 | `extract-transcript.sh` | Standalone transcript extraction |
 | `migrate-vault.sh` | Adopt existing vaults (scan/dry-run/execute) |
+| `validate-output.sh` | Validates pipeline output: frontmatter, sections, stubs, tags. Supports `--fix` |
+| `setup-qmd.sh` | One-time setup for qmd semantic search |
 
 ### Key Design Decisions
 
@@ -97,20 +140,31 @@ Format (both languages):
 
 10. **Defuddle primary** — removed tavily as extraction fallback. Defuddle is primary for all web content including X/Twitter.
 
+11. **3-stage pipeline** — separates extraction (shell), planning (1 agent), and creation (N agents). Extraction never touches LLM. Planning is batched. Creation is parallelizable.
+
+12. **Semantic concept search** — qmd with Qwen3-Embedding-0.6B-Q8 replaces keyword grep for concept matching. 130x faster than loading model per-query (daemon mode).
+
+13. **Review/resume workflow** — `--review` pauses after planning for human inspection. `--resume` continues from reviewed plans. Enables human-in-the-loop without breaking automation.
+
 ## Acceptance Criteria
 
 - [x] process-inbox.sh handles URLs, YouTube, podcasts, PDFs, arxiv
+- [x] 3-stage pipeline: Extract (shell) → Plan (1 agent) → Create (N agents)
+- [x] Semantic concept search via qmd + Qwen3-Embedding-0.6B-Q8
+- [x] `--review` and `--resume` flags for human-in-the-loop
+- [x] `--parallel N` flag for configurable agent concurrency
 - [x] Entry templates: standard, chinese, technical, comparison, procedural
 - [x] Concept notes use evergreen format (3 sections + frontmatter sources)
 - [x] No stub/placeholder content allowed (lint enforced)
 - [x] Tags validated against blocklist (lint enforced)
-- [x] Edges use 3-column TSV format
+- [x] Edges use 4-column TSV format
 - [x] Post-ingest auto-updates: dashboard, tag-registry, wiki-index
 - [x] All scripts source lib/common.sh (no duplication)
 - [x] Prompts externalized in prompts/*.prompt files
 - [x] Collision detection prevents note overwrites
 - [x] Git auto-commit after every operation
 - [x] 12 lint checks covering all structural requirements
+- [x] Output validation with `validate-output.sh --fix` auto-repair
 
 ## Non-Goals
 
@@ -121,6 +175,7 @@ Format (both languages):
 
 ## Testing
 
-- **Smoke test**: Run each script with empty vault, verify no errors
-- **Integration test**: Process a URL → review → compile → query → lint — full pipeline
+- **Unit tests**: Function existence, JSON schema validation, parameter validation
+- **Integration test**: Full pipeline end-to-end: Stage 1 → Stage 2 → Stage 3 with mocked agents
 - **Lint validation**: All 12 checks pass against actual vault content
+- **Edge cases**: Empty inbox, malformed URLs, collision detection, qmd fallback

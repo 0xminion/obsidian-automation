@@ -21,7 +21,7 @@ echo "$URL" > "$VAULT_PATH/01-Raw/$SANITIZED_NAME.url"
 
 # 2. Run pipeline (v2: 3-stage orchestrator)
 cd "$(dirname "$0")/.."
-VAULT_PATH="$VAULT_PATH" bash scripts/process-inbox-v2.sh
+VAULT_PATH="$VAULT_PATH" bash scripts/process-inbox.sh
 ```
 
 ## Pipeline Architecture (v2.1.0)
@@ -34,9 +34,9 @@ Three-stage pipeline replacing the monolithic v1:
 
 ```bash
 # v2 pipeline options
-bash scripts/process-inbox-v2.sh                    # Default: 3 parallel agents
-bash scripts/process-inbox-v2.sh --parallel 5       # 5 parallel agents
-bash scripts/process-inbox-v2.sh --dry-run          # Preview without executing
+bash scripts/process-inbox.sh                    # Default: 3 parallel agents
+bash scripts/process-inbox.sh --parallel 5       # 5 parallel agents
+bash scripts/process-inbox.sh --dry-run          # Preview without executing
 ```
 
 The v1 `process-inbox.sh` is still available as a fallback (single-agent, monolithic).
@@ -54,9 +54,9 @@ Unified entry: `source lib/extract.sh && extract_content "$url_or_path"`
 ## Lock Management
 
 Pipeline uses `acquire_lock()` from `lib/common.sh` to prevent concurrent runs:
-- Lock path: `/tmp/obsidian-process-inbox-v2-<vault_hash>.lock`
+- Lock path: `/tmp/obsidian-process-inbox-<vault_hash>.lock`
 - Stale detection: PID check + 30-minute timeout
-- Manual cleanup: `rmdir /tmp/obsidian-process-inbox-v2-*.lock`
+- Manual cleanup: `rmdir /tmp/obsidian-process-inbox-*.lock`
 
 ## Note Structures
 
@@ -131,7 +131,7 @@ Updating codebase alone is NOT complete — vault content must match.
 
 ## Troubleshooting
 
-- Lock file: `rmdir /tmp/obsidian-process-inbox-v2-*.lock` (or `rm -rf` for legacy `obsidian-process-inbox-*.lock`)
+- Lock file: `rmdir /tmp/obsidian-process-inbox-*.lock` (or `rm -rf` for legacy `obsidian-process-inbox-*.lock`)
 - Defuddle not found: `npm install -g defuddle`
 - Liteparse not found: check PATH or install liteparse
 - Medium/blocked sites: defuddle → liteparse → browser screenshot (automatic fallback)

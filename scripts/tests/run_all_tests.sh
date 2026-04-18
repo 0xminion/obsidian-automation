@@ -58,11 +58,12 @@ if [ $# -gt 0 ]; then
       stage2|2)    run_suite "Stage 2: Plan" "$SCRIPT_DIR/test_stage2_plan.sh" ;;
       stage3|3)    run_suite "Stage 3: Create" "$SCRIPT_DIR/test_stage3_create.sh" ;;
       e2e|end)     run_suite "End-to-End" "$SCRIPT_DIR/test_end_to_end.sh" ;;
+      integration|int) run_suite "Integration" "$SCRIPT_DIR/test_integration.sh" ;;
       edge)        run_suite "Edge Cases" "$SCRIPT_DIR/test_edge_cases.sh" ;;
       qmd)         run_suite "QMD Integration" "$SCRIPT_DIR/test_qmd_integration.sh" ;;
       *)
         echo "Unknown test: $arg"
-        echo "Valid: stage1, stage2, stage3, e2e, edge, qmd"
+        echo "Valid: stage1, stage2, stage3, e2e, integration, edge, qmd"
         exit 1
         ;;
     esac
@@ -72,6 +73,7 @@ else
   run_suite "Stage 2: Plan" "$SCRIPT_DIR/test_stage2_plan.sh"
   run_suite "Stage 3: Create" "$SCRIPT_DIR/test_stage3_create.sh"
   run_suite "End-to-End" "$SCRIPT_DIR/test_end_to_end.sh"
+  run_suite "Integration" "$SCRIPT_DIR/test_integration.sh"
   run_suite "Edge Cases" "$SCRIPT_DIR/test_edge_cases.sh"
   run_suite "QMD Integration" "$SCRIPT_DIR/test_qmd_integration.sh"
 fi

@@ -382,11 +382,11 @@ rm -rf "$extract_dir"
 # ═══════════════════════════════════════════════════════════════════════════
 # Test: Pipeline orchestrator script exists
 # ═══════════════════════════════════════════════════════════════════════════
-test_start "process-inbox-v2.sh exists"
-if [ -f "$PIPELINE_DIR/process-inbox-v2.sh" ]; then
+test_start "process-inbox.sh exists"
+if [ -f "$PIPELINE_DIR/process-inbox.sh" ]; then
   test_pass
 else
-  test_fail "process-inbox-v2.sh not found"
+  test_fail "process-inbox.sh not found"
 fi
 
 # ── Summary ─────────────────────────────────────────────────────────────────

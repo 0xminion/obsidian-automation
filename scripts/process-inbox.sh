@@ -1,742 +1,312 @@
 #!/usr/bin/env bash
 # ============================================================================
-# v2.1.0: Obsidian Inbox Processor — Karpathy-style LLM Knowledge Base
+# v2.1.0: Process Inbox — 3-stage pipeline orchestrator
 # ============================================================================
-# Watches raw/ and clippings/, processes each file through
-# Defuddle (URLs, primary), LiteParse (fallback), or TranscriptAPI (YouTube),
-# creates Source note → Entry note → Concept notes → updates MoCs.
+# Replaces the monolithic process-inbox.sh with a staged architecture:
+#   Stage 1: Extract (shell, no agent) — ~10s for 16 URLs
+#   Stage 2: Plan   (1 agent, batched) — semantic concept pre-search + plan
+#   Stage 3: Create (N agents, parallel) — write files + concept convergence
 #
-# Changes from v1:
-#   - Sources common library (lib/common.sh) — no more duplicated retry/log code
-#   - --interactive flag for conversational ingestion
-#   - Externalized prompt templates (prompts/*.prompt)
-#   - Podcast support via transcribe.sh (AssemblyAI + local whisper fallback)
-#   - Source type detection: YouTube, podcast, URL, file, clipping
-#   - Typed edges support (edges.tsv)
-#   - Git auto-commit after processing
-#   - Entry frontmatter includes reviewed/review_notes fields
+# Concept matching uses qmd + Qwen3-Embedding-0.6B-Q8 (semantic search).
+# Run scripts/setup-qmd.sh to initialize the concept index.
 #
 # Usage:
-#   bash process-inbox.sh                    # Batch mode (default)
-#   bash process-inbox.sh --interactive      # One source at a time with pauses
+#   ./process-inbox.sh [--vault PATH] [--parallel N] [--dry-run] [--review] [--resume]
+#
+# Benefits over v1:
+#   - Extraction is shell-only (never touches LLM)
+#   - Concept search is semantic (qmd embeddings, not grep)
+#   - Per-agent prompt: ~5K chars (vs ~18K in v1)
+#   - Parallelizable: 3 agents × 6 sources = 18 sources/round
+#   - 900s timeout per agent (vs 600s in v1)
 # ============================================================================
 
 set -uo pipefail
 
-# Source common library
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
-source "$SCRIPT_DIR/../lib/transcribe.sh"
-source "$SCRIPT_DIR/../lib/extract.sh"
 
 # ═══════════════════════════════════════════════════════════
-# ARGUMENT PARSING
+# CONFIGURATION
 # ═══════════════════════════════════════════════════════════
-INTERACTIVE=false
+
+PARALLEL="${PARALLEL:-3}"
+DRY_RUN=false
+
+# Parse args
+REVIEW_MODE=false
+RESUME_MODE=false
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --interactive) INTERACTIVE=true; shift ;;
-    -h|--help)
-      echo "Usage: process-inbox.sh [--interactive]"
-      echo "  --interactive  Pause for human feedback after each source"
-      exit 0
-      ;;
-    *) echo "Unknown option: $1"; exit 1 ;;
+    --vault)    VAULT_PATH="$2"; shift 2 ;;
+    --parallel) PARALLEL="$2"; shift 2 ;;
+    --dry-run)  DRY_RUN=true; shift ;;
+    --review)   REVIEW_MODE=true; shift ;;
+    --resume)   RESUME_MODE=true; shift ;;
+    --help|-h)
+      echo "Usage: ./process-inbox.sh [--vault PATH] [--parallel N] [--dry-run] [--review] [--resume]"
+      echo "  --review  Run stages 1+2, save plans to vault for manual review"
+      echo "  --resume  Skip stages 1+2, use reviewed plans from vault"
+      exit 0 ;;
+    *)          echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
 
-# ═══════════════════════════════════════════════════════════
-# SAFETY & INIT
-# ═══════════════════════════════════════════════════════════
-acquire_lock "process-inbox" || exit 1
-setup_directory_structure
-bootstrap_url_index
+# --review and --resume are mutually exclusive
+if $REVIEW_MODE && $RESUME_MODE; then
+  echo "ERROR: --review and --resume are mutually exclusive"
+  exit 1
+fi
 
 # ═══════════════════════════════════════════════════════════
-# LOAD PROMPT TEMPLATES
+# PRE-FLIGHT CHECKS
 # ═══════════════════════════════════════════════════════════
-# Shared structure prompts loaded via load_prompt().
-# Note: process functions below contain inline prompts (~80% shared Steps 1-9)
-# because each source type (YouTube/URL/File/Clipping) needs type-specific
-# instructions in Steps 1-2. Externalizing the common Steps 3-9 would add
-# complexity without reducing prompt size (agent reads all prompts anyway).
-# The prompts/*.prompt files serve as reference templates for agents.
-COMMON_INSTRUCTIONS=$(load_prompt "common-instructions")
-ENTRY_STRUCTURE=$(load_prompt "entry-structure")
-CONCEPT_STRUCTURE=$(load_prompt "concept-structure")
-MOC_STRUCTURE=$(load_prompt "moc-structure")
+
+# I5 fix: validate VAULT_PATH before inbox check
+if [ ! -d "$VAULT_PATH" ]; then
+  echo "ERROR: Vault path does not exist: $VAULT_PATH"
+  exit 1
+fi
+
+if [ ! -d "$VAULT_PATH/01-Raw" ]; then
+  echo "ERROR: Vault missing 01-Raw/ inbox directory: $VAULT_PATH/01-Raw"
+  exit 1
+fi
+
+# W2 fix: acquire lock to prevent concurrent runs
+if ! acquire_lock "process-inbox"; then
+  echo "ERROR: Another pipeline run is in progress"
+  echo "If stale, run: rmdir /tmp/obsidian-process-inbox-*.lock"
+  exit 1
+fi
+
+inbox_count=$(find "$VAULT_PATH/01-Raw" -name "*.url" 2>/dev/null | wc -l)
+
+if [ "$inbox_count" -eq 0 ]; then
+  echo "Inbox is empty. Nothing to process."
+  exit 0
+fi
+
+echo "╔══════════════════════════════════════════════╗"
+echo "║  Process Inbox v2 — 3-Stage Pipeline        ║"
+echo "╠══════════════════════════════════════════════╣"
+echo "║  Inbox:  $inbox_count URLs                       ║"
+echo "║  Vault:  $VAULT_PATH"
+echo "║  Parallel agents: $PARALLEL"
+echo "╚══════════════════════════════════════════════╝"
+echo ""
+
+if $DRY_RUN; then
+  echo "DRY RUN — would process $inbox_count URLs"
+  echo "  Stage 1: Shell extraction"
+  echo "  Stage 2: Plan agent (~3K prompt)"
+  echo "  Stage 3: $PARALLEL parallel create agents (~5K prompt each)"
+  exit 0
+fi
+
+# Clean up stale extraction data
+if ! $RESUME_MODE; then
+  rm -rf /tmp/extracted
+fi
+mkdir -p /tmp/extracted
+
+# Initialize timing variables (set before conditional to avoid unbound var under set -u)
+stage1_start=$(date +%s)
+stage2_start=$(date +%s)
+stage1_duration=0
+stage2_duration=0
 
 # ═══════════════════════════════════════════════════════════
-# FILE TYPE DETECTION
+# RESUME MODE: Load reviewed plans from vault
 # ═══════════════════════════════════════════════════════════
-is_url_file() {
-  local file="$1"
-  local ext="${file##*.}"
-  if [[ "$ext" == "url" ]]; then return 0; fi
-  if [[ "$ext" == "md" || "$ext" == "txt" ]]; then
-    local content
-    content=$(cat "$file" | tr -d '[:space:]')
-    if [[ "$content" =~ ^https?:// ]]; then return 0; fi
+
+if $RESUME_MODE; then
+  REVIEW_FILE="$VAULT_PATH/07-WIP/plans-review.json"
+  if [ ! -f "$REVIEW_FILE" ]; then
+    echo "ERROR: No reviewed plans found at $REVIEW_FILE"
+    echo "Run with --review first to generate plans for review."
+    exit 1
   fi
-  return 1
-}
 
-is_pdf_file() {
-  [[ "${1##*.}" =~ ^[Pp][Dd][Ff]$ ]]
-}
+  plan_count=$(python3 -c "import json; print(len(json.load(open('$REVIEW_FILE'))))")
+  echo ""
+  echo "━━━ Resuming from reviewed plans ($plan_count plans) ━━━"
 
-is_youtube_link() {
-  local file="$1"
-  [ -s "$file" ] || return 1  # empty or missing file
-  local line_count
-  line_count=$(wc -l < "$file" 2>/dev/null | tr -d ' ')
-  line_count="${line_count:-0}"
-  [ "$line_count" -gt 3 ] && return 1
-  local content
-  content=$(cat "$file" 2>/dev/null | tr -d '[:space:]')
-  [[ "$content" =~ ^https?://(www\.)?(youtube\.com|youtu\.be)/ ]]
-}
+  cp "$REVIEW_FILE" /tmp/extracted/plans.json
 
-extract_url_from_file() {
-  local file="$1"
-  head -1 "$file" | tr -d '[:space:]' | grep -oE 'https?://[^[:space:]]+' || true
-}
-
-# ═══════════════════════════════════════════════════════════
-# PODCAST DETECTION
-# ═══════════════════════════════════════════════════════════
-is_podcast_url() {
-  local file="$1"
-  local url=""
-  local content
-  content=$(cat "$file" 2>/dev/null | tr -d '[:space:]')
-
-  # Extract URL from file
-  if [[ "${file##*.}" == "url" ]]; then
-    url=$(extract_url_from_file "$file")
-  elif [[ "$content" =~ ^https?:// ]]; then
-    url="$content"
+  # Stage 3 needs extraction data — verify it exists
+  if [ ! -f /tmp/extracted/manifest.json ]; then
+    echo "ERROR: Extraction data missing. Cannot resume without Stage 1 output."
+    echo "Run the full pipeline first (without --resume)."
+    exit 1
   fi
 
-  [ -z "$url" ] && return 1
-
-  # Direct audio file URLs
-  [[ "$url" =~ \.(mp3|m4a|wav|ogg|flac|aac)(\?|$) ]] && return 0
-
-  # Podcast platforms
-  [[ "$url" =~ (podcasts\.google\.com|podcasts\.apple\.com|open\.spotify\.com/show|open\.spotify\.com/episode|anchor\.fm|buzzsprout\.com|libsyn\.com|podbean\.com|transistor\.fm|simplecast\.com|captivate\.fm|fireside\.fm|podomatic\.com|spreaker\.com|audioboom\.com|soundcloud\.com/.+/sets|soundcloud\.com/[^/]+/[^/]+/?.*$/) ]] && return 0
-
-  # RSS feeds (common podcast feed extensions)
-  [[ "$url" =~ \.rss(\?|$)|feed\.xml(\?|$)|/feed/(\?|$)|/rss/(\?|$) ]] && return 0
-
-  return 1
-}
+  # Skip to Stage 3 (timing vars already initialized above)
+fi
 
 # ═══════════════════════════════════════════════════════════
-# INTERACTIVE REVIEW
+# STAGE 1: EXTRACT (shell, no agent) — skipped in --resume
 # ═══════════════════════════════════════════════════════════
-# Shows a summary and pauses for human feedback
-# Returns: 0 = proceed, 1 = skip this source
-interactive_review() {
-  local source_title="$1"
-  local url="${2:-N/A}"
 
-  if ! $INTERACTIVE; then
-    return 0  # Batch mode: always proceed
-  fi
+if ! $RESUME_MODE; then
+
+echo ""
+echo "━━━ Stage 1/3: Extract ━━━"
+stage1_start=$(date +%s)
+
+bash "$SCRIPT_DIR/stage1-extract.sh" 2>&1 | tee -a "$LOG_FILE"
+stage1_result=${PIPESTATUS[0]}
+
+stage1_duration=$(( $(date +%s) - stage1_start ))
+
+if [ $stage1_result -ne 0 ]; then
+  echo "ERROR: Stage 1 failed"
+  exit 1
+fi
+
+echo "Stage 1 complete: ${stage1_duration}s"
+
+# ═══════════════════════════════════════════════════════════
+# STAGE 2: PLAN (1 agent, concept pre-search) — skipped in --resume
+# ═══════════════════════════════════════════════════════════
+
+echo ""
+echo "━━━ Stage 2/3: Plan ━━━"
+stage2_start=$(date +%s)
+
+bash "$SCRIPT_DIR/stage2-plan.sh" 2>&1 | tee -a "$LOG_FILE"
+stage2_result=${PIPESTATUS[0]}
+
+stage2_duration=$(( $(date +%s) - stage2_start ))
+
+if [ $stage2_result -ne 0 ]; then
+  echo "ERROR: Stage 2 failed"
+  exit 1
+fi
+
+echo "Stage 2 complete: ${stage2_duration}s"
+
+fi  # end if ! RESUME_MODE
+
+# ═══════════════════════════════════════════════════════════
+# REVIEW GATE (optional — pauses for plan review)
+# ═══════════════════════════════════════════════════════════
+
+if $REVIEW_MODE; then
+  REVIEW_FILE="$VAULT_PATH/07-WIP/plans-review.json"
+  mkdir -p "$VAULT_PATH/07-WIP"
+  cp /tmp/extracted/plans.json "$REVIEW_FILE"
+
+  plan_count=$(python3 -c "import json; print(len(json.load(open('$REVIEW_FILE'))))")
 
   echo ""
-  echo "═══════════════════════════════════════════════"
-  echo "Source ready for review:"
-  echo "  Title: $source_title"
-  echo "  URL: $url"
+  echo "╔══════════════════════════════════════════════╗"
+  echo "║  Review Mode — Plans Ready for Inspection    ║"
+  echo "╠══════════════════════════════════════════════╣"
+  echo "║                                              ║"
+  echo "║  Plans saved to: $REVIEW_FILE"
+  echo "║  Count: $plan_count plans"
+  echo "║                                              ║"
+  echo "║  Review and edit the plans, then run:        ║"
+  echo "║  ./process-inbox.sh --resume              ║"
+  echo "║                                              ║"
+  echo "║  Each plan has: hash, title, language,       ║"
+  echo "║  template, tags, concept_updates,            ║"
+  echo "║  concept_new, moc_targets                    ║"
+  echo "║                                              ║"
+  echo "╚══════════════════════════════════════════════╝"
   echo ""
-  echo "Options: [g]ood (commit & continue) / [s]kip / [q]uit"
-  echo -n "> "
-  read -r response
 
-  case "$response" in
-    g|good|"") return 0 ;;
-    s|skip)    return 1 ;;
-    q|quit)    echo "Quitting interactive mode."; exit 0 ;;
-    *)         return 0 ;;
-  esac
-}
-
-# ═══════════════════════════════════════════════════════════
-# PROCESS: YouTube links
-# ═══════════════════════════════════════════════════════════
-process_youtube() {
-  local file="$1"
-  local url
-  local ext
-  url=$(cat "$file" | tr -d '[:space:]')
-  ext="${file##*.}"
-  if [[ "$ext" == "url" ]]; then url=$(extract_url_from_file "$file"); fi
-
-  if source_exists_for_url "$url"; then
-    skipped=$((skipped + 1))
-    log "SKIP (duplicate): YouTube — file: $file"
-    mkdir -p "$VAULT_PATH/08-Archive-Raw"
-    mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
-    return 0
-  fi
-
-  # Interactive pre-review
-  if ! interactive_review "YouTube: $url" "$url"; then
-    skipped=$((skipped + 1))
-    log "SKIP (user): YouTube — file: $file"
-    return 0
-  fi
-
-  run_with_retry "YouTube — file: $file" "
-$COMMON_INSTRUCTIONS
-
-TASK: Process a YouTube video link into the wiki.
-FILE: '$file'
-URL: $url
-
-STEP 1 — FETCH TRANSCRIPT
-Use TranscriptAPI as PRIMARY, Supadata as FALLBACK.
-
-**Primary — TranscriptAPI (\$TRANSCRIPT_API_KEY):**
-  curl -s 'https://transcriptapi.com/api/v2/youtube/transcript?video_url=$url&format=text&include_timestamp=false&send_metadata=true' \\
-    -H 'Authorization: Bearer \$TRAN...KEY'
-
-**Fallback — Supadata (\$SUPADATA_API_KEY):**
-  curl -s 'https://api.supadata.ai/v1/youtube/transcript?url=$url&text=true&lang=en' \\
-    -H 'x-api-key: \$SUPADATA_API_KEY'
-
-If BOTH fail, create Source note with URL and status: needs-transcript.
-
-Convert transcript to clean markdown paragraphs.
-
-STEP 2 — CREATE SOURCE NOTE
-Create a Source note in '04-Wiki/sources/' with:
-  - YouTube URL, video title, channel name
-  - Full transcript as markdown in 'Original content' section
-  - Frontmatter: title, source_url, source_type: youtube, author, tags, status: processed
-
-FILENAME: Use the video's ACTUAL TITLE as the filename (from transcript metadata or oEmbed).
-- NOT "YouTube - VIDEO_ID.md" or "YouTube - JU_8fJjtGxA.md"
-- Example: "Secret History #7 - Death by Meritocracy.md"
-- Call title_to_filename() from lib/common.sh with the video title.
-
-STEP 3 — CREATE ENTRY NOTE
-$ENTRY_STRUCTURE
-Draft the full Entry note from the transcript.
-Humanize all prose, then write to '04-Wiki/entries/'.
-IMPORTANT: Use date_entry: (NOT date_distilled:) in frontmatter.
-Include reviewed: null and review_notes: null in frontmatter.
-
-STEP 4 — CREATE/UPDATE CONCEPT NOTES
-$CONCEPT_STRUCTURE
-MANDATORY: Search 04-Wiki/concepts/ BEFORE creating any new concept.
-Check if existing concepts cover the same idea. If yes, UPDATE existing
-concept (add entry_ref, refresh body if needed). Only create new if truly novel.
-Humanize all concept prose before writing.
-
-STEP 5 — UPDATE MoCs
-Search 04-Wiki/mocs/ for relevant topic matches. For each matching or new MoC:
-- Add wikilinks with 1-sentence summaries for new Entry and Concept notes
-- Humanize all MoC prose
-
-STEP 6 — UPDATE WIKI INDEX
-Append the new Entry and any new Concepts to '06-Config/wiki-index.md'
-with 1-sentence summaries in this format:
-  - [[EntryName]]: <1-sentence summary> (entry)
-  - [[ConceptName]]: <1-sentence summary> (concept)
-
-STEP 7 — TYPED EDGES
-If the content reveals relationships between notes (this extends X,
-this contradicts Y, this supports Z), append to '06-Config/edges.tsv':
-  source<tab>target<tab>type<tab>description
-Types: extends, contradicts, supports, supersedes, tested_by, depends_on, inspired_by
-
-STEP 8 — ARCHIVE
-Move original inbox file to '08-Archive-Raw/'.
-Register URL in the index: append '\$url\t<source-note-path>' to '$URL_INDEX'.
-
-STEP 9 — LOG ENTRY
-Append a structured header to '06-Config/log.md':
-  ## [YYYY-MM-DD] ingest | <source-title>
-  - Created Source: [[Source Name]]
-  - Created Entry: [[Entry Name]]
-  - Created/Updated Concepts: [[Concept1]], [[Concept2]]
-  - Updated MoCs: [[MoC Name]]
-  - Updated wiki-index.md
-  - Archived: <filename>
-  - Registered URL: <url or \"N/A\">
-"
-}
-
-# ═══════════════════════════════════════════════════════════
-# PROCESS: Podcasts (audio download → transcription)
-# ═══════════════════════════════════════════════════════════
-# Supports: direct MP3 URLs, Apple Podcasts, Spotify, Google Podcasts,
-#           Anchor, Buzzsprout, Libsyn, Podbean, SoundCloud, RSS feeds
-# Backend: AssemblyAI (primary) or local whisper (fallback)
-# Config:  TRANSCRIBE_BACKEND=assemblyai|local
-#          ASSEMBLYAI_API_KEY=<key> (for assemblyai backend)
-#          LOCAL_WHISPER_CMD=faster-whisper (for local backend)
-process_podcast() {
-  local file="$1"
-  local url=""
-  local ext="${file##*.}"
-
-  url=$(cat "$file" | tr -d '[:space:]')
-  if [[ "$ext" == "url" ]]; then url=$(extract_url_from_file "$file"); fi
-
-  if source_exists_for_url "$url"; then
-    skipped=$((skipped + 1))
-    log "SKIP (duplicate): Podcast — file: $file"
-    mkdir -p "$VAULT_PATH/08-Archive-Raw"
-    mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
-    return 0
-  fi
-
-  if ! interactive_review "Podcast: $url" "$url"; then
-    skipped=$((skipped + 1))
-    log "SKIP (user): Podcast — file: $file"
-    return 0
-  fi
-
-  run_with_retry "Podcast — file: $file" "
-$COMMON_INSTRUCTIONS
-
-TASK: Process a podcast episode into the wiki.
-FILE: '$file'
-URL: $url
-TRANSCRIBE_BACKEND: $TRANSCRIBE_BACKEND
-
-STEP 1 — CHECK FOR EXISTING TRANSCRIPT
-Before downloading audio, check if a transcript already exists:
-  existing=\\$(source lib/transcribe.sh && find_existing_transcript '$url' '$VAULT_PATH')
-If \$existing is non-empty, SKIP Steps 1-2 and use it directly for Steps 3+.
-This avoids redundant API calls when re-processing or when a transcript was
-provided externally.
-
-STEP 2 — DOWNLOAD AUDIO
-Use the download_audio function (from lib/transcribe.sh) to download the audio:
-  audio_path=\$(download_audio '$url')
-If download fails, try yt-dlp as fallback:
-  yt-dlp -x --audio-format mp3 -o '/tmp/podcast_\$(date +%s).mp3' '$url'
-If both fail, create a Source note with URL and status: needs-audio.
-
-STEP 3 — TRANSCRIBE AUDIO
-Use the transcribe_audio function (from lib/transcribe.sh):
-  transcript=\\$(transcribe_audio "$audio_path")
-This uses AssemblyAI (primary) or local whisper (fallback) based on config.
-If transcription fails, create Source note with URL and status: needs-transcript.
-
-Convert the transcript into clean markdown paragraphs.
-Clean up: remove filler words artifacts, fix obvious transcription errors.
-
-STEP 4 — CREATE SOURCE NOTE
-Create a Source note in '04-Wiki/sources/' with:
-  - Podcast URL, episode title, show name, host(s)
-  - Duration if available
-  - Full transcript as markdown in 'Original content' section
-  - Frontmatter: title, source_url, source_type: podcast, author, date_captured, tags, status: processed
-
-FILENAME: Use the episode's ACTUAL TITLE as the filename — not show name + episode ID.
-- NOT "Podcast - showname - 123.md"
-- Example: "Why Prediction Markets Beat Polls.md"
-- Call title_to_filename() from lib/common.sh with the episode title.
-
-STEP 5 — CREATE ENTRY NOTE
-$ENTRY_STRUCTURE
-Draft the full Entry note from the transcript.
-Humanize all prose, then write to '04-Wiki/entries/'.
-IMPORTANT: Use date_entry: (NOT date_distilled:) in frontmatter.
-Include reviewed: null and review_notes: null in frontmatter.
-
-STEP 6 — CREATE/UPDATE CONCEPT NOTES
-$CONCEPT_STRUCTURE
-MANDATORY: Search 04-Wiki/concepts/ BEFORE creating any new concept.
-Check if existing concepts cover the same idea. If yes, UPDATE existing
-concept (add entry_ref, refresh body if needed). Only create new if truly novel.
-Humanize all concept prose before writing.
-
-STEP 7 — UPDATE MoCs
-Search 04-Wiki/mocs/ for relevant topic matches. For each matching or new MoC:
-- Add wikilinks with 1-sentence summaries for new Entry and Concept notes
-- Humanize all MoC prose
-
-STEP 8 — UPDATE WIKI INDEX
-Append the new Entry and any new Concepts to '06-Config/wiki-index.md'
-with 1-sentence summaries in this format:
-  - [[EntryName]]: <1-sentence summary> (entry)
-  - [[ConceptName]]: <1-sentence summary> (concept)
-
-STEP 9 — TYPED EDGES
-If the content reveals relationships between notes (this extends X,
-this contradicts Y, this supports Z), append to '06-Config/edges.tsv':
-  source<tab>target<tab>type<tab>description
-Types: extends, contradicts, supports, supersedes, tested_by, depends_on, inspired_by
-
-STEP 10 — ARCHIVE
-Move original inbox file to '08-Archive-Raw/'.
-Register URL in the index: append '\$url\t<source-note-path>' to '$URL_INDEX'.
-Clean up downloaded audio file: rm -f \"\$audio_path\"
-
-STEP 11 — LOG ENTRY
-Append a structured header to '06-Config/log.md':
-  ## [YYYY-MM-DD] ingest | <source-title>
-  - Created Source: [[Source Name]]
-  - Created Entry: [[Entry Name]]
-  - Created/Updated Concepts: [[Concept1]], [[Concept2]]
-  - Updated MoCs: [[MoC Name]]
-  - Updated wiki-index.md
-  - Archived: <filename>
-  - Registered URL: <url>
-  - Transcription backend: $TRANSCRIBE_BACKEND
-"
-}
-
-# ═══════════════════════════════════════════════════════════
-# PROCESS: URLs (Defuddle primary → LiteParse fallback)
-# ═══════════════════════════════════════════════════════════
-process_url() {
-  local file="$1"
-  local url
-  local ext
-  url=$(cat "$file" | tr -d '[:space:]')
-  ext="${file##*.}"
-  if [[ "$ext" == "url" ]]; then url=$(extract_url_from_file "$file"); fi
-
-  if source_exists_for_url "$url"; then
-    skipped=$((skipped + 1))
-    log "SKIP (duplicate): URL — file: $file"
-    mkdir -p "$VAULT_PATH/08-Archive-Raw"
-    mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
-    return 0
-  fi
-
-  if ! interactive_review "URL: $url" "$url"; then
-    skipped=$((skipped + 1))
-    return 0
-  fi
-
-  run_with_retry "URL — file: $file" "
-$COMMON_INSTRUCTIONS
-
-TASK: Process a URL from the inbox into the wiki.
-FILE: '$file'
-URL: $url
-
-STEP 1 — EXTRACT CONTENT
-Use Defuddle as PRIMARY:
-  defuddle parse '$url' --md
-If Defuddle fails or returns empty/unusable content, FALL BACK to LiteParse:
-  Download the page, then: lit parse <downloaded_file> --format text
-
-STEP 2 — CREATE SOURCE NOTE
-Create a Source note in '04-Wiki/sources/' with extracted markdown.
-Frontmatter: title, source_url, source_type, author, date_captured, tags, status: processed
-IMPORTANT: Wikilinks in YAML frontmatter MUST be quoted.
-
-FILENAME: Use the content's ACTUAL TITLE as the filename — not the URL slug, domain prefix, or platform name.
-- Tweet by @realmcore about skill chaining → "Skill Chaining - Why Skills Should Be Actions.md" (from content title)
-- Blog post "Ruled by Precession" on hananyss.substack.com → "Ruled by Precession.md" (from content title)
-- NOT "Tweet - realmcore - 2039382343581147414.md" or "Blog - hanan.md"
-- Call title_to_filename() from lib/common.sh with the extracted title.
-- If the content has no clear title, use the first meaningful sentence >10 chars from the body.
-
-STEP 3 — CREATE ENTRY NOTE
-$ENTRY_STRUCTURE
-Draft the full Entry note. Humanize all prose, write to '04-Wiki/entries/'.
-IMPORTANT: Use date_entry: (NOT date_distilled:) in frontmatter.
-Include reviewed: null and review_notes: null in frontmatter.
-
-STEP 4 — CREATE/UPDATE CONCEPT NOTES
-$CONCEPT_STRUCTURE
-MANDATORY: Search 04-Wiki/concepts/ BEFORE creating any new concept.
-Check for existing concepts covering the same idea. Update existing or
-merge near-duplicates. Only create new if truly novel.
-Humanize all prose.
-
-STEP 5 — UPDATE MoCs
-Search 04-Wiki/mocs/ for matching topics. Add wikilinks with 1-sentence
-summaries for new Entry and Concept notes. Humanize MoC prose.
-
-STEP 6 — UPDATE WIKI INDEX
-Append new Entry and Concepts to '06-Config/wiki-index.md'.
-
-STEP 7 — TYPED EDGES
-If relationships exist, append to '06-Config/edges.tsv'.
-
-STEP 8 — ARCHIVE
-Move original inbox file to '08-Archive-Raw/'.
-Register URL in the index: append '\$url\t<source-note-path>' to '$URL_INDEX'.
-
-STEP 9 — LOG ENTRY
-Append a structured header to '06-Config/log.md':
-  ## [YYYY-MM-DD] ingest | <source-title>
-  - Created Source: [[Source Name]]
-  - Created Entry: [[Entry Name]]
-  - Created/Updated Concepts: [[Concept1]], [[Concept2]]
-  - Updated MoCs: [[MoC Name]]
-  - Updated wiki-index.md
-  - Archived: <filename>
-  - Registered URL: <url or \"N/A\">
-"
-}
-
-# ═══════════════════════════════════════════════════════════
-# PROCESS: PDFs and other files
-# ═══════════════════════════════════════════════════════════
-process_file() {
-  local file="$1"
-  local filename
-  filename=$(basename "$file")
-  local name_no_ext="${filename%.*}"
-
-  local url=""
-  url=$(extract_url_from_file "$file" 2>/dev/null || true)
-  if [ -n "$url" ] && source_exists_for_url "$url"; then
-    skipped=$((skipped + 1))
-    log "SKIP (duplicate): File — file: $file"
-    mkdir -p "$VAULT_PATH/08-Archive-Raw"
-    mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
-    return 0
-  fi
-  # Filename-based dedup for files without URLs
-  if [ -f "$VAULT_PATH/04-Wiki/sources/${name_no_ext}.md" ]; then
-    skipped=$((skipped + 1))
-    log "SKIP (duplicate file): File — file: $file"
-    mkdir -p "$VAULT_PATH/08-Archive-Raw"
-    mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
-    return 0
-  fi
-
-  if ! interactive_review "File: $filename" "${url:-N/A}"; then
-    skipped=$((skipped + 1))
-    return 0
-  fi
-
-  run_with_retry "File — file: $file" "
-$COMMON_INSTRUCTIONS
-
-TASK: Process a file from the inbox into the wiki.
-FILE: '$file'
-FILENAME: '$filename'
-
-STEP 1 — EXTRACT CONTENT
-Try Defuddle first if applicable:
-  defuddle parse '$file' --md
-If Defuddle can't handle this file type, FALL BACK to LiteParse:
-  lit parse '$file' --format text -o '/tmp/${name_no_ext}_extracted.md'
-Read the extracted text output.
-
-STEP 2 — CREATE SOURCE NOTE
-Create a Source note in '04-Wiki/sources/' with extracted markdown.
-Frontmatter: title, author, source_type, tags, status: processed
-
-FILENAME: Use the content's ACTUAL TITLE as the filename — not the file slug or domain prefix.
-- Call title_to_filename() from lib/common.sh with the extracted title.
-- If no clear title, use the first meaningful sentence >10 chars.
-
-STEP 3 — CREATE ENTRY NOTE
-$ENTRY_STRUCTURE
-Draft the full Entry note. Humanize all prose, write to '04-Wiki/entries/'.
-Include reviewed: null and review_notes: null in frontmatter.
-
-STEP 4 — CREATE/UPDATE CONCEPT NOTES
-$CONCEPT_STRUCTURE
-Search 04-Wiki/concepts/ BEFORE creating. Update existing or merge. Humanize.
-
-STEP 5 — UPDATE MoCs
-Search 04-Wiki/mocs/ for matching topics. Humanize.
-
-STEP 6 — UPDATE WIKI INDEX
-Append to '06-Config/wiki-index.md'.
-
-STEP 7 — TYPED EDGES
-If relationships exist, append to '06-Config/edges.tsv'.
-
-STEP 8 — ARCHIVE
-Move the original file to '08-Archive-Raw/'.
-
-STEP 9 — LOG ENTRY
-Append to '06-Config/log.md':
-  ## [YYYY-MM-DD] ingest | <source-title>
-  - Created Source: [[Source Name]]
-  - Created Entry: [[Entry Name]]
-  - Created/Updated Concepts: [[Concept1]], [[Concept2]]
-  - Updated MoCs: [[MoC Name]]
-  - Updated wiki-index.md
-  - Archived: <filename>
-"
-}
-
-# ═══════════════════════════════════════════════════════════
-# PROCESS: Clippings (already markdown)
-# ═══════════════════════════════════════════════════════════
-process_clipping() {
-  local file="$1"
-  local source_url
-  source_url=$(grep -m1 'source_url:' "$file" 2>/dev/null | sed 's/.*source_url: *//; s/^"//; s/"$//' || true)
-
-  if [ -n "$source_url" ] && source_exists_for_url "$source_url"; then
-    skipped=$((skipped + 1))
-    log "SKIP (duplicate): Clipping — file: $file"
-    mkdir -p "$VAULT_PATH/08-Archive-Raw"
-    mv "$file" "$VAULT_PATH/08-Archive-Raw/" 2>/dev/null || true
-    return 0
-  fi
-
-  if ! interactive_review "Clipping: $(basename "$file")" "${source_url:-N/A}"; then
-    skipped=$((skipped + 1))
-    return 0
-  fi
-
-  run_with_retry "Clipping — file: $file" "
-$COMMON_INSTRUCTIONS
-
-TASK: Process a web clipper save into the wiki.
-FILE: '$file'
-
-The file likely contains markdown captured by Obsidian Web Clipper,
-possibly with frontmatter (source_url, title).
-
-STEP 1 — CREATE SOURCE NOTE
-Extract source_url from frontmatter if present.
-If no Source exists for this URL, create one in '04-Wiki/sources/'.
-
-FILENAME: Use the content's ACTUAL TITLE as the filename — not URL slugs or platform prefixes.
-- Check clipping frontmatter for `title:` field first
-- Call title_to_filename() from lib/common.sh with the title.
-
-STEP 2 — CREATE ENTRY NOTE
-$ENTRY_STRUCTURE
-Draft the full Entry note. Humanize all prose, write to '04-Wiki/entries/'.
-Include reviewed: null and review_notes: null in frontmatter.
-
-STEP 3 — CREATE/UPDATE CONCEPT NOTES
-$CONCEPT_STRUCTURE
-Search before creating. Update existing or merge. Humanize.
-
-STEP 4 — UPDATE MoCs
-Search 04-Wiki/mocs/ for matching topics. Humanize.
-
-STEP 5 — UPDATE WIKI INDEX
-Append to '06-Config/wiki-index.md'.
-
-STEP 6 — TYPED EDGES
-If relationships exist, append to '06-Config/edges.tsv'.
-
-STEP 7 — ARCHIVE
-Move the clipping to '08-Archive-Raw/'.
-Register URL in '$URL_INDEX' if applicable.
-
-STEP 8 — LOG ENTRY
-Append to '06-Config/log.md':
-  ## [YYYY-MM-DD] ingest | <source-title>
-  - Created Source: [[Source Name]]
-  - Created Entry: [[Entry Name]]
-  - Created/Updated Concepts: [[Concept1]], [[Concept2]]
-  - Updated MoCs: [[MoC Name]]
-  - Updated wiki-index.md
-  - Archived: <filename>
-"
-}
-
-# ═══════════════════════════════════════════════════════════
-# MAIN LOOP
-# ═══════════════════════════════════════════════════════════
-processed=0
-skipped=0
-failed=0
-
-log "=== Starting inbox processing (v2.0.1, interactive=$INTERACTIVE) ==="
-
-# Process everything in 01-Raw/
-if [ -d "$VAULT_PATH/01-Raw" ]; then
-  for file in "$VAULT_PATH/01-Raw"/*; do
-    [ -f "$file" ] || continue
-
-    if is_youtube_link "$file"; then
-      process_youtube "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
-    elif is_podcast_url "$file"; then
-      process_podcast "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
-    elif is_url_file "$file"; then
-      process_url "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
-    else
-      process_file "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
-    fi
-  done
+  exit 0
 fi
 
-# Process everything in 02-Clippings/
-if [ -d "$VAULT_PATH/02-Clippings" ]; then
-  for file in "$VAULT_PATH/02-Clippings"/*.md; do
-    [ -f "$file" ] || continue
-    process_clipping "$file" && processed=$((processed + 1)) || failed=$((failed + 1))
-  done
+# ═══════════════════════════════════════════════════════════
+# STAGE 3: CREATE (N parallel agents)
+# ═══════════════════════════════════════════════════════════
+
+echo ""
+echo "━━━ Stage 3/3: Create (parallel=$PARALLEL) ━━━"
+stage3_start=$(date +%s)
+
+PARALLEL="$PARALLEL" bash "$SCRIPT_DIR/stage3-create.sh" 2>&1 | tee -a "$LOG_FILE"
+stage3_result=${PIPESTATUS[0]}
+
+stage3_duration=$(( $(date +%s) - stage3_start ))
+
+if [ $stage3_result -ne 0 ]; then
+  echo "WARNING: Stage 3 had failures"
 fi
 
-log "Inbox processing complete (v2.0.1). Processed: $processed, Skipped: $skipped, Failed: $failed"
-log "URL index now has $(wc -l < "$URL_INDEX") entries"
+echo "Stage 3 complete: ${stage3_duration}s"
 
 # ═══════════════════════════════════════════════════════════
-# POST-INGEST: Update config files
+# SUMMARY
 # ═══════════════════════════════════════════════════════════
-if [ "$processed" -gt 0 ]; then
-  log "Updating dashboard, tag-registry, and wiki-index..."
-  
-  # Update dashboard
-  bash "$SCRIPT_DIR/vault-stats.sh" 2>/dev/null && log "Dashboard updated" || log "Dashboard update failed"
-  
-  # Update tag registry
-  bash "$SCRIPT_DIR/update-tag-registry.sh" 2>/dev/null && log "Tag registry updated" || log "Tag registry update failed"
-  
-  # Full wiki-index rebuild (only if >5 notes processed to avoid overhead)
-  if [ "$processed" -ge 5 ]; then
-    bash "$SCRIPT_DIR/reindex.sh" 2>/dev/null && log "Wiki index rebuilt" || log "Wiki index rebuild failed"
-  fi
 
-  # ═══════════════════════════════════════════════════════════
-  # POST-INGEST VALIDATION GATE (v2.0.1)
-  # ═══════════════════════════════════════════════════════════
-  log "Running post-ingest validation..."
-  validation_issues=0
+total_duration=$(( $(date +%s) - stage1_start ))
+
+# Gather stats for notification
+extracted_count=$(find /tmp/extracted -name "*.json" ! -name "manifest.json" ! -name "plans.json" ! -name "concept_matches.json" 2>/dev/null | wc -l)
+plan_count=$(python3 -c "import json; print(len(json.load(open('/tmp/extracted/plans.json'))))" 2>/dev/null || echo "0")
+created_sources=$(find "$VAULT_PATH/04-Wiki/sources" -name "*.md" -newer /tmp/extracted/manifest.json 2>/dev/null | wc -l)
+created_entries=$(find "$VAULT_PATH/04-Wiki/entries" -name "*.md" -newer /tmp/extracted/manifest.json 2>/dev/null | wc -l)
+
+echo ""
+echo "╔══════════════════════════════════════════════╗"
+echo "║  Pipeline Complete                           ║"
+echo "╠══════════════════════════════════════════════╣"
+echo "║  Stage 1 (Extract): ${stage1_duration}s"
+echo "║  Stage 2 (Plan):    ${stage2_duration}s"
+echo "║  Stage 3 (Create):  ${stage3_duration}s"
+echo "║  Total:             ${total_duration}s"
+echo "╠══════════════════════════════════════════════╣"
+echo "║  Extracted: $extracted_count"
+echo "║  Planned:   $plan_count"
+echo "║  Created:   $((created_sources + created_entries)) files ($created_sources sources, $created_entries entries)"
+echo "╚══════════════════════════════════════════════╝"
+
+# ═══════════════════════════════════════════════════════════
+# TELEGRAM NOTIFICATION (optional)
+# ═══════════════════════════════════════════════════════════
+
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+  # Format duration
+  total_mins=$((total_duration / 60))
+  total_secs=$((total_duration % 60))
   
-  # Check: every processed source has a matching entry
-  for src_file in "$VAULT_PATH/04-Wiki/sources"/*.md; do
-    [ -f "$src_file" ] || continue
-    src_name=$(basename "$src_file" .md)
-    if [ ! -f "$VAULT_PATH/04-Wiki/entries/$src_name.md" ]; then
-      log "VALIDATION: Missing entry for source '$src_name'"
-      validation_issues=$((validation_issues + 1))
-    fi
-  done
-  
-  # Check: no stubs in newly created notes (same patterns as lint check 11)
-  stub_patterns="> 待补充|> 待分析|> 待深入研究|> 待深入|> TODO|> TBD|> FIXME|> PLACEHOLDER|> 待完善|> 待更新|> 待定|> 待处理"
-  stub_found=$(grep -rlE "$stub_patterns" "$VAULT_PATH/04-Wiki/entries/" "$VAULT_PATH/04-Wiki/concepts/" 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$stub_found" -gt 0 ]; then
-    log "VALIDATION: $stub_found files contain stub placeholders"
-    validation_issues=$((validation_issues + stub_found))
+  # Determine status emoji
+  if [ $stage3_result -eq 0 ]; then
+    status_emoji="✅"
+    status_text="Complete"
+  else
+    status_emoji="⚠️"
+    status_text="Complete with warnings"
   fi
   
-  # Check: no invalid tags (same blocklist as lint check 12)
-  blocked_tags="x\.com|tweet|http|https|rss|feed|url|link"
-  invalid_tags=$(grep -rlE "\- ($blocked_tags)" "$VAULT_PATH/04-Wiki/sources/" "$VAULT_PATH/04-Wiki/entries/" 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$invalid_tags" -gt 0 ]; then
-    log "VALIDATION: $invalid_tags files contain invalid tags"
-    validation_issues=$((validation_issues + invalid_tags))
-  fi
+  # Build message
+  msg="${status_emoji} *Pipeline ${status_text}*
   
-  # MoC staleness scan — suggest compile pass if >10 sources processed
-  if [ "$processed" -ge 10 ]; then
-    log "MOCS: $processed sources processed — MoCs may be stale. Consider running: bash $SCRIPT_DIR/compile-pass.sh"
-  fi
+📊 *Results*
+• Extracted: ${extracted_count} URLs
+• Planned: ${plan_count} sources
+• Created: ${created_sources} sources, ${created_entries} entries
+
+⏱ *Timing*
+• Stage 1 (Extract): ${stage1_duration}s
+• Stage 2 (Plan): ${stage2_duration}s
+• Stage 3 (Create): ${stage3_duration}s
+• Total: ${total_mins}m ${total_secs}s"
+
+  # Send notification (fire and forget — don't fail pipeline if notification fails)
+  curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+    -d chat_id="${TELEGRAM_CHAT_ID}" \
+    -d parse_mode="Markdown" \
+    -d text="$msg" \
+    --max-time 10 >/dev/null 2>&1 || true
   
-  log "Post-ingest validation: $validation_issues issues found"
+  echo ""
+  echo "Telegram notification sent."
 fi
 
-# Git auto-commit
-auto_commit "ingest" "Processed $processed sources (skipped $skipped, failed $failed, validation: $validation_issues issues)"
-
-echo "Done. Processed: $processed, Skipped: $skipped, Failed: $failed"
+exit 0

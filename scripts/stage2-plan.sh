@@ -279,7 +279,7 @@ with open('/tmp/extracted/plan_output.txt') as f:
 raw_clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw)
 raw_clean = re.sub(r'[╭╮╰╯│─╮╰╯├┤┬┴┼]', '', raw_clean)
 
-# Try to find JSON array
+# Try to find JSON array first (fast path)
 json_match = re.search(r'\[.*\]', raw_clean, re.DOTALL)
 if json_match:
     try:
@@ -290,9 +290,11 @@ if json_match:
         sys.exit(0)
     except json.JSONDecodeError as e:
         print(f'JSON array parse error: {e}', file=sys.stderr)
+        # Fall through to object-by-object parsing
 
-# Try individual JSON objects by brace depth
+# Object-by-object parsing with partial failure recovery
 plans = []
+failed_hashes = []
 depth = 0
 start = -1
 for i, c in enumerate(raw_clean):
@@ -307,26 +309,44 @@ for i, c in enumerate(raw_clean):
                 obj = json.loads(raw_clean[start:i+1])
                 if 'hash' in obj:
                     plans.append(obj)
-            except:
-                pass
+                else:
+                    # Object without hash — log but don't fail
+                    print(f'WARN: Parsed object without hash field, skipping', file=sys.stderr)
+            except json.JSONDecodeError as e:
+                # Partial failure — log and continue
+                snippet = raw_clean[start:min(start+100, i+1)]
+                print(f'WARN: Failed to parse JSON object: {e}', file=sys.stderr)
+                print(f'  Snippet: {snippet[:80]}...', file=sys.stderr)
+            except Exception as e:
+                print(f'WARN: Unexpected error parsing object: {e}', file=sys.stderr)
             start = -1
 
 if plans:
     with open('/tmp/extracted/plans.json', 'w') as f:
         json.dump(plans, f, ensure_ascii=False, indent=2)
     print(f'Parsed {len(plans)} plans (object-by-object)')
+    if failed_hashes:
+        print(f'WARNING: {len(failed_hashes)} plans failed to parse, continuing with partial results', file=sys.stderr)
     sys.exit(0)
 
 print('ERROR: Could not parse any plans from agent output', file=sys.stderr)
 print(f'Raw output (first 500 chars): {raw[:500]}', file=sys.stderr)
 sys.exit(1)"
 
-if [ $? -ne 0 ]; then
-  log "ERROR: Failed to parse plans from agent output"
+parse_result=$?
+
+if [ $parse_result -ne 0 ]; then
+  log "ERROR: Failed to parse any plans from agent output"
   exit 1
 fi
 
 plan_count=$(python3 -c "import json; print(len(json.load(open('/tmp/extracted/plans.json'))))")
+manifest_count=$(python3 -c "import json; print(len(json.load(open('/tmp/extracted/manifest.json'))))" 2>/dev/null || echo "?")
+
+if [ "$plan_count" -lt "$manifest_count" ]; then
+  log "WARNING: Parsed $plan_count plans from $manifest_count sources — some may have failed"
+fi
+
 log "=== Stage 2 complete: $plan_count plans generated ==="
 
 echo "Plans: $plan_count"

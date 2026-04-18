@@ -256,7 +256,7 @@ fi
 rm -rf "$extract_dir"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Test: Stage1 exit 0 on empty inbox (via process-inbox-v2)
+# Test: Stage1 exit 0 on empty inbox (via process-inbox)
 # ═══════════════════════════════════════════════════════════════════════════
 test_start "Stage1 script exists and is executable"
 stage1="$PIPELINE_DIR/stage1-extract.sh"
