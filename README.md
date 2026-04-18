@@ -1,294 +1,238 @@
-# v2.1.0: Obsidian AI-Automated PKM Vault — Karpathy-Style Wiki
+# obsidian-automated PKM vault — Karpathy-style wiki
 
-Automated knowledge management system that turns raw web content, PDFs, and YouTube videos into a self-compiling wiki. Inspired by Andrej Karpathy's "LLM Knowledge Bases" approach.
+Automated knowledge management that turns web content, YouTube videos, PDFs, and podcasts into a self-organizing Obsidian wiki. Inspired by Andrej Karpathy's "LLM Knowledge Bases" approach.
 
-**Architecture:** 3-stage pipeline with parallel extraction, semantic concept search (qmd + Qwen3-Embedding-0.6B-Q8), and parallel write agents.
+3-stage pipeline: extract → plan → create. Parallel agents, semantic concept search, bilingual (EN/ZH) support.
 
-## Vault Structure
+## Setup
+
+```bash
+git clone https://github.com/0xminion/obsidian-automation.git
+cd obsidian-automation
+./setup.sh ~/MyVault
+# Edit API keys:
+nano ~/MyVault/Meta/Scripts/.env
+```
+
+`setup.sh` creates directories, copies scripts, checks dependencies, and creates a `run.sh` wrapper.
+
+### Prerequisites
+
+**Required:**
+- bash 4.4+, jq, curl, python3
+- hermes agent (gateway running)
+
+**Optional (graceful degradation if missing):**
+- `qmd` — semantic concept search ([setup](#semantic-search))
+- `yt-dlp` + `ffmpeg` — YouTube/audio download
+- `defuddle` — clean web extraction
+- `ob` — Obsidian vault sync
+
+### API keys (.env)
+
+```bash
+# Required for YouTube transcripts:
+TRANSCRIPT_API_KEY=sk_...
+SUPADATA_API_KEY=sd_...
+
+# Required for podcast transcription:
+ASSEMBLYAI_API_KEY=...
+
+# Optional:
+VAULT_PATH=$HOME/MyVault   # default if not set
+AGENT_CMD=hermes            # default
+PARALLEL=3                  # default
+```
+
+## Usage
+
+```bash
+# Drop a URL
+echo 'https://example.com/article' > ~/MyVault/01-Raw/my-source.url
+
+# Run pipeline
+cd ~/MyVault && ./run.sh
+
+# Check results
+ls ~/MyVault/04-Wiki/entries/
+```
+
+That's it. URLs in `01-Raw/` → pipeline creates Sources, Entries, Concepts, and updates MoCs in `04-Wiki/`.
+
+### Pipeline flags
+
+```bash
+./run.sh                      # default: 3 parallel agents
+./run.sh --parallel 5         # more parallelism
+./run.sh --dry-run            # preview without executing
+./run.sh --review             # run stages 1+2, save plans for review
+./run.sh --resume             # skip stages 1+2, use reviewed plans
+```
+
+### Manual stage execution
+
+If `process-inbox.sh` fails mid-pipeline, run stages individually:
+
+```bash
+HASH=$(echo -n "$VAULT_PATH" | md5sum | cut -c1-8)
+export PIPELINE_TMPDIR="/tmp/obsidian-extracted-${HASH}"
+
+cd ~/MyVault
+VAULT_PATH=$(pwd) bash Meta/Scripts/stage1-extract.sh
+VAULT_PATH=$(pwd) bash Meta/Scripts/stage2-plan.sh
+VAULT_PATH=$(pwd) bash Meta/Scripts/stage3-create.sh --parallel 3
+
+# Post-processing (if stage 3 timed out):
+bash Meta/Scripts/reindex.sh && ob sync --path "$(pwd)"
+```
+
+**Important:** `PIPELINE_TMPDIR` must be set so stages share the same temp directory. `process-inbox.sh` sets this automatically; manual runs must export it explicitly.
+
+## Vault structure
 
 ```
-01-Raw/              →  Drop URLs, PDFs, files here
-02-Clippings/        →  Web clipper saves (already markdown)
-03-Queries/          →  Drop .md files with questions for Q&A
+01-Raw/              ← drop URLs, PDFs, files here
+02-Clippings/        ← web clipper saves (already markdown)
+03-Queries/          ← drop .md files with questions
 04-Wiki/
-├── sources/         ←  Full original content (not humanized)
-├── entries/         ←  Entry notes (humanized, template-aware)
-├── concepts/        ←  Shared vocabulary across sources (evergreen format)
-└── mocs/            ←  Topic hubs with synthesized summaries
-05-Outputs/
-├── answers/         ←  Q&A responses (duplicate for quick access)
-└── visualizations/  ←  Charts, diagrams, exports
-06-Config/
-├── wiki-index.md    ←  Auto-maintained TOC (retrieval layer)
-├── url-index.tsv    ←  URL → entry mapping (dedup)
-├── edges.tsv        ←  Typed relationships between notes
-├── tag-registry.md  ←  Canonical tag list
-├── log.md           ←  Structured activity log
-└── agents.md        ←  Schema: tells any LLM agent how to maintain the wiki
-07-WIP/              ←  Your drafts (untouched by automation)
-08-Archive-Raw/      ←  Processed inbox items
-09-Archive-Queries/  ←  Answered queries
+├── sources/         ← full original content
+├── entries/         ← summaries + insights (humanized)
+├── concepts/        ← shared vocabulary (evergreen)
+└── mocs/            ← topic hubs
+05-Outputs/          ← Q&A responses, visualizations
+06-Config/           ← wiki-index, edges, tags, log
+07-WIP/              ← your drafts (untouched by automation)
+08-Archive-Raw/      ← processed inbox items
+09-Archive-Queries/  ← answered queries
+Meta/
+├── Scripts/         ← pipeline scripts
+├── lib/             ← shared shell library
+├── prompts/         ← agent prompt templates
+└── Templates/       ← note templates
 ```
 
-## Note Structures
+## Note structures
 
-### Entries
-
-English (template: standard):
+**Entries** (English):
 ```
-## Summary
-## Core insights        ← numbered list, key findings with evidence
-## Other takeaways      ← continues numbering from Core insights
-## Diagrams             ← optional — 'n/a' if not needed
-## Open questions
-## Linked concepts
+Summary → Core insights → Other takeaways → Diagrams → Open questions → Linked concepts
 ```
 
-Chinese (template: chinese, language: zh):
+**Entries** (Chinese):
 ```
-## 摘要
-## 核心发现            ← 编号列表，关键发现和论点
-## 其他要点            ← 继续从核心发现编号开始
-## 图表               ← 可选 — 不需要则写 'n/a'
-## 开放问题
-## 关联概念
+摘要 → 核心发现 → 其他要点 → 图表 → 开放问题 → 关联概念
 ```
 
-Other templates: `technical` (research papers), `comparison` (product comparisons), `procedural` (tutorials).
-
-### Concepts (Evergreen Format)
-
-Concepts are atomic notes — one idea per note, title IS the concept.
-
-English:
+**Concepts** (evergreen):
 ```
-Frontmatter: sources: ["[[source-note]]"]
-
-## Core concept    ← single overview paragraph (2-3 sentences)
-## Context         ← flowing prose (2-4 paragraphs): mechanism, significance, evidence, tensions
-## Links           ← wikilinks to related notes
+Core concept → Context (flowing prose) → Links
 ```
 
-Chinese (language: zh):
-```
-Frontmatter: sources: ["[[source-note]]"]
+**MoCs**: Topic-specific bilingual sections. Cross-references with ASCII diagram.
 
-## 核心概念        ← 一段概述 (2-3句)
-## 背景            ← 连贯正文 (2-4段)：运作机制、为什么重要、实际案例、争议
-## 关联            ← wikilinks
-```
+## Naming conventions
 
-### MoCs (Maps of Content)
-
-Topic hubs with synthesized summaries. Flexible section structure — organize by theme, language, or time period. Use `English / 中文` heading format when bridging languages.
+- Chinese titles → Chinese filenames
+- English titles → kebab-case
+- Papers → paper title
+- Tweets → topic (not tweet ID)
+- YouTube → video title
+- Podcasts → episode title
+- ❌ Never: URL slugs, platform prefixes, handles
 
 ## Scripts
 
 | Script | Purpose |
 |---|---|
-| `process-inbox.sh` | **Primary pipeline.** 3-stage: Extract → Plan → Create. Supports `--review`, `--resume`, `--parallel N`, `--dry-run` |
-| `review-pass.sh` | Review processed entries: `--untouched`, `--last N`, `--topic TAG`, `--entry NAME`, `--interactive` |
-| `compile-pass.sh` | Cross-linking, concept convergence, MoC rebuild, edges, schema review |
-| `query-vault.sh` | Q&A with compound-back (answers update existing pages) |
-| `lint-vault.sh` | 12 health checks: orphans, unreviewed, stale, broken links, empty, concept structure, template sections, orphaned concepts, index drift, edges, stubs, tags |
-| `vault-stats.sh` | Dashboard: vault size, growth, review status, health indicators |
-| `reindex.sh` | Full rebuild of wiki-index.md from scratch |
-| `setup-git-hooks.sh` | Install git hooks for auto-commit and WIP protection |
-| `update-tag-registry.sh` | Rebuild tag-registry.md with actual tag usage counts from all notes |
-| `extract-transcript.sh` | Standalone transcript extraction for YouTube and podcasts |
-| `migrate-vault.sh` | Adopt existing Obsidian vaults into v2 format (scan/dry-run/execute) |
-| `validate-output.sh` | Validates pipeline output: frontmatter, sections, stubs, tags. Supports `--fix` |
-| `setup-qmd.sh` | One-time setup for qmd semantic search (downloads embedding model, indexes concepts) |
+| `setup.sh` | One-command vault setup |
+| `process-inbox.sh` | **Primary pipeline.** 3-stage: Extract → Plan → Create |
+| `review-pass.sh` | Review entries: `--untouched`, `--last N`, `--topic TAG` |
+| `compile-pass.sh` | Cross-linking, concept merge, edges, schema review |
+| `query-vault.sh` | Q&A with compound-back |
+| `lint-vault.sh` | 12 health checks |
+| `vault-stats.sh` | Dashboard: size, growth, health |
+| `reindex.sh` | Full rebuild of wiki-index.md |
+| `validate-output.sh` | Validates frontmatter, sections, stubs, tags. Supports `--fix` |
+| `setup-qmd.sh` | One-time qmd setup |
+| `extract-transcript.sh` | Standalone transcript extraction |
 
-## 3-Stage Pipeline (`process-inbox.sh`)
-
-The pipeline replaces the monolithic v1 with a staged architecture:
+## Pipeline details
 
 ```
-Stage 1: Extract (shell, no agent) — ~10s for 16 URLs
-  → Pure shell extraction using defuddle/transcriptapi/curl
-  → No LLM involved
-  → Parallel extraction via xargs -P4 (configurable EXTRACT_PARALLEL)
+Stage 1: Extract (shell, ~1-5s per URL)
+  → Pure shell: defuddle / transcriptapi / curl
+  → No LLM, parallel via xargs -P4
 
-Stage 2: Plan (1 agent, semantic concept pre-search)
-  → Pre-searches concepts via qmd (semantic embeddings, not grep)
-  → Single planning agent produces per-source creation plans
-  → Handles bilingual detection, template selection, tag suggestions
+Stage 2: Plan (1 agent, ~30-60s)
+  → Semantic concept pre-search via qmd
+  → Bilingual detection, template selection, tag suggestions
 
-Stage 3: Create (N parallel agents)
-  → Parallel write agents (default 3, configurable --parallel N)
-  → Concept convergence uses pre-fetched qmd semantic matches
-  → Per-agent prompt: ~5K chars (vs ~18K in v1)
-  → Output validation via validate-output.sh runs automatically
-  → Each agent has 900s internal timeout — terminal call must use ≥960s
+Stage 3: Create (N parallel agents, ~60-120s per source)
+  → Write Source + Entry + Concept + MoC files
+  → Concept convergence via pre-fetched qmd matches
+  → Output validation runs automatically
 ```
 
-### Pipeline Flags
+### Timeouts
 
-```bash
-./process-inbox.sh                          # Default: 3 parallel agents
-./process-inbox.sh --parallel 5             # 5 parallel agents
-./process-inbox.sh --dry-run                # Preview without executing
-./process-inbox.sh --review                 # Run Stages 1+2, save plans for manual review
-./process-inbox.sh --resume                 # Skip Stages 1+2, use reviewed plans from --review
-```
+Stage 3 agents have a 900s internal timeout. For terminal calls, use ≥960s. Stage 2 budgets ~400s (includes qmd per-plan queries at 300s each).
 
-### Semantic Concept Search (qmd)
+### Extraction chain
 
-Concept matching uses [qmd](https://github.com/tobi/qmd) with **Qwen3-Embedding-0.6B-Q8** for semantic similarity instead of keyword grep.
-
-Setup (one-time):
-```bash
-bash scripts/setup-qmd.sh
-```
-
-This installs qmd, downloads the 639MB embedding model, and indexes your concepts collection.
-
-Search priority: daemon vector → CLI vector → BM25 (keyword fallback).
-
-Manual commands:
-```bash
-# Index concepts (after adding new concept files)
-qmd update
-
-# Re-embed (after changing model)
-qmd embed -f
-
-# Test search
-qmd query "prediction markets" --json -n 5 --min-score 0.3 -c concepts --no-rerank
-```
-
-The pipeline auto-detects qmd availability and falls back gracefully if not installed.
-
-## Typed Edges (`edges.tsv`)
-
-4-column tab-separated relationships between notes:
-
-```
-source<tab>target<tab>type<tab>description
-```
-
-Built automatically during compile-pass. Also added during queries and reviews.
-
-## Extraction Chain
-
-| Source Type | Chain |
+| Source | Chain |
 |---|---|
-| arxiv | `arxiv.org/html/IDv1` → defuddle → alphaxiv → liteparse |
-| URLs | defuddle → liteparse → browser screenshot |
-| X/Twitter | defuddle (primary) → liteparse → browser |
-| YouTube | existing → TranscriptAPI → Supadata → whisper |
-| Podcasts | existing → AssemblyAI → whisper |
+| URLs | defuddle → liteparse → browser |
+| X/Twitter | defuddle → liteparse → browser |
+| YouTube | TranscriptAPI → Supadata → faster-whisper |
+| Podcasts | AssemblyAI → whisper |
 | PDFs | liteparse → OCR |
 
-## Critical Rules
-
-1. NEVER touch `07-WIP/`
-2. NEVER overwrite existing notes — use `check_collision()` + `resolve_collision()`
-3. NO stubs/placeholder content — every section must have real content at creation
-4. Tags must be topic-specific English (never platform names like x.com, tweet)
-5. Chinese body text stays Chinese in all 04-Wiki notes
-6. YAML wikilinks must be quoted: `source: "[[note]]"`
-7. File names: Chinese titles → Chinese filenames, English titles → kebab-case
-8. NEVER use URL slugs as filenames or titles
-
-## Quick Start
+## Semantic search
 
 ```bash
-# 1. Set up vault
-mkdir -p ~/MyVault/{01-Raw,02-Clippings,03-Queries,04-Wiki/{sources,entries,concepts,mocs},05-Outputs/{answers,visualizations},06-Config,07-WIP,08-Archive-Raw,09-Archive-Queries,Meta/Scripts,Meta/Templates}
+# One-time setup
+VAULT_PATH=~/MyVault bash Meta/Scripts/setup-qmd.sh
 
-# 2. Copy scripts, lib, prompts, and templates
-chmod +x scripts/*.sh
-cp scripts/*.sh ~/MyVault/Meta/Scripts/
-cp lib/common.sh ~/MyVault/Meta/Scripts/../lib/
-cp -r prompts ~/MyVault/Meta/Scripts/../
-cp templates/*.md ~/MyVault/Meta/Templates/
-
-# 3. Set up git hooks (optional but recommended)
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/setup-git-hooks.sh
-
-# 4. Initialize qmd semantic search (one-time, optional but recommended)
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/setup-qmd.sh
-
-# 5. Process inbox (batch mode — default 3 parallel agents)
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh
-
-# 5b. Process with more parallelism
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh --parallel 5
-
-# 5c. Review mode — inspect plans before creation
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh --review
-# ... review plans in 07-WIP/plans-review.json ...
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/process-inbox.sh --resume
-
-# 6. Review unreviewed entries
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/review-pass.sh --untouched --interactive
-
-# 7. Compile (weekly)
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/compile-pass.sh
-
-# 8. Query
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/query-vault.sh
-
-# 9. Lint
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/lint-vault.sh
-
-# 10. Stats
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/vault-stats.sh
-
-# 11. Reindex (if index drift detected)
-VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/reindex.sh
+# Manual commands
+qmd update                        # re-index after adding concepts
+qmd query "prediction markets" --json -n 5 -c concepts
 ```
 
-## Recommended Workflow
+Uses Qwen3-Embedding-0.6B-Q8 for semantic similarity. Falls back gracefully if not installed.
 
+## Typed edges
+
+Relationships stored in `06-Config/edges.tsv` (4-column: source, target, type, description).
+
+Types: extends, contradicts, supports, supersedes, tested_by, depends_on, inspired_by
+
+Built automatically during `compile-pass.sh`.
+
+## Critical rules
+
+1. Never touch `07-WIP/`
+2. Never overwrite existing notes — use collision detection
+3. No stubs — every section needs real content at creation
+4. Tags: topic-specific English only (never `x.com`, `tweet`, `source`)
+5. Chinese body stays Chinese in all 04-Wiki notes
+6. YAML wikilinks must be quoted: `source: "[[note]]"`
+7. File names match content language
+8. Never use URL slugs as filenames
+
+## Testing
+
+```bash
+cd ~/MyVault
+bash Meta/Scripts/tests/run_all_tests.sh           # all tests
+bash Meta/Scripts/tests/run_all_tests.sh stage1     # single suite
 ```
-Daily:    Drop sources in 01-Raw/, run process-inbox.sh
-          → Pipeline: Extract → Plan → Create (parallel agents)
-          → Auto-updates: vault-stats, tag-registry.md, wiki-index.md (if ≥5 notes)
-          Drop questions in 03-Queries/, run query-vault.sh
 
-Weekly:   Run compile-pass.sh (cross-links, concept merge, edges, schema review)
-          Run review-pass.sh --untouched (review key entries)
-          Run lint-vault.sh (check health)
+Suites: `stage1`, `stage2`, `stage3`, `integration`, `edge`, `qmd`
 
-Monthly:  Run reindex.sh (if lint flags drift — not usually needed due to auto-rebuild)
-          Review Meta/Scripts/schema-review.md (from compile)
-```
+## Recommended workflow
 
-## Shared Library (`lib/common.sh`)
+**Daily:** Drop sources in `01-Raw/`, run `./run.sh`
 
-All scripts source this. Provides:
-- `check_dependencies()` — preflight validation of required/optional tools
-- `log()` — structured logging
-- `run_with_retry()` — exponential backoff, max 3 attempts (uses `-q`/`-Q` agent flags)
-- `acquire_lock()` / `release_lock()` — prevents overlapping runs
-- `source_exists_for_url()` / `register_url_source()` — URL dedup
-- `setup_directory_structure()` — creates all vault directories
-- `append_log_md()` — structured log.md entries
-- `add_edge()` / `get_edges()` — typed relationship management
-- `auto_commit()` — git auto-commit with structured messages
-- `load_prompt()` — load prompt templates from `prompts/*.prompt` files
-- `check_collision()` / `resolve_collision()` — prevent note overwrites
-- `qmd_concept_search()` — semantic concept search via qmd + Qwen3-Embedding-0.6B-Q8
-- `qmd_results_to_names()` — extract concept names from qmd results
-- `qmd_batch_concept_search()` — batch semantic search for manifest entries
+**Weekly:** `compile-pass.sh` → `review-pass.sh --untouched` → `lint-vault.sh`
 
-## Output Validation
-
-`validate-output.sh` runs automatically after Stage 3. It checks:
-- Frontmatter: required fields, YAML syntax, wikilink quoting
-- Sections: template sections present, no stubs
-- Tags: no banned tags (x.com, tweet, http, etc.)
-- Overwrites: collision detection
-
-Use `validate-output.sh --fix` to auto-repair common issues (null values, unquoted wikilinks, missing H1).
-
-## Notes
-
-- Scripts use `set -euo pipefail`. Command failures trigger explicit exit via `|| result=$?` pattern for retry logic (API rate limits, transient errors). Non-retryable failures abort immediately.
-- `setup-git-hooks.sh` intentionally does not source `lib/common.sh` — it runs during initial setup before the library exists.
-- Lock files use `mkdir` (atomic on POSIX) instead of `touch` (TOCTOU race).
-- `md5sum` has portable fallbacks: `md5 -q` (macOS) → `cksum` (any system).
-- Tested with bash 4.4+. Run `shellcheck scripts/*.sh` for static analysis.
+**Monthly:** `reindex.sh` if lint flags drift (usually auto-rebuilt)
