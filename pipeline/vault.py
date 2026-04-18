@@ -1,0 +1,513 @@
+"""Vault file operations module.
+
+Handles all filesystem interactions with the Obsidian vault:
+  - Writing sources, entries, concepts, MoCs
+  - Edge (relationship) management in edges.tsv
+  - URL deduplication via url-index.tsv
+  - Wiki index rebuild (reindex)
+  - Inbox archiving
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from pipeline.config import Config
+from pipeline.models import Edge, EdgeType, ExtractedSource, Plan
+
+
+# ─── Title → Filename ────────────────────────────────────────────────────────
+
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def title_to_filename(title: str) -> str:
+    """Convert a title to a safe filename.
+
+    Chinese titles: keep Chinese characters, replace special punctuation.
+    English titles: kebab-case lowercase.
+    Truncates to 120 chars. Never uses URL slugs.
+    """
+    if _CJK_RE.search(title):
+        # Chinese title: keep Chinese chars, replace specials
+        s = title
+        s = re.sub(r"[:\uff1a]", "-", s)          # colons → hyphen
+        s = re.sub(r"[?\uff1f!\uff01,\uff0c\u3002\u3001.]", " ", s)  # punctuation → space
+        s = re.sub(r"[\"'\"\u300a\u300b\u300c\u300d()\uff08\uff09]", "", s)  # strip quotes/brackets
+        s = s.strip()
+        return s[:120]
+    else:
+        # English title: kebab-case
+        s = title.lower()
+        s = s.replace("\u2019", "'").replace("\u2018", "'")  # normalize curly quotes
+        s = re.sub(r"[''']", "", s)  # remove apostrophes
+        s = re.sub(r"[^a-zA-Z0-9]", "-", s)  # non-alnum → hyphen
+        s = re.sub(r"-{2,}", "-", s)  # collapse multiple hyphens
+        s = s.strip("-")
+        return s[:120]
+
+
+# ─── Collision Detection ─────────────────────────────────────────────────────
+
+def check_collision(directory: Path, filename: str) -> bool:
+    """Return True if safe to write (file does NOT exist), False if collision."""
+    target = directory / f"{filename}.md"
+    return not target.exists()
+
+
+def resolve_collision(directory: Path, filename: str) -> str:
+    """Return a unique filename by appending -1, -2, etc. if needed."""
+    candidate = filename
+    counter = 1
+    while not check_collision(directory, candidate):
+        candidate = f"{filename}-{counter}"
+        counter += 1
+        if counter > 100:
+            # Fallback: timestamp suffix
+            return f"{filename}-{int(datetime.now(timezone.utc).timestamp())}"
+    return candidate
+
+
+# ─── YAML Frontmatter Helpers ─────────────────────────────────────────────────
+
+def _quote_wikilink(value: str) -> str:
+    """Wrap a wikilink value in quotes for YAML safety: [[note]] -> \"[[note]]\"."""
+    if value.startswith("[[") and value.endswith("]]"):
+        return f'"{value}"'
+    return value
+
+
+def _format_yaml_value(key: str, value) -> str:
+    """Format a single YAML key-value pair."""
+    if isinstance(value, list):
+        if not value:
+            return f"{key}: []"
+        escaped_items = []
+        for item in value:
+            item_str = str(item)
+            # Escape items with special YAML chars or newlines
+            if re.search(r"[\n:#{}\[\],&*?|>!%@`'\"\\]", item_str) or item_str.startswith("- "):
+                escaped_items.append(f'  - "{item_str.replace(chr(34), chr(92)+chr(34))}"')
+            else:
+                escaped_items.append(f"  - {item_str}")
+        items = "\n".join(escaped_items)
+        return f"{key}:\n{items}"
+    if value is None or value == "":
+        return f'{key}: ""'
+    if isinstance(value, str) and value.startswith("[[") and value.endswith("]]"):
+        return f'{key}: "{value}"'
+    # Handle newlines in string values
+    if isinstance(value, str) and "\n" in value:
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'{key}: "{escaped}"'
+    # Quote strings that contain special YAML chars (but not URLs — they're safe)
+    if isinstance(value, str) and re.search(r"[#{}\[\],&*?|>!%@`]", value):
+        return f'{key}: "{value}"'
+    if isinstance(value, str) and ":" in value and not value.startswith("http"):
+        return f'{key}: "{value}"'
+    return f"{key}: {value}"
+
+
+def _build_frontmatter(fields: dict) -> str:
+    """Build a YAML frontmatter block from a dict of fields."""
+    lines = ["---"]
+    for key, value in fields.items():
+        lines.append(_format_yaml_value(key, value))
+    lines.append("---")
+    return "\n".join(lines) + "\n"
+
+
+# ─── Write Source ─────────────────────────────────────────────────────────────
+
+def write_source(cfg: Config, source: ExtractedSource) -> Path:
+    """Write a source note to cfg.sources_dir.
+
+    Returns the Path of the created file.
+    Raises FileExistsError if collision detected (after resolution).
+    """
+    cfg.sources_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = title_to_filename(source.title)
+    filename = resolve_collision(cfg.sources_dir, filename)
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    tags_str = ""  # sources don't typically get tags per conventions
+
+    frontmatter = _build_frontmatter({
+        "title": source.title,
+        "source_url": source.url,
+        "source_type": source.type.value if hasattr(source.type, "value") else str(source.type),
+        "author": source.author or "",
+        "date_captured": now,
+        "tags": [] if not tags_str else [tags_str],
+        "status": "raw",
+    })
+
+    body = f"# {source.title}\n\n{source.content}\n"
+    content = frontmatter + body
+
+    target = cfg.sources_dir / f"{filename}.md"
+    target.write_text(content, encoding="utf-8")
+    return target
+
+
+# ─── Write Entry ──────────────────────────────────────────────────────────────
+
+def write_entry(cfg: Config, plan: Plan, content: str) -> Path:
+    """Write an entry note to cfg.entries_dir.
+
+    Returns the Path of the created file.
+    """
+    cfg.entries_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = title_to_filename(plan.title)
+    filename = resolve_collision(cfg.entries_dir, filename)
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    source_link = f"[[{title_to_filename(plan.title)}]]"
+
+    frontmatter = _build_frontmatter({
+        "title": plan.title,
+        "source": source_link,
+        "date_entry": now,
+        "status": "draft",
+        "template": plan.template.value if hasattr(plan.template, "value") else str(plan.template),
+        "tags": plan.tags,
+    })
+
+    full_content = frontmatter + content
+    if not content.strip().startswith("#"):
+        full_content = frontmatter + f"# {plan.title}\n\n{content}"
+
+    target = cfg.entries_dir / f"{filename}.md"
+    target.write_text(full_content, encoding="utf-8")
+    return target
+
+
+# ─── Write Concept ────────────────────────────────────────────────────────────
+
+def write_concept(cfg: Config, name: str, content: str, sources: list[str]) -> Path:
+    """Write a concept note to cfg.concepts_dir.
+
+    Returns the Path of the created file.
+    """
+    cfg.concepts_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = title_to_filename(name)
+    filename = resolve_collision(cfg.concepts_dir, filename)
+
+    frontmatter = _build_frontmatter({
+        "title": name,
+        "type": "concept",
+        "status": "draft",
+        "sources": sources,
+        "tags": [],
+    })
+
+    full_content = frontmatter + content
+    if not content.strip().startswith("#"):
+        full_content = frontmatter + f"# {name}\n\n{content}"
+
+    target = cfg.concepts_dir / f"{filename}.md"
+    target.write_text(full_content, encoding="utf-8")
+    return target
+
+
+# ─── Update MoC ───────────────────────────────────────────────────────────────
+
+def update_moc(cfg: Config, moc_name: str, entry_name: str, description: str) -> None:
+    """Append an entry under a topic section in a MoC file.
+
+    Creates the MoC if it doesn't exist.
+    """
+    cfg.mocs_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = title_to_filename(moc_name)
+    moc_path = cfg.mocs_dir / f"{filename}.md"
+
+    entry_line = f"- [[{entry_name}]]: {description}"
+
+    if not moc_path.exists():
+        # Create new MoC with basic structure
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        content = (
+            f"---\ntitle: {moc_name}\ntype: moc\nstatus: draft\ntags: []\n---\n\n"
+            f"# {moc_name}\n\n"
+            f"## Overview / 概述\n\n"
+            f"Map of Content for {moc_name}.\n\n"
+            f"---\n\n"
+            f"## Entries\n\n"
+            f"{entry_line}\n"
+        )
+        moc_path.write_text(content, encoding="utf-8")
+        return
+
+    # MoC exists — try to append under a generic "Entries" section or last section
+    existing = moc_path.read_text(encoding="utf-8")
+
+    # Find the last ## heading section or "Entries" section
+    # Strategy: find "## Entries" or the last ## heading, append after its content
+    lines = existing.split("\n")
+    insert_idx = None
+
+    # First try to find "## Entries" section
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("## ") and "entries" in stripped.lower():
+            # Found Entries section — find where to insert (before next ## or end)
+            for j in range(i + 1, len(lines)):
+                if lines[j].startswith("## "):
+                    insert_idx = j
+                    break
+            else:
+                insert_idx = len(lines)
+            break
+
+    # If no Entries section, append at end
+    if insert_idx is None:
+        lines.append("")
+        lines.append(f"## Entries")
+        lines.append("")
+        lines.append(entry_line)
+        insert_idx = len(lines)
+
+    # Check for duplicate before inserting
+    full_text = "\n".join(lines)
+    if f"[[{entry_name}]]" not in full_text:
+        lines.insert(insert_idx, entry_line)
+
+    moc_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+# ─── Edge Management ─────────────────────────────────────────────────────────
+
+def write_edge(cfg: Config, edge: Edge) -> None:
+    """Append an edge to edges.tsv. Skips if duplicate."""
+    cfg.config_dir.mkdir(parents=True, exist_ok=True)
+    edges_file = cfg.edges_file
+
+    # Create with header if missing
+    if not edges_file.exists():
+        edges_file.write_text("source\ttarget\ttype\tdescription\n", encoding="utf-8")
+
+    existing = edges_file.read_text(encoding="utf-8")
+
+    # Check for duplicate (same source, target, type)
+    for line in existing.strip().split("\n"):
+        if line.startswith("source\t"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 3 and parts[0] == edge.source and parts[1] == edge.target and parts[2] == edge.type.value:
+            return  # duplicate, skip
+
+    with edges_file.open("a", encoding="utf-8") as f:
+        f.write(edge.to_tsv() + "\n")
+
+
+def read_edges(cfg: Config) -> list[Edge]:
+    """Read all edges from edges.tsv."""
+    edges_file = cfg.edges_file
+    if not edges_file.exists():
+        return []
+
+    edges = []
+    for line in edges_file.read_text(encoding="utf-8").strip().split("\n"):
+        if line.startswith("source\t"):
+            continue  # skip header
+        edge = Edge.from_tsv(line)
+        if edge:
+            edges.append(edge)
+    return edges
+
+
+# ─── URL Deduplication ────────────────────────────────────────────────────────
+
+def _normalize_url(url: str) -> str:
+    """Normalize URL: strip protocol and trailing slash."""
+    s = re.sub(r"^https?://", "", url)
+    s = s.rstrip("/")
+    return s
+
+
+def url_exists(cfg: Config, url: str) -> bool:
+    """Check if a URL is already registered in url-index.tsv."""
+    url_index = cfg.url_index
+    if not url_index.exists():
+        return False
+
+    normalized = _normalize_url(url).lower()
+    for line in url_index.read_text(encoding="utf-8").strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if parts and _normalize_url(parts[0]).lower() == normalized:
+            return True
+    return False
+
+
+def register_url(cfg: Config, url: str, entry_name: str) -> None:
+    """Register a URL → entry mapping in url-index.tsv. Skips if already exists."""
+    cfg.config_dir.mkdir(parents=True, exist_ok=True)
+    url_index = cfg.url_index
+
+    if url_exists(cfg, url):
+        return
+
+    normalized = _normalize_url(url)
+    with url_index.open("a", encoding="utf-8") as f:
+        f.write(f"{normalized}\t{entry_name}\n")
+
+
+# ─── Reindex ──────────────────────────────────────────────────────────────────
+
+_INDEX_HEADER = """\
+# Wiki Index
+
+Auto-maintained table of contents for the knowledge base.
+Each entry and concept has a 1-sentence summary for retrieval.
+This index is the primary retrieval layer — the LLM reads this
+to find relevant notes instead of using RAG.
+
+---
+
+"""
+
+
+def _extract_frontmatter_field(content: str, field: str) -> str:
+    """Extract a single field value from YAML frontmatter."""
+    match = re.search(rf"^{field}:\s*[\"']?(.*?)[\"']?\s*$", content, re.MULTILINE)
+    return match.group(1).strip() if match else ""
+
+
+def _extract_summary(content: str) -> str:
+    """Extract first sentence from Summary / 摘要 section."""
+    # Try English ## Summary
+    match = re.search(r"^## Summary\s*\n(.*?)(?:\n##|\Z)", content, re.MULTILINE | re.DOTALL)
+    if match:
+        text = match.group(1).strip().split("\n")[0].strip()
+        if text:
+            return text
+    # Try Chinese ## 摘要
+    match = re.search(r"^## 摘要\s*\n(.*?)(?:\n##|\Z)", content, re.MULTILINE | re.DOTALL)
+    if match:
+        text = match.group(1).strip().split("\n")[0].strip()
+        if text:
+            return text
+    # Try body after first heading
+    match = re.search(r"^# .+\n+(.*?)(?:\n##|\Z)", content, re.MULTILINE | re.DOTALL)
+    if match:
+        text = match.group(1).strip().split("\n")[0].strip()
+        if text:
+            return text
+    return ""
+
+
+def _extract_overview(content: str) -> str:
+    """Extract first sentence from Overview / 概述 section."""
+    match = re.search(r"^## Overview.*?\n(.*?)(?:\n##|\Z)", content, re.MULTILINE | re.DOTALL)
+    if match:
+        text = match.group(1).strip().split("\n")[0].strip()
+        if text:
+            return text
+    return ""
+
+
+def reindex(cfg: Config) -> str:
+    """Rebuild wiki-index.md from all sources/entries/concepts/mocs.
+
+    Returns the index content as a string.
+    """
+    lines = [_INDEX_HEADER]
+    entries_added = 0
+    concepts_added = 0
+    mocs_added = 0
+
+    # Scan Entries
+    lines.append("## Entries\n")
+    if cfg.entries_dir.exists():
+        for entry_path in sorted(cfg.entries_dir.glob("*.md")):
+            note_name = entry_path.stem
+            content = entry_path.read_text(encoding="utf-8")
+            title = _extract_frontmatter_field(content, "title") or note_name
+            summary = _extract_summary(content) or title
+            lines.append(f"- [[{note_name}]]: {summary} (entry)")
+            entries_added += 1
+    lines.append("")
+
+    # Scan Concepts
+    lines.append("## Concepts\n")
+    if cfg.concepts_dir.exists():
+        for concept_path in sorted(cfg.concepts_dir.glob("*.md")):
+            note_name = concept_path.stem
+            content = concept_path.read_text(encoding="utf-8")
+            title = _extract_frontmatter_field(content, "title") or note_name
+            body_text = _extract_summary(content) or title
+            lines.append(f"- [[{note_name}]]: {body_text} (concept)")
+            concepts_added += 1
+    lines.append("")
+
+    # Scan MoCs
+    if cfg.mocs_dir.exists():
+        moc_files = sorted(cfg.mocs_dir.glob("*.md"))
+        if moc_files:
+            lines.append("## Maps of Content\n")
+            for moc_path in moc_files:
+                note_name = moc_path.stem
+                content = moc_path.read_text(encoding="utf-8")
+                title = _extract_frontmatter_field(content, "title") or note_name
+                overview = _extract_overview(content) or title
+                lines.append(f"- [[{note_name}]]: {overview} (moc)")
+                mocs_added += 1
+            lines.append("")
+
+    # Summary footer
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    lines.append("---\n")
+    lines.append(f"*Reindexed on {today}: {entries_added} entries, {concepts_added} concepts, {mocs_added} MoCs*\n")
+
+    index_content = "\n".join(lines)
+
+    # Write to disk
+    cfg.config_dir.mkdir(parents=True, exist_ok=True)
+    cfg.wiki_index.write_text(index_content, encoding="utf-8")
+
+    return index_content
+
+
+# ─── Inbox Archive ────────────────────────────────────────────────────────────
+
+def archive_inbox(cfg: Config, hashes: set[str]) -> int:
+    """Move processed .url files from inbox to archive.
+
+    Files whose hash (derived from URL in the .url file) is in the given set
+    are moved to cfg.archive_dir.
+
+    Returns the count of files archived.
+    """
+    if not cfg.inbox_dir.exists():
+        return 0
+
+    cfg.archive_dir.mkdir(parents=True, exist_ok=True)
+
+    import hashlib
+
+    count = 0
+    for url_file in cfg.inbox_dir.glob("*.url"):
+        content = url_file.read_text(encoding="utf-8", errors="replace")
+        # Extract URL from .url file (INI format: URL=https://...)
+        url_match = re.search(r"^URL=(.+)$", content, re.MULTILINE)
+        if not url_match:
+            continue
+
+        url = url_match.group(1).strip()
+        file_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+
+        if file_hash in hashes:
+            target = cfg.archive_dir / url_file.name
+            url_file.rename(target)
+            count += 1
+
+    return count
