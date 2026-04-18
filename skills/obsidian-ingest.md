@@ -46,6 +46,17 @@ VAULT_PATH=/home/linuxuser/MyVault bash scripts/stage3-create.sh --parallel 3
 bash scripts/reindex.sh && ob sync --path "$VAULT_PATH"
 ```
 
+### Python CLI (alternative)
+
+The repo includes a Python rewrite (`pipeline/`) that can be used instead of the shell scripts:
+```bash
+cd /home/linuxuser/workspaces/gamma/obsidian-automation
+./run.sh ingest ~/MyVault --parallel 3
+./run.sh lint ~/MyVault
+./run.sh reindex ~/MyVault
+```
+This has 286 tests, better error handling, and no MCP overhead issues.
+
 ### YouTube Transcript Chain (batch pipeline)
 
 `stage1-extract.sh` has a 3-step fallback chain (v2.2.0+):
@@ -73,6 +84,10 @@ Stage 1-2 are fast (seconds to ~1 min). **Stage 3 spawns hermes agents with a 90
 - If terminal timeout < 900s, the parent shell gets killed, background agents become orphaned, and post-processing (reindex, archive, sync) never runs — but the agent may have already written files
 
 Stage 2 also calls `qmd` per plan with 300s timeout. Budget ~400s for stage 2 if calling manually.
+
+### MCP overhead
+
+Hermes MCP servers (chrome-devtools, composio) add ~647s of overhead per agent (128s init + 519s post-response dead time). Pipeline agents don't need them — they only write files. Disable unused MCP servers in `~/.hermes/profiles/<profile>/config.yaml` under `mcp_servers`. After removal, stage 3 drops from ~930s to ~100s per source.
 
 ## Pitfalls
 
