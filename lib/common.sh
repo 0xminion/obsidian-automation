@@ -7,6 +7,14 @@
 #
 # Provides: log(), run_with_retry(), lock management, directory setup,
 #            url dedup helpers, logging to structured log.md
+#
+# MoC FORMATTING RULES (CRITICAL — learned 2026-04-18):
+#   - Entries mixed under single bilingual heading: ## Section / 中文
+#   - NO ### English / ### 中文 sub-headings
+#   - NO ## English Resources / ## Chinese Resources separation
+#   - Use ## Cross-References / 关联图谱 with ASCII diagram
+#   - NOT ## Bridge Concepts / 桥接概念 with narrative prose
+#   - Reference: prediction-markets.md is the canonical format
 # ============================================================================
 
 set -uo pipefail

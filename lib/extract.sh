@@ -4,12 +4,23 @@
 # ============================================================================
 # Source this file: source lib/extract.sh
 #
-# Priority chains:
-#   arxiv.org → arxiv HTML (defuddle) → alphaxiv → defuddle → liteparse → browser
-#   URL/HTML/X → defuddle → liteparse (url mode) → browser screenshot
-#   PDF/DOCX/PPTX/XLSX → liteparse (local) → ocr-and-documents → browser
+# WHAT ACTUALLY WORKS (learned from failures):
 #
-# Dependencies: defuddle, liteparse (both in PATH)
+#   Platform         Primary                  Fallback
+#   -------          -------                  --------
+#   YouTube          TranscriptAPI (curl,     Supadata (POST JSON)
+#                    full URL — NOT video_id)  → metadata-only
+#   Apple Podcasts   iTunes Lookup → RSS →    RSS description
+#                    Whisper (needs yt-dlp)    (2-5K chars)
+#   X/Twitter        defuddle                  liteparse → browser
+#                    (tavily extract FAILS)    
+#   arxiv.org        arxiv HTML (defuddle)     alphaxiv.org/abs/ID.md
+#   Blogs            defuddle                  liteparse → browser
+#   CF-blocked       liteparse (local file)    tavily MCP extract
+#                    (Medium, akjournals)      
+#
+# CRITICAL: Python urllib gets 403 from TranscriptAPI/Supadata. ALWAYS use curl.
+# CRITICAL: YouTube TranscriptAPI requires FULL URL, not bare video_id.
 # ============================================================================
 
 _EXTRACT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
