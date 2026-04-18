@@ -15,9 +15,14 @@ User says "obsidian" + URLs/files → write to inbox → run pipeline. The codeb
 # 1. Write URLs to inbox (one .url file per URL)
 echo "$URL" > "$VAULT_PATH/01-Raw/$SANITIZED.url"
 
-# 2. Run pipeline
+# 2. Run pipeline (foreground for small batches, background for 3+ sources)
+# Foreground (≤2 sources, stage 3 usually finishes <600s):
 cd /home/linuxuser/workspaces/gamma/obsidian-automation
 VAULT_PATH=/home/linuxuser/MyVault bash scripts/process-inbox.sh
+
+# Background (3+ sources — stage 3 agents need ≥960s, terminal foreground max is 600s):
+terminal(command="cd /home/linuxuser/workspaces/gamma/obsidian-automation && VAULT_PATH=/home/linuxuser/MyVault bash scripts/process-inbox.sh", background=true, notify_on_complete=true, timeout=1200)
+# Then poll with process(action="poll", session_id=..., timeout=300) until status="exited"
 
 # 3. After pipeline: archive, reindex, sync
 mkdir -p "$VAULT_PATH/01-Raw/archive" && mv "$VAULT_PATH/01-Raw/"*.url "$VAULT_PATH/01-Raw/archive/"
@@ -88,6 +93,13 @@ cat /tmp/extracted/batch_0_output.txt | tail -20
 **Fix:** Re-run stage 3 directly with PIPELINE_TMPDIR set. Files already created won't be overwritten (collision check). Or just run the post-processing manually:
 ```bash
 bash scripts/reindex.sh && ob sync --path $VAULT_PATH
+```
+
+### Batch agent exit 124 ≠ total failure
+
+An agent hitting the 900s `timeout` returns exit code 124. The script marks the batch as failed, but the agent may have written most or all files before being killed. After pipeline completes, check `Created: N | Failed: M` — if `M > 0` but vault has the expected files, the timeout was just cutting off tail work (logging, cleanup). Verify with:
+```bash
+find $VAULT_PATH/04-Wiki -newer /tmp/extracted/manifest.json -name "*.md" | wc -l
 ```
 
 ## Note Structures
