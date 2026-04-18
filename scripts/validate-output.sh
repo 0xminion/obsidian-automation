@@ -153,14 +153,21 @@ print('standard')
         done
         ;;
       technical)
-        for section in "Summary" "Key Findings" "Data/Evidence" "Limitations" "Linked concepts"; do
+        for section in "Summary" "Key Findings" "Data/Evidence" "Methodology" "Limitations" "Linked concepts"; do
+          if ! echo "$content" | grep -q "^## $section" 2>/dev/null; then
+            report_violation "$file" "sections" "Missing required section: ## $section"
+          fi
+        done
+        ;;
+      comparison)
+        for section in "Summary" "Side-by-Side Comparison" "Pros and Cons" "Verdict" "Linked concepts"; do
           if ! echo "$content" | grep -q "^## $section" 2>/dev/null; then
             report_violation "$file" "sections" "Missing required section: ## $section"
           fi
         done
         ;;
       procedural)
-        for section in "Summary" "Steps" "Linked concepts"; do
+        for section in "Summary" "Prerequisites" "Steps" "Gotchas" "Linked concepts"; do
           if ! echo "$content" | grep -q "^## $section" 2>/dev/null; then
             report_violation "$file" "sections" "Missing required section: ## $section"
           fi
@@ -200,6 +207,24 @@ print('en')
           report_violation "$file" "sections" "Missing required section: ## $section"
         fi
       done
+    fi
+  fi
+
+  # MoC section checks
+  if [ "$note_type" = "moc" ]; then
+    # Required: bilingual overview
+    if ! echo "$content" | grep -qF "## Overview / 概述" 2>/dev/null; then
+      report_violation "$file" "sections" "Missing required MoC section: ## Overview / 概述"
+    fi
+    # Required: at least 2 topic sections (## headings besides Overview)
+    local section_count
+    section_count=$(echo "$content" | grep -cE '^## ' 2>/dev/null || echo 0)
+    if [ "$section_count" -lt 2 ]; then
+      report_violation "$file" "sections" "MoC has only $section_count sections — needs Overview + at least 1 topic section"
+    fi
+    # Check for stubs in MoC sections
+    if echo "$content" | grep -qiE '\(Entries to be added|No .* resources yet|\(No .* yet\)' 2>/dev/null; then
+      report_violation "$file" "stubs" "MoC contains stub placeholder text — remove empty sections instead of stubbing"
     fi
   fi
 }

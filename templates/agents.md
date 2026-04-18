@@ -203,11 +203,11 @@ Sources always in frontmatter `sources:` field, NOT in body section.
 
 ### MoC Note (`04-Wiki/mocs/`)
 
-MoCs can be monolingual or bilingual bridges.
+MoCs use custom topic-specific sections — group by subtopic, not by language. No stubs — if a section has no content, remove it.
 
 ```yaml
 ---
-title: "Topic Name — Map of Content"
+title: "Topic Name"
 type: moc
 status: active
 date_created: YYYY-MM-DD
@@ -218,48 +218,29 @@ tags:
 ---
 ```
 
-**Bilingual MoC** (default — bridges Chinese and English resources):
 ```
-# Topic Name — 知识图谱
+# Topic Name
 
-## 概述 / Overview
+## Overview / 概述
 <2-3 sentence synthesized summary.>
 
-## 中文资源 — <Category Name>
-- [[Chinese Entry]]（English Title）— <Chinese description>
+## <Subtopic 1> / <中文标题>
+- [[Entry or Concept]] — <1-sentence summary>
 
-## 中文概念 — <Category Name>
-- [[Chinese Concept]]（English Name）— <Chinese description>
+## <Subtopic 2> / <中文标题>
+- [[Entry or Concept]] — <1-sentence summary>
 
-## English Resources — <Category Name>
-- [[English Entry]] — <English description>
+## Bridge Concepts / 桥接概念
+- <Concepts or frameworks connecting entries across subtopics>
 
-## English Concepts
-- [[English Concept]] — <English description>
+## Cross-References / 关联图谱
+<ASCII diagram showing how notes connect>
 
-## 关联图谱 / Cross-References
-<ASCII diagram showing how languages connect>
+## Related MoCs / 关联图谱
+- [[Related MoC]] — <how it connects>
 ```
 
-**Monolingual MoC** (for pure English or pure Chinese pools):
-```
-# Topic Name — Map of Content
-
-## Overview
-<2-3 sentence synthesized summary.>
-
-## Core Concepts
-- [[Concept note]] — 1-sentence summary
-
-## Related Entries
-- [[Entry note]] — 1-sentence summary
-
-## Open Threads
-- Questions that remain unanswered
-
-## Notes
-<Optional deeper commentary.>
-```
+**Rule:** Topic sections use descriptive names tied to the subject matter (e.g., `Funding Rates / 资金费率`, `Harness Engineering / 约束工程`). Do NOT split by language (`English Resources`, `中文资源`). Entries and concepts of any language go under the relevant topic section.
 
 ## Typed Edges (`06-Config/edges.tsv`)
 

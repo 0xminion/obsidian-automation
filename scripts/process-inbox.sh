@@ -261,7 +261,7 @@ echo "Stage 3 complete: ${stage3_duration}s"
 total_duration=$(( $(date +%s) - stage1_start ))
 
 # Gather stats for notification
-extracted_count=$(find /tmp/extracted -name "*.json" ! -name "manifest.json" ! -name "plans.json" ! -name "concept_matches.json" 2>/dev/null | wc -l)
+extracted_count=$(find "$PIPELINE_TMPDIR" -name "*.json" ! -name "manifest.json" ! -name "plans.json" ! -name "concept_matches.json" 2>/dev/null | wc -l)
 plan_count=$(python3 -c "import json; print(len(json.load(open('"$PIPELINE_TMPDIR"/plans.json'))))" 2>/dev/null || echo "0")
 created_sources=$(find "$VAULT_PATH/04-Wiki/sources" -name "*.md" -newer "$PIPELINE_TMPDIR"/manifest.json 2>/dev/null | wc -l)
 created_entries=$(find "$VAULT_PATH/04-Wiki/entries" -name "*.md" -newer "$PIPELINE_TMPDIR"/manifest.json 2>/dev/null | wc -l)

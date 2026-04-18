@@ -73,7 +73,7 @@ Sections: Summary, Key Findings, Data/Evidence, Methodology, Limitations, Linked
 Use for: research papers, data-heavy articles, technical documentation
 
 ### template: comparison
-Sections: Summary, Side-by-Side Comparison, Pros/Cons, Verdict, Linked concepts
+Sections: Summary, Side-by-Side Comparison, Pros and Cons, Verdict, Linked concepts
 Use for: product comparisons, framework evaluations, "X vs Y" articles
 
 ### template: procedural

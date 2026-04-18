@@ -12,7 +12,7 @@ FILE NAMING:
 Frontmatter:
   - title: "<Concept Name>" — keep natural, descriptive (title IS the concept)
   - type: concept
-  - status: review
+  - status: evergreen
   - reviewed: ""
   - aliases: [] (plain text only, no wikilinks — raw [link] syntax fails in tags)
   - sources: ["[[source-note-name]]"] — OPTIONAL, list of source notes this concept emerged from
@@ -86,7 +86,7 @@ Frontmatter must include language: zh:
   - title_en: "<English name if applicable>"
   - type: concept
   - language: zh
-  - status: review
+  - status: evergreen
   - sources: ["[[source-note-name]]"] — 可选，此概念来源的笔记
   - tags: English tag values (tags stay in English always)
   - created: YYYY-MM-DD

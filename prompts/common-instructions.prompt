@@ -76,13 +76,9 @@ BILINGUAL PIPELINE RULES (English + Chinese):
    Do NOT write "Content extracted via Tavily. Full article text available in raw extraction."
    or any similar placeholder. Write the actual content or chunk it.
 
-14. MoC BILINGUAL BRIDGES: MoCs are the integration layer.
-   When a MoC bridges Chinese and English resources:
-   - Chinese resources get Chinese descriptions
-   - English resources get English descriptions
-   - Use section headers to separate language groups
-   - Include bridge concepts that connect the two language worlds
-   - MoCs are NEVER pure Chinese or pure English when spanning both language pools
+14. MoC TOPIC SECTIONS: MoCs use topic-specific bilingual sections (e.g., "Funding Rates / 资金费率").
+   Group entries and concepts by subtopic, NOT by language. Entries of any language go
+   under the relevant topic section. Include bridge concepts that connect across subtopics.
 
 15. NON-CHINESE/NON-ENGLISH SOURCES: For sources in other languages (Japanese, Korean, etc.),
    translate to English, store in English, integrate in English. Only Chinese gets

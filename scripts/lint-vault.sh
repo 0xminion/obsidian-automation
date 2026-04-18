@@ -24,7 +24,7 @@ REPORT_DATE=$(date +%Y-%m-%d)
 
 mkdir -p "$VAULT_PATH/Meta/Scripts"
 
-echo "# Lint Report — $REPORT_DATE (v2.0.1)" > "$REPORT_FILE"
+echo "# Lint Report — $REPORT_DATE (v2.1.0)" > "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 echo "> Karpathy-style linting: catches what the LLM misses." >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -259,7 +259,7 @@ fi
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 7. Entry Template Section Validation (v2.0.1)
+# 7. Entry Template Section Validation (v2.1.0)
 # ═══════════════════════════════════════════════════════════
 echo "## 7. Entry Template Section Validation" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -305,13 +305,6 @@ check_template_sections() {
       ;;
     chinese)
       for section in "## 摘要" "## 核心发现" "## 其他要点" "## 图表" "## 开放问题" "## 关联概念"; do
-        if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
-          missing_sections="${missing_sections}    - ${section}\n"
-        fi
-      done
-      ;;
-    bilingual)
-      for section in "## Summary / 摘要" "## Key Insights / 关键洞察" "## Diagrams / 图表" "## Open Questions / 开放问题" "## Linked Concepts / 关联概念"; do
         if ! grep -qF "$section" "$entry_file" 2>/dev/null; then
           missing_sections="${missing_sections}    - ${section}\n"
         fi
@@ -432,7 +425,7 @@ total_issues=$((total_issues + drift_count))
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 10. Edges Consistency Check (v2.0.1)
+# 10. Edges Consistency Check (v2.1.0)
 # ═══════════════════════════════════════════════════════════
 echo "## 10. Edges Consistency (edges.tsv)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -474,7 +467,7 @@ total_issues=$((total_issues + edge_issues))
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 11. Stub/Placeholder Detection (v2.0.1)
+# 11. Stub/Placeholder Detection (v2.1.0)
 # ═══════════════════════════════════════════════════════════
 echo "## 11. Stub/Placeholder Detection" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -516,7 +509,7 @@ fi
 echo "" >> "$REPORT_FILE"
 
 # ═══════════════════════════════════════════════════════════
-# 12. Tag Quality Validation (v2.0.1)
+# 12. Tag Quality Validation (v2.1.0)
 # ═══════════════════════════════════════════════════════════
 echo "## 12. Tag Quality Validation" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
@@ -596,7 +589,7 @@ echo "| Stub/placeholder sections | $stub_count |" >> "$REPORT_FILE"
 echo "| Invalid tags | $tag_issue_count |" >> "$REPORT_FILE"
 echo "| **TOTAL** | **$total_issues** |" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
-echo "*Run lint-vault.sh (v2.0.1) to regenerate this report.*" >> "$REPORT_FILE"
+echo "*Run lint-vault.sh (v2.1.0) to regenerate this report.*" >> "$REPORT_FILE"
 
 # Log entry
 append_log_md "lint" "Health check" \

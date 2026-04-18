@@ -12,8 +12,10 @@
 #   - Entries mixed under single bilingual heading: ## Section / 中文
 #   - NO ### English / ### 中文 sub-headings
 #   - NO ## English Resources / ## Chinese Resources separation
-#   - Use ## Cross-References / 关联图谱 with ASCII diagram
-#   - NOT ## Bridge Concepts / 桥接概念 with narrative prose
+#   - Use topic-specific bilingual sections (e.g., "Funding Rates / 资金费率")
+#   - ## Bridge Concepts / 桥接概念 — connecting frameworks across subtopics
+#   - ## Cross-References / 关联图谱 with ASCII diagram
+#   - ## Related MoCs / 相关图谱
 #   - Reference: prediction-markets.md is the canonical format
 # ============================================================================
 

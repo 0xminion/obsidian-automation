@@ -87,6 +87,33 @@ extract_youtube_transcript() {
     _log "Supadata returned HTTP $http_code for $video_id"
   fi
 
+  # Whisper (last resort) — use faster-whisper Python module
+  if command -v yt-dlp &>/dev/null; then
+    if python3 -c "import faster_whisper" 2>/dev/null; then
+      _log "Trying local Whisper for $video_id"
+      local tmp_audio="/tmp/${video_id}_whisper_$(date +%s).mp3"
+      if yt-dlp -x --audio-format mp3 --max-filesize 200M -o "$tmp_audio" "$url" 2>/dev/null; then
+        local whisper_text
+        whisper_text=$(python3 -c "
+from faster_whisper import WhisperModel
+import sys
+model = WhisperModel('base', device='cpu', compute_type='int8')
+segments, info = model.transcribe(sys.argv[1], language='en')
+print(' '.join(s.text for s in segments))
+" "$tmp_audio" 2>/dev/null) || true
+        rm -f "$tmp_audio"
+        if [ -n "$whisper_text" ] && [ "${#whisper_text}" -gt 50 ]; then
+          echo "$whisper_text"
+          return 0
+        fi
+        _log "Whisper returned empty/short transcript for $video_id"
+      else
+        _log "yt-dlp failed to download audio for $video_id"
+        rm -f "$tmp_audio"
+      fi
+    fi
+  fi
+
   return 1
 }
 
@@ -454,7 +481,7 @@ except:
   fi
 
   # Save as JSON — write content to temp file to avoid "Argument list too long"
-  echo "$content" > "/tmp/extracted/${url_hash}_content.tmp"
+  echo "$content" > "$EXTRACT_DIR/${url_hash}_content.tmp"
   python3 -c "
 import json, sys, os
 data = {
@@ -468,7 +495,7 @@ data = {
 with open(sys.argv[7], 'w') as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
 os.unlink(sys.argv[3])
-" "$url" "$title" "/tmp/extracted/${url_hash}_content.tmp" "$source_type" "${author:-unknown}" "$filename" "$outfile"
+" "$url" "$title" "$EXTRACT_DIR/${url_hash}_content.tmp" "$source_type" "${author:-unknown}" "$filename" "$outfile"
 
   if [ -f "$outfile" ] && [ -s "$outfile" ]; then
     _log "OK: $filename → $outfile (${#content} chars)"
@@ -544,14 +571,15 @@ _log "=== Stage 1 complete: $extracted extracted, $failed failed ==="
 # Write manifest (skip .tmp files)
 python3 -c "
 import json, glob, os
-files = sorted(glob.glob('/tmp/extracted/*.json'))
+extract_dir = os.environ.get('EXTRACT_DIR', '/tmp/extracted')
+files = sorted(glob.glob(os.path.join(extract_dir, '*.json')))
 manifest = []
 for f in files:
     with open(f) as fh:
         d = json.load(fh)
         d['hash'] = os.path.basename(f).replace('.json','')
         manifest.append(d)
-with open('/tmp/extracted/manifest.json', 'w') as fh:
+with open(os.path.join(extract_dir, 'manifest.json'), 'w') as fh:
     json.dump(manifest, fh, ensure_ascii=False, indent=2)
 print(f'Manifest: {len(manifest)} entries')
 "

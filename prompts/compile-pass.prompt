@@ -64,19 +64,23 @@ For each existing MoC in 04-Wiki/mocs/:
    or mention it in their content.
 2. Rebuild the MoC with this structure:
 
-# <Topic Name> — Map of Content
+# <Topic Name>
 
-## Overview
+## Overview / 概述
 <2-3 sentence synthesized summary from the linked notes.>
 
-## Core Concepts
-- [[<Concept note>]] — <1-sentence summary>
+## <Topic Section> / <中文标题>
+- [[Entry or Concept]] — <1-sentence summary>
+<Use custom topic-specific section names. Do NOT split by language — group by subtopic.>
 
-## Related Entries
-- [[<Entry note>]] — <1-sentence summary>
+## Bridge Concepts / 桥接概念
+- <Concepts or frameworks connecting entries across subtopics>
 
-## Open Threads
-- <Unanswered questions or gaps across linked notes>
+## Cross-References / 关联图谱
+<ASCII diagram showing how notes connect>
+
+## Related MoCs / 关联图谱
+- [[<Related MoC>]] — <how it connects>
 
 3. Run the Humanizer skill before writing the MoC.
 4. Update 'date_updated:' timestamp in frontmatter.
@@ -108,7 +112,7 @@ Review Entry notes and check if any should use a non-standard template.
 The `template:` frontmatter field selects the body structure:
 - standard (default): Summary, Core insights, Other takeaways, Diagrams (optional), Open questions, Linked concepts
 - technical: Summary, Key Findings, Data/Evidence, Methodology, Limitations, Linked concepts
-- comparison: Summary, Side-by-Side, Pros/Cons, Verdict, Linked concepts
+- comparison: Summary, Side-by-Side, Pros and Cons, Verdict, Linked concepts
 - procedural: Summary, Prerequisites, Steps, Gotchas, Linked concepts
 
 If an Entry's content clearly fits a different template better than 'standard',

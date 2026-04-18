@@ -2,40 +2,35 @@
 title: "{{title}}"
 type: moc
 status: active
-date_created: {{date}}
-date_updated: {{date}}
+date_created: "{{date}}"
+date_updated: "{{date}}"
 tags:
   - map-of-content
-  - {{topic_tag}}
+  - "{{topic_tag}}"
 ---
 
-# {{title}} — 知识图谱
+# {{title}}
 
 ## Overview / 概述
-<2-3 sentence synthesized summary of what this topic covers. Can be bilingual if bridging languages.>
 
-## Core Concepts / 核心概念
+<2-3 sentence synthesized summary of what this topic covers.>
 
-- [[Concept Note]] — <1-sentence summary>
+## <Topic Section 1> / <中文标题>
 
-## Related Entries / 关联条目
+- [[Entry or Concept]] — <1-sentence summary>
 
-- [[Entry Note]] — <1-sentence summary>
+## <Topic Section 2> / <中文标题>
+
+- [[Entry or Concept]] — <1-sentence summary>
+
+## Bridge Concepts / 桥接概念
+
+- <Concepts or frameworks connecting entries across sections>
 
 ## Cross-References / 关联图谱
+
 <ASCII diagram or description of how notes connect>
 
-## 中文概念 — <Category Name>
+## Related MoCs / 相关图谱
 
-- [[Chinese Concept]]（English Name）— <Chinese description>
-
-## English Resources — <Category Name>
-
-- [[English Entry]] — <English description>
-
-## English Concepts
-
-- [[English Concept]] — <English description>
-
-## 关联图谱 / Cross-References
-<ASCII or text diagram showing how Chinese and English resources connect through bridge concepts>
+- [[Related MoC]] — <how it connects>

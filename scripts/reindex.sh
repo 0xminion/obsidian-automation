@@ -50,9 +50,10 @@ if [ -d "$VAULT_PATH/04-Wiki/entries" ]; then
     note_name=$(basename "$entry" .md)
     title=$(grep -m1 '^title:' "$entry" 2>/dev/null | sed 's/^title: *"//;s/"$//' || echo "$note_name")
 
-    # Get first sentence of summary as description
-    summary=$(sed -n '/^## Summary/,/^##/p' "$entry" 2>/dev/null \
-      | grep -v '^##' | head -2 | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//')
+    # Get first sentence of summary as description (supports both English ## Summary and Chinese ## 摘要)
+    # Note: '|| true' prevents pipefail from killing the script if section is missing
+    summary=$(sed -n '/^## Summary/,/^##/p; /^## 摘要/,/^##/p' "$entry" 2>/dev/null \
+      | grep -v '^##' | head -2 | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//' || true)
     [ -z "$summary" ] && summary="$title"
 
     echo "- [[$note_name]]: $summary (entry)" >> "$INDEX_FILE"
@@ -73,8 +74,9 @@ if [ -d "$VAULT_PATH/04-Wiki/concepts" ]; then
     title=$(grep -m1 '^title:' "$concept" 2>/dev/null | sed 's/^title: *"//;s/"$//' || echo "$note_name")
 
     # Get first paragraph after heading
+    # Note: '|| true' prevents pipefail from killing the script if section is missing
     body=$(sed -n '/^# /,/^##/p' "$concept" 2>/dev/null \
-      | grep -v '^#' | head -2 | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//')
+      | grep -v '^#' | head -2 | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//' || true)
     [ -z "$body" ] && body="$title"
 
     echo "- [[$note_name]]: $body (concept)" >> "$INDEX_FILE"
@@ -94,8 +96,9 @@ if [ -d "$VAULT_PATH/04-Wiki/mocs" ]; then
       [ -f "$moc" ] || continue
       note_name=$(basename "$moc" .md)
       title=$(grep -m1 '^title:' "$moc" 2>/dev/null | sed 's/^title: *"//;s/"$//' || echo "$note_name")
+      # Note: '|| true' prevents pipefail from killing the script if section is missing
       overview=$(sed -n '/^## Overview/,/^##/p' "$moc" 2>/dev/null \
-        | grep -v '^##' | head -2 | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//')
+        | grep -v '^##' | head -2 | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//' || true)
       [ -z "$overview" ] && overview="$title"
       echo "- [[$note_name]]: $overview (moc)" >> "$INDEX_FILE"
       mocs_added=$((mocs_added + 1))
