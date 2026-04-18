@@ -120,6 +120,7 @@ Stage 3: Create (N parallel agents)
   → Concept convergence uses pre-fetched qmd semantic matches
   → Per-agent prompt: ~5K chars (vs ~18K in v1)
   → Output validation via validate-output.sh runs automatically
+  → Each agent has 900s internal timeout — terminal call must use ≥960s
 ```
 
 ### Pipeline Flags

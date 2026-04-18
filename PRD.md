@@ -45,6 +45,7 @@ The system needs to:
 - Concept convergence uses pre-fetched qmd semantic matches
 - Per-agent prompt: ~5K chars (vs ~18K in v1)
 - Output validation via `validate-output.sh` runs automatically
+- Each agent has 900s internal timeout — terminal call must use ≥960s
 - Output: Files written to vault, inbox archived, wiki-index updated
 
 ### Pipeline Flags
