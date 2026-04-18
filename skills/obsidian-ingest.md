@@ -1,5 +1,5 @@
 ---
-name: obsidian
+name: obsidian-ingest
 description: "Process any URL, file, or link into the Obsidian vault. Drop URLs in chat, pipeline handles extraction + wiki creation."
 version: 3.0.0
 trigger: "obsidian"
