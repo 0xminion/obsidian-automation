@@ -1,7 +1,7 @@
 ---
 name: obsidian-ingest
 description: "Process any URL, file, or link into the Obsidian vault. Drop URLs in chat, pipeline handles extraction + wiki creation."
-version: 3.0.0
+version: 2.1.0
 trigger: "obsidian"
 ---
 
@@ -29,11 +29,11 @@ If orchestrator fails, run stages manually: `stage1-extract.sh` → `stage2-plan
 ## Pipeline
 
 Three stages (see scripts for details):
-- **Stage 1 — Extract** (shell, no agent): Parallel extraction. Output: `/tmp/extracted/manifest.json`
-- **Stage 2 — Plan** (1 agent): Semantic concept matching. Output: `/tmp/extracted/plans.json`
+- **Stage 1 — Extract** (shell, no agent): Parallel extraction with per-vault temp dir. Output: `$PIPELINE_TMPDIR/manifest.json`
+- **Stage 2 — Plan** (1 agent): Semantic concept matching. Output: `$PIPELINE_TMPDIR/plans.json`
 - **Stage 3 — Create** (N agents, parallel): Writes Source → Entry → Concept → MoC files
 
-Options: `--parallel N` (default 3), `--vault PATH`
+Options: `--parallel N` (default 3), `--vault PATH`. Pipeline uses per-vault temp isolation via `PIPELINE_TMPDIR`.
 
 ## Note Structures
 

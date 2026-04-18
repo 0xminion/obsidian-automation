@@ -6,7 +6,6 @@ author: "Author"
 date_captured: YYYY-MM-DD
 tags:
   - source
-  - source/type
 status: processed
 aliases: []
 ---

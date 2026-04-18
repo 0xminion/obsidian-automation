@@ -12,7 +12,7 @@
 # Output: /tmp/extracted/plans.json
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
@@ -20,8 +20,9 @@ source "$SCRIPT_DIR/../lib/common.sh"
 CONCEPTS_DIR="$VAULT_PATH/04-Wiki/concepts"
 ENTRIES_DIR="$VAULT_PATH/04-Wiki/entries"
 MOCS_DIR="$VAULT_PATH/04-Wiki/mocs"
-MANIFEST="/tmp/extracted/manifest.json"
-PLANS_OUT="/tmp/extracted/plans.json"
+EXTRACT_DIR="${PIPELINE_TMPDIR:-/tmp/extracted}"
+MANIFEST="$EXTRACT_DIR/manifest.json"
+PLANS_OUT="$EXTRACT_DIR/plans.json"
 
 if [ ! -f "$MANIFEST" ]; then
   echo "ERROR: No manifest found. Run stage1-extract.sh first."
@@ -157,7 +158,7 @@ print(json.dumps({e['hash']: [] for e in manifest}))
 ")
 fi
 
-echo "$concept_matches_json" > /tmp/extracted/concept_matches.json
+echo "$concept_matches_json" > "$EXTRACT_DIR/concept_matches.json"
 matched_count=$(echo "$concept_matches_json" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
@@ -182,7 +183,7 @@ from datetime import date
 with open('$MANIFEST') as f:
     manifest = json.load(f)
 
-with open('/tmp/extracted/concept_matches.json') as f:
+with open('$EXTRACT_DIR/concept_matches.json') as f:
     concept_matches = json.load(f)
 
 common = open('$SCRIPT_DIR/../prompts/common-instructions.prompt').read() if os.path.exists('$SCRIPT_DIR/../prompts/common-instructions.prompt') else ''
@@ -239,7 +240,7 @@ print(prompt)
 ")
 
 # Save prompt for debugging
-echo "$plan_prompt" > /tmp/extracted/plan_prompt.md
+echo "$plan_prompt" > "$EXTRACT_DIR/plan_prompt.md"
 prompt_size=${#plan_prompt}
 log "Plan prompt size: $prompt_size chars (vs ~18K in old pipeline)"
 
@@ -249,13 +250,13 @@ log "Plan prompt size: $prompt_size chars (vs ~18K in old pipeline)"
 
 log "Spawning planning agent..."
 plan_result=0
-timeout 600 "$AGENT_CMD" chat -q "$plan_prompt" -Q > /tmp/extracted/plan_output.txt 2>> "$LOG_FILE" || plan_result=$?
+timeout 600 "$AGENT_CMD" chat -q "$plan_prompt" -Q > "$EXTRACT_DIR/plan_output.txt" 2>> "$LOG_FILE" || plan_result=$?
 
 if [ $plan_result -ne 0 ]; then
   log "Plan agent failed (exit $plan_result), retrying..."
   sleep 5
   plan_result=0
-  timeout 600 "$AGENT_CMD" chat -q "$plan_prompt" -Q > /tmp/extracted/plan_output.txt 2>> "$LOG_FILE" || plan_result=$?
+  timeout 600 "$AGENT_CMD" chat -q "$plan_prompt" -Q > "$EXTRACT_DIR/plan_output.txt" 2>> "$LOG_FILE" || plan_result=$?
 fi
 
 if [ $plan_result -ne 0 ]; then
@@ -272,7 +273,7 @@ log "Parsing plan output..."
 python3 -c "
 import json, re, sys
 
-with open('/tmp/extracted/plan_output.txt') as f:
+with open('$EXTRACT_DIR/plan_output.txt') as f:
     raw = f.read()
 
 # Strip ANSI escape codes and box-drawing characters
@@ -284,7 +285,7 @@ json_match = re.search(r'\[.*\]', raw_clean, re.DOTALL)
 if json_match:
     try:
         plans = json.loads(json_match.group())
-        with open('/tmp/extracted/plans.json', 'w') as f:
+        with open('$EXTRACT_DIR/plans.json', 'w') as f:
             json.dump(plans, f, ensure_ascii=False, indent=2)
         print(f'Parsed {len(plans)} plans')
         sys.exit(0)
@@ -322,7 +323,7 @@ for i, c in enumerate(raw_clean):
             start = -1
 
 if plans:
-    with open('/tmp/extracted/plans.json', 'w') as f:
+    with open('$EXTRACT_DIR/plans.json', 'w') as f:
         json.dump(plans, f, ensure_ascii=False, indent=2)
     print(f'Parsed {len(plans)} plans (object-by-object)')
     if failed_hashes:
@@ -340,8 +341,8 @@ if [ $parse_result -ne 0 ]; then
   exit 1
 fi
 
-plan_count=$(python3 -c "import json; print(len(json.load(open('/tmp/extracted/plans.json'))))")
-manifest_count=$(python3 -c "import json; print(len(json.load(open('/tmp/extracted/manifest.json'))))" 2>/dev/null || echo "?")
+plan_count=$(python3 -c "import json; print(len(json.load(open('$EXTRACT_DIR/plans.json'))))")
+manifest_count=$(python3 -c "import json; print(len(json.load(open('$EXTRACT_DIR/manifest.json'))))" 2>/dev/null || echo "?")
 
 if [ "$plan_count" -lt "$manifest_count" ]; then
   log "WARNING: Parsed $plan_count plans from $manifest_count sources — some may have failed"

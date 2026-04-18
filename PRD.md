@@ -23,7 +23,7 @@ The system needs to:
 01-Raw/ → process-inbox.sh → 04-Wiki/{sources, entries, concepts, mocs}
                                     ↓
                              Post-ingest auto-updates:
-                             - dashboard.md
+                             - vault-stats output
                              - tag-registry.md
                              - wiki-index.md (if ≥5 notes)
 ```
@@ -158,13 +158,16 @@ Format (both languages):
 - [x] No stub/placeholder content allowed (lint enforced)
 - [x] Tags validated against blocklist (lint enforced)
 - [x] Edges use 4-column TSV format
-- [x] Post-ingest auto-updates: dashboard, tag-registry, wiki-index
+- [x] Post-ingest auto-updates: vault-stats, tag-registry, wiki-index
 - [x] All scripts source lib/common.sh (no duplication)
 - [x] Prompts externalized in prompts/*.prompt files
 - [x] Collision detection prevents note overwrites
 - [x] Git auto-commit after every operation
 - [x] 12 lint checks covering all structural requirements
 - [x] Output validation with `validate-output.sh --fix` auto-repair
+- [x] Per-vault temp directory isolation (PIPELINE_TMPDIR) — no cross-vault races
+- [x] Preflight dependency check (check_dependencies)
+- [x] Manifest persistence for --resume across reboots
 
 ## Non-Goals
 

@@ -21,10 +21,13 @@
 #   - 900s timeout per agent (vs 600s in v1)
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
+
+# Preflight: verify required dependencies
+check_dependencies || exit 1
 
 # ═══════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -105,11 +108,15 @@ if $DRY_RUN; then
   exit 0
 fi
 
+# Per-vault temp directory: prevents race conditions between concurrent vault runs
+VAULT_HASH=$(echo -n "$VAULT_PATH" | md5sum | cut -c1-8)
+export PIPELINE_TMPDIR="/tmp/obsidian-extracted-${VAULT_HASH}"
+
 # Clean up stale extraction data
 if ! $RESUME_MODE; then
-  rm -rf /tmp/extracted
+  rm -rf "$PIPELINE_TMPDIR"
 fi
-mkdir -p /tmp/extracted
+mkdir -p "$PIPELINE_TMPDIR"
 
 # Initialize timing variables (set before conditional to avoid unbound var under set -u)
 stage1_start=$(date +%s)
@@ -133,13 +140,18 @@ if $RESUME_MODE; then
   echo ""
   echo "━━━ Resuming from reviewed plans ($plan_count plans) ━━━"
 
-  cp "$REVIEW_FILE" /tmp/extracted/plans.json
+  cp "$REVIEW_FILE" "$PIPELINE_TMPDIR"/plans.json
 
-  # Stage 3 needs extraction data — verify it exists
-  if [ ! -f /tmp/extracted/manifest.json ]; then
-    echo "ERROR: Extraction data missing. Cannot resume without Stage 1 output."
-    echo "Run the full pipeline first (without --resume)."
-    exit 1
+  # Stage 3 needs extraction data — verify it exists (or restore from vault backup)
+  if [ ! -f "$PIPELINE_TMPDIR"/manifest.json ]; then
+    if [ -f "$VAULT_PATH/07-WIP/manifest-backup.json" ]; then
+      echo "Restoring manifest from vault backup..."
+      cp "$VAULT_PATH/07-WIP/manifest-backup.json" "$PIPELINE_TMPDIR"/manifest.json
+    else
+      echo "ERROR: Extraction data missing. Cannot resume without Stage 1 output."
+      echo "Run the full pipeline first (without --resume)."
+      exit 1
+    fi
   fi
 
   # Skip to Stage 3 (timing vars already initialized above)
@@ -196,7 +208,9 @@ fi  # end if ! RESUME_MODE
 if $REVIEW_MODE; then
   REVIEW_FILE="$VAULT_PATH/07-WIP/plans-review.json"
   mkdir -p "$VAULT_PATH/07-WIP"
-  cp /tmp/extracted/plans.json "$REVIEW_FILE"
+  cp "$PIPELINE_TMPDIR"/plans.json "$REVIEW_FILE"
+  # Persist manifest for --resume across reboots
+  cp "$PIPELINE_TMPDIR"/manifest.json "$VAULT_PATH/07-WIP/manifest-backup.json"
 
   plan_count=$(python3 -c "import json; print(len(json.load(open('$REVIEW_FILE'))))")
 
@@ -248,9 +262,9 @@ total_duration=$(( $(date +%s) - stage1_start ))
 
 # Gather stats for notification
 extracted_count=$(find /tmp/extracted -name "*.json" ! -name "manifest.json" ! -name "plans.json" ! -name "concept_matches.json" 2>/dev/null | wc -l)
-plan_count=$(python3 -c "import json; print(len(json.load(open('/tmp/extracted/plans.json'))))" 2>/dev/null || echo "0")
-created_sources=$(find "$VAULT_PATH/04-Wiki/sources" -name "*.md" -newer /tmp/extracted/manifest.json 2>/dev/null | wc -l)
-created_entries=$(find "$VAULT_PATH/04-Wiki/entries" -name "*.md" -newer /tmp/extracted/manifest.json 2>/dev/null | wc -l)
+plan_count=$(python3 -c "import json; print(len(json.load(open('"$PIPELINE_TMPDIR"/plans.json'))))" 2>/dev/null || echo "0")
+created_sources=$(find "$VAULT_PATH/04-Wiki/sources" -name "*.md" -newer "$PIPELINE_TMPDIR"/manifest.json 2>/dev/null | wc -l)
+created_entries=$(find "$VAULT_PATH/04-Wiki/entries" -name "*.md" -newer "$PIPELINE_TMPDIR"/manifest.json 2>/dev/null | wc -l)
 
 echo ""
 echo "╔══════════════════════════════════════════════╗"

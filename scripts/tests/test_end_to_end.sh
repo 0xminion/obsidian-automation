@@ -3,7 +3,7 @@
 # End-to-End Pipeline Tests
 # Tests: single URL through all 3 stages using temp vault (no live network/agent)
 # ============================================================================
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/test_helpers.sh"
@@ -220,7 +220,7 @@ title: "AI Forecasting: A Comprehensive Guide"
 source: "[[ai-forecasting-a-comprehensive-guide]]"
 date_entry: 2026-04-17
 status: review
-reviewed: null
+reviewed: ""
 review_notes: null
 template: technical
 aliases: []

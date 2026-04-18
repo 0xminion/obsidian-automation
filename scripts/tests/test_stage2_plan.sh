@@ -3,7 +3,7 @@
 # Stage 2 Tests — Plan Generation Logic
 # Tests: manifest parsing, concept pre-search, prompt building, error handling
 # ============================================================================
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/test_helpers.sh"

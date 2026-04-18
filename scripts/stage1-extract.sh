@@ -12,7 +12,7 @@
 #   Schema: {url, title, content, type, author, source_file}
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -32,7 +32,7 @@ if [ "${STAGE1_PARALLEL:-0}" != "1" ]; then
   done
 fi
 
-EXTRACT_DIR="/tmp/extracted"
+EXTRACT_DIR="${PIPELINE_TMPDIR:-/tmp/extracted}"
 mkdir -p "$EXTRACT_DIR"
 
 EXTRACT_TIMEOUT="${EXTRACT_TIMEOUT:-60}"
@@ -278,7 +278,7 @@ extract_podcast_url() {
   fi
 
   # Write structured output to file so caller doesn't have to parse multi-line stdout
-  echo "$content" > "/tmp/extracted/${url_hash:-podcast}_content.tmp"
+  echo "$content" > "$EXTRACT_DIR/${url_hash:-podcast}_content.tmp"
   python3 -c "
 import json, sys
 data = {
@@ -289,8 +289,8 @@ data = {
 }
 with open(sys.argv[5], 'w') as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
-" "/tmp/extracted/${url_hash:-podcast}_content.tmp" "$podcast_name" "$ep_title" "$audio_url" "$out_file"
-  rm -f "/tmp/extracted/${url_hash:-podcast}_content.tmp"
+" "$EXTRACT_DIR/${url_hash:-podcast}_content.tmp" "$podcast_name" "$ep_title" "$audio_url" "$out_file"
+  rm -f "$EXTRACT_DIR/${url_hash:-podcast}_content.tmp"
 
   return 0
 }
@@ -343,6 +343,15 @@ extract_single_url() {
     return 0
   fi
 
+  # Atomic lock: prevent duplicate URLs from concurrent extraction
+  local lockfile="$EXTRACT_DIR/.lock_${url_hash}"
+  if ! mkdir "$lockfile" 2>/dev/null; then
+    _log "SKIP (another process extracting $url_hash): $filename"
+    echo "SKIP|$url_hash"
+    return 0
+  fi
+  trap 'rmdir "$lockfile" 2>/dev/null' RETURN
+
   _log "Extracting: $filename → $url"
 
   local content="" title="" author="" source_type=""
@@ -389,7 +398,7 @@ except:
   elif is_podcast_url "$url"; then
     # ── Podcast ──
     source_type="podcast"
-    local podcast_json="/tmp/extracted/${url_hash}_podcast.json"
+    local podcast_json="$EXTRACT_DIR/${url_hash}_podcast.json"
     extract_podcast_url "$url" "$podcast_json" 2>/dev/null || true
 
     if [ -f "$podcast_json" ]; then

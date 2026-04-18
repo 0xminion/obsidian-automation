@@ -3,7 +3,7 @@
 # Edge Case Tests
 # Tests: special characters, Chinese content, very long content, boundary conditions
 # ============================================================================
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/test_helpers.sh"

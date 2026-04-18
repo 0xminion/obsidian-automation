@@ -16,7 +16,7 @@
 # Without it, entries are flagged for batch review (non-blocking).
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
 
 # Source common library
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

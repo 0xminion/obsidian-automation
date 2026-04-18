@@ -6,7 +6,7 @@
 #   No args: run all tests
 #   With args: run only matching test files (e.g. "stage1" "edge")
 # ============================================================================
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

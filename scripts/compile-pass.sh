@@ -11,7 +11,7 @@
 #   - Externalized prompt via load_prompt() (compile-pass.prompt)
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"

@@ -3,7 +3,7 @@
 # Stage 3 Tests — Create Batch Logic
 # Tests: batch splitting math, prompt building, file creation, vault structure
 # ============================================================================
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/test_helpers.sh"

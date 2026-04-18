@@ -3,7 +3,7 @@
 # QMD Integration Tests — Semantic Concept Search
 # Tests: qmd availability, concept search, fallback behavior, batch search
 # ============================================================================
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/test_helpers.sh"

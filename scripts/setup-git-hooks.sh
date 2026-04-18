@@ -8,7 +8,7 @@
 # Usage: VAULT_PATH="$HOME/MyVault" bash setup-git-hooks.sh
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
 
 VAULT_PATH="${VAULT_PATH:-$HOME/MyVault}"
 

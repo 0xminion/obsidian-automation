@@ -1,3 +1,5 @@
+⚠️ STALE — This review was for a pre-reorganization v2.2. The directory structure it references (v2/ subdir) no longer exists. See root CODE_REVIEW.md for the current review.
+
 # Code Review: obsidian-automation v2.2
 
 **Reviewer:** Hermes Agent (automated)

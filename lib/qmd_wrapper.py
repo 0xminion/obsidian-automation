@@ -56,32 +56,34 @@ def _curl_request(payload: dict, session_id: str = "", timeout: int = TIMEOUT) -
     """Use curl for reliable MCP HTTP communication. Python urllib hangs on SSE responses."""
     import tempfile
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(payload, f)
-        payload_file = f.name
-
-    headers = [
-        "-H", "Content-Type: application/json",
-        "-H", "Accept: application/json, text/event-stream",
-    ]
-    if session_id:
-        headers.extend(["-H", f"Mcp-Session-Id: {session_id}"])
-
+    payload_file = None
     try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(payload, f)
+            payload_file = f.name
+
+        headers = [
+            "-H", "Content-Type: application/json",
+            "-H", "Accept: application/json, text/event-stream",
+        ]
+        if session_id:
+            headers.extend(["-H", f"Mcp-Session-Id: {session_id}"])
+
         result = subprocess.run(
             ["curl", "-s", *headers, "-d", f"@{payload_file}", DAEMON_URL],
             capture_output=True, text=True, timeout=timeout,
         )
-        os.unlink(payload_file)
         if result.returncode != 0 or not result.stdout.strip():
             return {"error": {"code": -1, "message": f"curl failed: {result.stderr}"}}
         return json.loads(result.stdout)
     except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
-        try:
-            os.unlink(payload_file)
-        except:
-            pass
         return {"error": {"code": -1, "message": str(e)}}
+    finally:
+        if payload_file:
+            try:
+                os.unlink(payload_file)
+            except OSError:
+                pass
 
 
 def _curl_init(timeout: int = 10) -> str:
@@ -130,18 +132,20 @@ def daemon_health() -> bool:
 
 
 def daemon_query(query_text: str, collection: str = "concepts", limit: int = 8,
-                 min_score: float = 0.3, no_rerank: bool = True) -> list:
+                 min_score: float = 0.3, no_rerank: bool = True, session_id: str = "") -> list:
     """Query via daemon MCP. Returns list of {file, score, snippet}.
     
     Uses vec (semantic) search — slower than lex (~95s on CPU) but provides
     semantic understanding beyond keyword matching.
+    
+    Pass session_id to reuse an existing MCP session (avoids ~2s init overhead per query).
     """
-    session_id = _curl_init()
     if not session_id:
-        return []
-
-    # Send initialized notification
-    _curl_request({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}, session_id)
+        session_id = _curl_init()
+        if not session_id:
+            return []
+        # Send initialized notification for new sessions only
+        _curl_request({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}, session_id)
 
     # Vec search for semantic understanding
     searches = [{"type": "vec", "query": query_text}]

@@ -14,7 +14,7 @@
 # Writes report to: $VAULT_PATH/Meta/Scripts/lint-report.md
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
@@ -443,8 +443,8 @@ if [ -f "$VAULT_PATH/06-Config/edges.tsv" ]; then
   [ "$total_edges" -lt 0 ] 2>/dev/null && total_edges=0
 
   # Check for edges referencing non-existent notes
-  # Format: source<tab>relation<tab>target (3 columns)
-  while IFS=$'\t' read -r source relation target; do
+  # Format: source<tab>target<tab>type<tab>description (4 columns)
+  while IFS=$'\t' read -r source target edge_type description; do
     [ -z "$source" ] && continue
     [[ "$source" == "#"* ]] && continue  # Skip comments/headers
 

@@ -51,6 +51,8 @@ def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file,
     today = date.today().isoformat()
 
     # Build per-source data blocks
+    MAX_TOTAL_CONTENT = 15000  # Cap total content to keep prompt under ~20K chars
+    total_content_chars = 0
     sources_block = ""
     for plan in plans:
         h = plan["hash"]
@@ -63,6 +65,13 @@ def build_batch_prompt(batch_file, extract_dir, vault, entry_template_file,
 
         title = plan.get("title", "Untitled")
         content = ext.get("content", "")[:8000]
+        # Dynamic truncation: reduce per-source content if total exceeds cap
+        remaining = MAX_TOTAL_CONTENT - total_content_chars
+        if remaining <= 0:
+            content = "[Content omitted — batch prompt size cap reached]"
+        elif len(content) > max(remaining, 500):
+            content = content[:max(remaining, 500)] + "\n[...truncated]"
+        total_content_chars += len(content)
         source_type = plan.get("type", ext.get("type", "web"))
         author = plan.get("author", ext.get("author", "unknown"))
         url = ext.get("url", "")

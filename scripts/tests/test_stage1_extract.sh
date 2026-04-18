@@ -3,7 +3,7 @@
 # Stage 1 Tests — Extraction Logic
 # Tests: URL routing, hash generation, JSON output, manifest, title extraction
 # ============================================================================
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/test_helpers.sh"

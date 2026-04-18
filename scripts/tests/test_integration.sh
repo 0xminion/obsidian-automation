@@ -4,7 +4,7 @@
 # Tests the pipeline by pre-populating Stage 1 output and running Stage 2+3.
 # This avoids network dependencies while still testing the actual scripts.
 # ============================================================================
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIPELINE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

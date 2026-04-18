@@ -245,7 +245,7 @@ VAULT_PATH="$HOME/MyVault" bash ~/MyVault/Meta/Scripts/reindex.sh
 ```
 Daily:    Drop sources in 01-Raw/, run process-inbox.sh
           → Pipeline: Extract → Plan → Create (parallel agents)
-          → Auto-updates: dashboard.md, tag-registry.md, wiki-index.md (if ≥5 notes)
+          → Auto-updates: vault-stats, tag-registry.md, wiki-index.md (if ≥5 notes)
           Drop questions in 03-Queries/, run query-vault.sh
 
 Weekly:   Run compile-pass.sh (cross-links, concept merge, edges, schema review)
@@ -259,8 +259,9 @@ Monthly:  Run reindex.sh (if lint flags drift — not usually needed due to auto
 ## Shared Library (`lib/common.sh`)
 
 All scripts source this. Provides:
+- `check_dependencies()` — preflight validation of required/optional tools
 - `log()` — structured logging
-- `run_with_retry()` — exponential backoff, max 3 attempts
+- `run_with_retry()` — exponential backoff, max 3 attempts (uses `-q`/`-Q` agent flags)
 - `acquire_lock()` / `release_lock()` — prevents overlapping runs
 - `source_exists_for_url()` / `register_url_source()` — URL dedup
 - `setup_directory_structure()` — creates all vault directories
@@ -285,7 +286,7 @@ Use `validate-output.sh --fix` to auto-repair common issues (null values, unquot
 
 ## Notes
 
-- Scripts use `set -uo pipefail` (not `set -e`). Errors are handled explicitly via `|| result=$?` pattern. This is intentional — transient failures (API rate limits, file races) should retry, not abort.
+- Scripts use `set -euo pipefail`. Command failures trigger explicit exit via `|| result=$?` pattern for retry logic (API rate limits, transient errors). Non-retryable failures abort immediately.
 - `setup-git-hooks.sh` intentionally does not source `lib/common.sh` — it runs during initial setup before the library exists.
 - Lock files use `mkdir` (atomic on POSIX) instead of `touch` (TOCTOU race).
 - `md5sum` has portable fallbacks: `md5 -q` (macOS) → `cksum` (any system).

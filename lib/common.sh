@@ -17,7 +17,7 @@
 #   - Reference: prediction-markets.md is the canonical format
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
 
 # C2 fix: guard against double-sourcing
 if [ -n "${_COMMON_SH_LOADED:-}" ]; then
@@ -49,6 +49,44 @@ AGENT_CMD="${AGENT_CMD:-hermes}"
 MAX_RETRIES="${MAX_RETRIES:-3}"
 
 mkdir -p "$VAULT_PATH/Meta/Scripts"
+
+# ═══════════════════════════════════════════════════════════
+# PREFLIGHT DEPENDENCY CHECK
+# ═══════════════════════════════════════════════════════════
+check_dependencies() {
+  local missing=()
+  local optional_missing=()
+
+  # Required tools
+  for cmd in bash jq curl python3 "$AGENT_CMD"; do
+    if ! command -v "$cmd" &>/dev/null; then
+      missing+=("$cmd")
+    fi
+  done
+
+  # Optional but recommended
+  for cmd in qmd yt-dlp ffmpeg; do
+    if ! command -v "$cmd" &>/dev/null; then
+      optional_missing+=("$cmd")
+    fi
+  done
+
+  # Python packages
+  if ! python3 -c "import yaml" 2>/dev/null; then
+    optional_missing+=("pyyaml (pip install pyyaml)")
+  fi
+
+  if [ ${#missing[@]} -gt 0 ]; then
+    echo "ERROR: Missing required dependencies: ${missing[*]}" >&2
+    return 1
+  fi
+
+  if [ ${#optional_missing[@]} -gt 0 ]; then
+    log "WARN: Missing optional dependencies: ${optional_missing[*]}"
+  fi
+
+  return 0
+}
 
 # ═══════════════════════════════════════════════════════════
 # LOGGING
@@ -141,7 +179,7 @@ acquire_lock() {
 }
 
 release_lock() {
-  rmdir "$_lock_dir" 2>/dev/null || true
+  rm -rf "$_lock_dir" 2>/dev/null || true
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -167,9 +205,8 @@ run_with_retry() {
     log "Attempt $attempt/$MAX_RETRIES: $description"
 
     local result=0
-    # Timeout agent calls at 10 minutes to prevent hangs on long prompts
-    # Use heredoc to safely pass prompt — prevents shell injection from prompt content
-    cd "$VAULT_PATH" && timeout 600 bash -c '"$AGENT_CMD" chat' <<< "$prompt" 2>> "$LOG_FILE" || result=$?
+    # Use -q for prompt content (prevents heredoc garbling) and -Q for quiet/clean output
+    cd "$VAULT_PATH" && timeout 600 "$AGENT_CMD" chat -q "$prompt" -Q 2>>"$LOG_FILE" || result=$?
 
     if [ $result -eq 0 ]; then
       log "SUCCESS: $description"
@@ -716,15 +753,19 @@ spec.loader.exec_module(mod)
 
 manifest = json.load(sys.stdin)
 matches = {}
+# Initialize daemon session once for entire batch
+session_id = mod._curl_init()
+if session_id:
+    mod._curl_request({'jsonrpc': '2.0', 'method': 'notifications/initialized', 'params': {}}, session_id)
 for entry in manifest:
     h = entry['hash']
     query = f\"{entry.get('title', '')} {entry.get('content', '')[:500]}\".strip()[:800]
     if not query:
         matches[h] = []
         continue
-    # Try daemon first (fast lex search)
+    # Reuse session for all queries in batch
     results = mod.daemon_query(query, collection=os.environ.get('QMD_COLLECTION', 'concepts'),
-                               limit=8, min_score=0.3, no_rerank=True)
+                               limit=8, min_score=0.3, no_rerank=True, session_id=session_id)
     if not results:
         # Fallback to CLI
         results = mod.cli_query(query, collection=os.environ.get('QMD_COLLECTION', 'concepts'),

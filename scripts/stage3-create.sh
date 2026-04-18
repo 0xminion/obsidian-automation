@@ -12,14 +12,14 @@
 # Output: Files written to vault, inbox archived, wiki-index updated
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 
 PARALLEL="${PARALLEL:-3}"
-PLANS="/tmp/extracted/plans.json"
-EXTRACT_DIR="/tmp/extracted"
+PLANS="${PIPELINE_TMPDIR:-/tmp/extracted}/plans.json"
+EXTRACT_DIR="${PIPELINE_TMPDIR:-/tmp/extracted}"
 
 ENTRY_TEMPLATE="$SCRIPT_DIR/../prompts/entry-structure.prompt"
 CONCEPT_TEMPLATE="$SCRIPT_DIR/../prompts/concept-structure.prompt"
@@ -50,7 +50,7 @@ if [ "$plan_count" -eq 0 ]; then
   exit 0
 fi
 
-batch_dir="/tmp/extracted/batches"
+batch_dir="$EXTRACT_DIR/batches"
 rm -rf "$batch_dir"
 mkdir -p "$batch_dir"
 
@@ -81,7 +81,7 @@ for i in range(parallel):
 # near-duplicates before creating new concepts.
 
 log "Running concept convergence search via qmd..."
-convergence_dir="/tmp/extracted/convergence"
+convergence_dir="$EXTRACT_DIR/convergence"
 rm -rf "$convergence_dir"
 mkdir -p "$convergence_dir"
 
@@ -165,7 +165,7 @@ for batch_file in "$batch_dir"/batch_*.json; do
   [ -f "$batch_file" ] || continue
 
   batch_name=$(basename "$batch_file" .json)
-  output_file="/tmp/extracted/${batch_name}_output.txt"
+  output_file="$EXTRACT_DIR/${batch_name}_output.txt"
 
   # Build prompt using Python helper (includes concept convergence data)
   log "Building prompt for $batch_name..."
@@ -176,7 +176,7 @@ for batch_file in "$batch_dir"/batch_*.json; do
   batch_prompt=$(python3 "$SCRIPT_DIR/build_batch_prompt.py" \
     "$batch_file" "$EXTRACT_DIR" "$VAULT_PATH" "$ENTRY_TEMPLATE" "$CONCEPT_TEMPLATE" "$COMMON_INSTRUCTIONS" "$convergence_file")
 
-  echo "$batch_prompt" > "/tmp/extracted/${batch_name}_prompt.md"
+  echo "$batch_prompt" > "$EXTRACT_DIR/${batch_name}_prompt.md"
   prompt_size=${#batch_prompt}
   log "Spawning agent for $batch_name (prompt: $prompt_size chars)..."
 
@@ -184,7 +184,7 @@ for batch_file in "$batch_dir"/batch_*.json; do
   (
     result=0
     timeout 900 "$AGENT_CMD" chat -q "$batch_prompt" -Q > "$output_file" 2>> "$LOG_FILE" || result=$?
-    echo "$result" > "/tmp/extracted/${batch_name}_exitcode"
+    echo "$result" > "$EXTRACT_DIR/${batch_name}_exitcode"
   ) &
 
   agent_pids+=($!)
@@ -209,7 +209,7 @@ for i in "${!agent_pids[@]}"; do
     log "Agent $batch_name completed successfully"
     successful_batches+=("$batch_name")
   else
-    exit_code=$(cat "/tmp/extracted/${batch_name}_exitcode" 2>/dev/null || echo "?")
+    exit_code=$(cat "$EXTRACT_DIR/${batch_name}_exitcode" 2>/dev/null || echo "?")
     log "Agent $batch_name FAILED (exit $exit_code)"
     failed_agents=$((failed_agents + 1))
   fi
@@ -224,7 +224,7 @@ log "Post-processing..."
 # Validate agent output quality
 log "Running output validation..."
 validate_result=0
-bash "$SCRIPT_DIR/validate-output.sh" --since "/tmp/extracted/manifest.json" 2>> "$LOG_FILE" || validate_result=$?
+bash "$SCRIPT_DIR/validate-output.sh" --since "$EXTRACT_DIR/manifest.json" 2>> "$LOG_FILE" || validate_result=$?
 if [ "$validate_result" -ne 0 ]; then
   log "WARN: Output validation found violations — check log for details"
   echo "WARNING: Some files have validation violations. Check processing.log for details."

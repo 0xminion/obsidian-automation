@@ -13,7 +13,7 @@
 # Output: Markdown formatted transcript saved to cache and stdout
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
@@ -107,7 +107,7 @@ youtube_supadata() {
   
   local response=$(curl -s -w "\n%{http_code}" \
     -X POST "https://api.supadata.ai/v1/youtube/transcript" \
-    -H "Authorization: Bearer $SUPADATA_API_KEY" \
+    -H "x-api-key: $SUPADATA_API_KEY" \
     -H "Content-Type: application/json" \
     -d "{\"video_url\": \"$url\", \"format\": \"text\"}" 2>&1)
   

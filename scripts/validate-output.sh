@@ -11,7 +11,12 @@
 # Output: JSON report to stdout, human-readable to stderr
 # ============================================================================
 
-set -uo pipefail
+set -euo pipefail
+
+# Preflight: PyYAML required for YAML frontmatter validation
+if ! python3 -c "import yaml" 2>/dev/null; then
+  echo "WARNING: PyYAML not installed. YAML validation will be skipped. Install with: pip install pyyaml" >&2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
