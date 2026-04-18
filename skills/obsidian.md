@@ -45,11 +45,11 @@ The v1 `process-inbox.sh` is still available as a fallback (single-agent, monoli
 
 - **arxiv** → arxiv HTML (defuddle) → alphaxiv full text → defuddle → liteparse → browser
 - **URLs/HTML/X-Twitter** → defuddle (primary) → liteparse (url mode) → browser screenshot
-- **YouTube** → TranscriptAPI → Supadata → whisper
-- **Podcasts** → download_audio → AssemblyAI → whisper (local fallback)
+- **YouTube** → TranscriptAPI (curl, full URL) → Supadata (POST JSON) → metadata fallback
+- **Podcasts** → iTunes Lookup API → RSS feed → Whisper transcription → RSS description
 - **PDFs/Docs** → liteparse (local) → OCR (liteparse --dpi 300) → ocr-and-documents
 
-Unified entry: `source lib/extract.sh && extract_content "$url_or_path"`
+For full extraction behavior table and pitfalls, see `skills/obsidian-ingest.md`.
 
 ## Lock Management
 
@@ -85,9 +85,9 @@ Core concept → Context (flowing prose — mechanism, significance, evidence, t
 **Concepts** (evergreen format, Chinese — language: zh):
 核心概念 → 背景 (flowing prose, no sub-headings) → 关联
 
-**MoCs** can be monolingual or bilingual bridges (Chinese/English).
+**MoCs**: Entries mixed under single bilingual heading (`## Section / 中文`). NO language sub-headings. Use `## Cross-References / 关联图谱` with ASCII diagram — NOT `## Bridge Concepts`.
 
-## Naming (in code: `title_to_filename` in lib/common.sh)
+## Naming
 
 **Source filenames MUST be the content's actual title — NOT the platform, author handle, or tweet/post ID.**
 
