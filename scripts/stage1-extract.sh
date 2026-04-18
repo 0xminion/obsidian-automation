@@ -22,13 +22,15 @@ if [ -z "${_COMMON_SH_LOADED:-}" ]; then
 fi
 source "$SCRIPT_DIR/../lib/extract.sh"
 
-# Parse args (C4 fix)
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --vault) VAULT_PATH="$2"; shift 2 ;;
-    *)       shift ;;
-  esac
-done
+# Parse args — skip when sourced for parallel execution
+if [ "${STAGE1_PARALLEL:-0}" != "1" ]; then
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --vault) VAULT_PATH="$2"; shift 2 ;;
+      *)       shift ;;
+    esac
+  done
+fi
 
 EXTRACT_DIR="/tmp/extracted"
 mkdir -p "$EXTRACT_DIR"
