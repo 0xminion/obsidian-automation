@@ -1,7 +1,7 @@
 ---
 name: obsidian-ingest
 description: "Process any URL, file, or link into the Obsidian vault. Drop URLs in chat, pipeline handles extraction + wiki creation."
-version: 2.1.0
+version: 2.2.0
 trigger: "obsidian"
 ---
 
@@ -15,124 +15,108 @@ User says "obsidian" + URLs/files → write to inbox → run pipeline. The codeb
 # 1. Write URLs to inbox (one .url file per URL)
 echo "$URL" > "$VAULT_PATH/01-Raw/$SANITIZED.url"
 
-# 2. Run pipeline (foreground for small batches, background for 3+ sources)
-# Foreground (≤2 sources, stage 3 usually finishes <600s):
-cd /home/linuxuser/workspaces/gamma/obsidian-automation
-VAULT_PATH=/home/linuxuser/MyVault bash scripts/process-inbox.sh
+# 2. Run pipeline (Python — canonical entry point)
+cd ~/MyVault && ./run.sh
+# or:
+pipeline ingest ~/MyVault --parallel 3
 
-# Background (3+ sources — stage 3 agents need ≥960s, terminal foreground max is 600s):
-terminal(command="cd /home/linuxuser/workspaces/gamma/obsidian-automation && VAULT_PATH=/home/linuxuser/MyVault bash scripts/process-inbox.sh", background=true, notify_on_complete=true, timeout=1200)
-# Then poll with process(action="poll", session_id=..., timeout=300) until status="exited"
+# Background (3+ sources):
+terminal(command="cd ~/MyVault && ./run.sh", background=true, notify_on_complete=true, timeout=1200)
 
-# 3. After pipeline: archive, reindex, sync
-mkdir -p "$VAULT_PATH/01-Raw/archive" && mv "$VAULT_PATH/01-Raw/"*.url "$VAULT_PATH/01-Raw/archive/"
-bash scripts/reindex.sh && ob sync --path "$VAULT_PATH"
+# 3. Done — pipeline handles reindex, archive, sync internally
 ```
 
-If orchestrator fails, run stages manually — **must set PIPELINE_TMPDIR** so stages share the same temp dir:
+## Python CLI (canonical)
+
 ```bash
-# Get the temp dir process-inbox.sh created (or create one)
-HASH=$(echo -n "$VAULT_PATH" | md5sum | cut -c1-8)
-export PIPELINE_TMPDIR="/tmp/obsidian-extracted-${HASH}"
-
-# If stage 1 already ran (check for manifest), skip to stage 2+3
-# Otherwise run all three:
-cd /home/linuxuser/workspaces/gamma/obsidian-automation
-VAULT_PATH=/home/linuxuser/MyVault bash scripts/stage1-extract.sh
-VAULT_PATH=/home/linuxuser/MyVault bash scripts/stage2-plan.sh
-VAULT_PATH=/home/linuxuser/MyVault bash scripts/stage3-create.sh --parallel 3
-
-# Post-processing (stage 3 does this internally, but do it manually if stage 3 timed out):
-bash scripts/reindex.sh && ob sync --path "$VAULT_PATH"
+cd ~/MyVault && ./run.sh                      # full pipeline
+pipeline ingest ~/MyVault --parallel 3        # explicit
+pipeline ingest ~/MyVault --dry-run           # preview
+pipeline ingest ~/MyVault --review            # save plans for review
+pipeline ingest ~/MyVault --resume            # continue from reviewed plans
+pipeline lint ~/MyVault                       # vault health checks
+pipeline reindex ~/MyVault                    # rebuild wiki-index.md
+pipeline stats ~/MyVault                      # show vault statistics
+pipeline validate ~/MyVault                   # validate pipeline output
 ```
 
-### Python CLI (alternative)
-
-The repo includes a Python rewrite (`pipeline/`) that can be used instead of the shell scripts:
-```bash
-cd /home/linuxuser/workspaces/gamma/obsidian-automation
-./run.sh ingest ~/MyVault --parallel 3
-./run.sh lint ~/MyVault
-./run.sh reindex ~/MyVault
-```
-This has 286 tests, better error handling, and no MCP overhead issues.
-
-### YouTube Transcript Chain (batch pipeline)
-
-`stage1-extract.sh` has a 3-step fallback chain (v2.2.0+):
-1. **TranscriptAPI** (primary) — requires `TRANSCRIPT_API_KEY` in `.env`
-2. **Supadata** (fallback) — requires `SUPADATA_API_KEY` in `.env`
-3. **faster-whisper** (last resort) — uses `yt-dlp` + `faster-whisper` Python module, no API key needed
-
-Without API keys, steps 1-2 silently skip and step 3 runs (slower, ~2-5 min per video).
-If all 3 fail, extraction saves metadata-only content (~182 chars) and reports "OK" — check content length to detect this.
+The repo root `run.sh` delegates to `python3 -m pipeline.cli`. The vault `run.sh` (created by `setup.sh`) also uses the Python pipeline.
 
 ## Pipeline
 
-Three stages (see scripts for details):
-- **Stage 1 — Extract** (shell, no agent): Parallel extraction. Output: `/tmp/extracted/manifest.json`
-- **Stage 2 — Plan** (1 agent): Semantic concept matching. Output: `/tmp/extracted/plans.json`
-- **Stage 3 — Create** (N agents, parallel): Writes Source → Entry → Concept → MoC files
+Three stages (all Python):
+- **Stage 1 — Extract** (`pipeline/extract.py`): Parallel extraction via defuddle/TranscriptAPI/AssemblyAI. No agent. Output: `/tmp/extracted/{hash}.json`
+- **Stage 2 — Plan** (`pipeline/plan.py`): Dedup + semantic concept matching via qmd + plan generation (1 agent). Output: `/tmp/extracted/plans.json`
+- **Stage 3 — Create** (`pipeline/create.py`): N parallel agents write Source → Entry → Concept → MoC files. Output: vault files + reindex + archive
 
-Options: `--parallel N` (default 3), `--vault PATH`
+### Extraction Chain
+
+| Source | Primary | Fallback |
+|---|---|---|
+| YouTube | TranscriptAPI (full URL) | Supadata → faster-whisper |
+| Podcasts | iTunes lookup → search fallback → RSS → AssemblyAI | RSS description |
+| X/Twitter | defuddle (FxTwitter API) | liteparse → browser |
+| Web/URLs | defuddle | liteparse → defuddle --json |
+| arxiv | defuddle (arxiv HTML) | alphaxiv.org |
 
 ### Timeouts
 
-Stage 1-2 are fast (seconds to ~1 min). **Stage 3 spawns hermes agents with a 900s internal timeout each.** When calling from terminal:
-- `terminal()` timeout must be ≥ 960s (900 + overhead)
-- For `--parallel N`, worst case is still 900s (batches run concurrently)
-- If terminal timeout < 900s, the parent shell gets killed, background agents become orphaned, and post-processing (reindex, archive, sync) never runs — but the agent may have already written files
-
-Stage 2 also calls `qmd` per plan with 300s timeout. Budget ~400s for stage 2 if calling manually.
+Stage 3 spawns hermes agents with 900s internal timeout. Terminal calls need ≥960s.
 
 ### MCP overhead
 
-Hermes MCP servers (chrome-devtools, composio) add ~647s of overhead per agent (128s init + 519s post-response dead time). Pipeline agents don't need them — they only write files. Disable unused MCP servers in `~/.hermes/profiles/<profile>/config.yaml` under `mcp_servers`. After removal, stage 3 drops from ~930s to ~100s per source.
+Hermes MCP servers (chrome-devtools, composio) add ~647s overhead per agent. Disable unused MCP servers in `~/.hermes/profiles/<profile>/config.yaml` under `mcp_servers`. After removal, stage 3 drops from ~930s to ~100s per source.
+
+## Shell Scripts (supplementary)
+
+The Python pipeline is canonical. Remaining shell scripts provide unique functionality:
+
+| Script | Purpose |
+|---|---|
+| `compile-pass.sh` | Cross-linking, concept merge, MoC rebuild, edges |
+| `review-pass.sh` | Interactive entry review |
+| `query-vault.sh` | Q&A with compound-back |
+| `lint-vault.sh` | 12 health checks |
+| `validate-output.sh` | Validate output + `--fix` auto-repair |
+| `vault-stats.sh` | Dashboard generation |
+
+These shell scripts use `lib/common.sh` for shared functions (logging, collision detection, qmd integration, edge management).
+
+**Deprecated** (moved to `scripts/_deprecated/`): `process-inbox.sh`, `stage1-extract.sh`, `stage2-plan.sh`, `stage3-create.sh`, `reindex.sh`, `build_batch_prompt.py`
 
 ## Pitfalls
 
 ### Stage 3 timeout looks like failure but isn't
 
-**Root cause:** Terminal timeout < 900s agent timeout. The parent shell dies, background agent keeps running orphaned, `wait` never returns, post-processing (validate → reindex → log → archive → sync) is skipped.
-
-**Symptoms:** "Terminated" in output, exit code 124, but vault may have new files.
-
-**Diagnosis:**
+Terminal timeout < 900s kills parent shell but agent keeps running orphaned. Check for files:
 ```bash
-# Check if agent wrote files despite timeout
 find $VAULT_PATH/04-Wiki -newer /tmp/extracted/manifest.json -name "*.md"
-# Check if agent finished its work
-cat /tmp/extracted/batch_0_output.txt | tail -20
 ```
 
-**Fix:** Re-run stage 3 directly with PIPELINE_TMPDIR set. Files already created won't be overwritten (collision check). Or just run the post-processing manually:
-```bash
-bash scripts/reindex.sh && ob sync --path $VAULT_PATH
-```
+### Podcast extraction
 
-### Batch agent exit 124 ≠ total failure
+Apple Podcasts store IDs don't match iTunes lookup IDs. The code falls back to iTunes search by podcast name. If search returns wrong podcast, manually set the RSS feed URL.
 
-An agent hitting the 900s `timeout` returns exit code 124. The script marks the batch as failed, but the agent may have written most or all files before being killed. After pipeline completes, check `Created: N | Failed: M` — if `M > 0` but vault has the expected files, the timeout was just cutting off tail work (logging, cleanup). Verify with:
-```bash
-find $VAULT_PATH/04-Wiki -newer /tmp/extracted/manifest.json -name "*.md" | wc -l
-```
+### X/Twitter extraction
+
+Defuddle uses FxTwitter API (`api.fxtwitter.com`). Some tweets return 404 (deleted, private, rate-limited). The extraction accepts short content (≥10 chars) since tweets are often brief.
 
 ## Note Structures
 
 Check `template:` frontmatter field. Default `standard`.
 
 | Template | Sections |
-|----------|----------|
+|---|---|
 | standard (EN) | Summary → Core insights → Other takeaways → Diagrams → Open questions → Linked concepts |
 | chinese (ZH) | 摘要 → 核心发现 → 其他要点 → 图表 → 开放问题 → 关联概念 |
 | technical | Summary → Key Findings → Data/Evidence → Methodology → Limitations → Linked concepts |
 
 **Concepts** (evergreen): Core concept → Context (flowing prose, no sub-headings) → Links
-**MoCs**: Topic-specific bilingual sections (e.g., `Funding Rates / 资金费率`). NOT language-split (no English Resources / 中文资源). NO Open Questions. Cross-References with ASCII diagram. Bridge Concepts + Related MoCs.
+**MoCs**: Topic-specific bilingual sections (e.g., `Funding Rates / 资金费率`). NOT language-split. NO Open Questions.
 
 ## Naming
 
-Source filenames = content title. See `title_to_filename()` in `lib/common.sh`.
+Source filenames = content title. See `title_to_filename()` in `pipeline/vault.py`.
 
 - Chinese → Chinese. Papers → paper title. English → kebab-case.
 - Tweets → topic, not tweet ID. YouTube → video title. Podcasts → episode title.
@@ -145,5 +129,5 @@ Source filenames = content title. See `title_to_filename()` in `lib/common.sh`.
 3. YAML: quote wikilinks (`source: "[[note]]"`), no nulls (`""` not `null`), quote titles with colons
 4. Chinese body stays Chinese — English YAML/tags only
 5. After pipeline: check for duplicates (`ls sources/ | sort | uniq -d`)
-6. Stage 3 timeout ≠ failure — the agent has 900s budget. Terminal timeout must be ≥ 960s. Check vault for new files before re-running; collision check prevents duplicates.
-7. Extraction: curl for APIs (Python urllib gets 403). See `lib/extract.sh` header for platform table.
+6. Stage 3 timeout ≠ failure — check vault for new files before re-running
+7. Extraction: curl for APIs (Python urllib gets 403). Titles have markdown stripped automatically.
