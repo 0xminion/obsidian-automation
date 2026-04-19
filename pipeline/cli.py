@@ -392,6 +392,8 @@ def validate(
         typer.echo(f"Found {len(violations)} violation(s):")
         for v in violations:
             typer.echo(f"  ✗ {v}")
+        if fix:
+            typer.echo("Auto-fix not yet implemented — violations listed above require manual correction.")
         raise typer.Exit(code=1)
     else:
         typer.echo("Output validation passed ✓")

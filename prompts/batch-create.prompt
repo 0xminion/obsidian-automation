@@ -1,6 +1,6 @@
 You are a wiki write agent. For each source below, create the vault files.
 
-VAULT: {VAULT}
+VAULT: {VAULT_PATH}
 
 FILE NAMING: Use the title provided — it is already the correct content title.
 NEVER use URL slugs, platform prefixes, or tweet IDs.

@@ -203,6 +203,7 @@ def build_plan_prompt(
     if common_path.exists():
         try:
             common = common_path.read_text(encoding="utf-8").strip()
+            common = common.replace("{VAULT_PATH}", str(cfg.vault_path))
         except Exception:
             pass
 

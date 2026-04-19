@@ -4,17 +4,20 @@ Automated knowledge management that turns web content, YouTube videos, PDFs, and
 
 3-stage pipeline: extract → plan → create. Parallel agents, semantic concept search, bilingual (EN/ZH) support.
 
+**Canonical pipeline: Python** (`pipeline/cli.py`). Shell scripts are deprecated — see `scripts/_deprecated/`.
+
 ## Setup
 
 ```bash
 git clone https://github.com/0xminion/obsidian-automation.git
 cd obsidian-automation
 ./setup.sh ~/MyVault
+# setup.sh installs the Python package and creates a run.sh wrapper
 # Edit API keys:
 nano ~/MyVault/Meta/Scripts/.env
 ```
 
-`setup.sh` creates directories, copies scripts, checks dependencies, and creates a `run.sh` wrapper.
+`setup.sh` creates directories, installs the pipeline Python package (editable), checks dependencies, and creates a `run.sh` wrapper that uses the Python pipeline.
 
 ### Prerequisites
 
@@ -142,19 +145,38 @@ Core concept → Context (flowing prose) → Links
 
 ## Scripts
 
+The Python pipeline (`pipeline/cli.py`) is the canonical entry point. Remaining shell scripts provide supplementary functionality not yet ported to Python.
+
 | Script | Purpose |
 |---|---|
-| `setup.sh` | One-command vault setup |
-| `process-inbox.sh` | **Primary pipeline.** 3-stage: Extract → Plan → Create |
+| `compile-pass.sh` | Cross-linking, concept merge, MoC rebuild, edges, schema review |
 | `review-pass.sh` | Review entries: `--untouched`, `--last N`, `--topic TAG` |
-| `compile-pass.sh` | Cross-linking, concept merge, edges, schema review |
 | `query-vault.sh` | Q&A with compound-back |
 | `lint-vault.sh` | 12 health checks |
 | `vault-stats.sh` | Dashboard: size, growth, health |
-| `reindex.sh` | Full rebuild of wiki-index.md |
-| `validate-output.sh` | Validates frontmatter, sections, stubs, tags. Supports `--fix` |
-| `setup-qmd.sh` | One-time qmd setup |
+| `validate-output.sh` | Validates pipeline output. Supports `--fix` |
+| `setup-git-hooks.sh` | Git initialization + hooks |
+| `update-tag-registry.sh` | Tag registry rebuild |
 | `extract-transcript.sh` | Standalone transcript extraction |
+| `migrate-vault.sh` | Adopt existing vaults (scan/dry-run/execute) |
+| `setup-qmd.sh` | One-time qmd setup |
+
+**Deprecated** (moved to `scripts/_deprecated/`): `process-inbox.sh`, `stage1-extract.sh`, `stage2-plan.sh`, `stage3-create.sh`, `reindex.sh`, `build_batch_prompt.py` — replaced by Python pipeline modules.
+
+## Python Pipeline
+
+```bash
+# Primary entry point (after setup):
+cd ~/MyVault && ./run.sh
+# or:
+pipeline ingest ~/MyVault
+
+# Other commands:
+pipeline lint ~/MyVault        # vault health checks
+pipeline reindex ~/MyVault     # rebuild wiki-index.md
+pipeline stats ~/MyVault       # show vault statistics
+pipeline validate ~/MyVault    # validate pipeline output
+```
 
 ## Pipeline details
 

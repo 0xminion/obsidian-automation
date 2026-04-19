@@ -82,21 +82,33 @@ fi
 echo ""
 echo -e "${BOLD}[2/5] Copying pipeline files...${NC}"
 
-# Scripts
+# Scripts (skip _deprecated/)
 cp_count=0
 for f in "$SCRIPT_DIR"/scripts/*.sh; do
   [ -f "$f" ] || continue
+  # Skip deprecated scripts
+  case "$(basename "$f")" in
+    process-inbox.sh|stage1-extract.sh|stage2-plan.sh|stage3-create.sh|reindex.sh) continue ;;
+  esac
   dest="$VAULT_PATH/Meta/Scripts/$(basename "$f")"
   if [ ! -f "$dest" ] || ! diff -q "$f" "$dest" &>/dev/null; then
     cp "$f" "$dest"
     cp_count=$((cp_count + 1))
   fi
 done
-chmod +x "$VAULT_PATH/Meta/Scripts/"*.sh
+chmod +x "$VAULT_PATH/Meta/Scripts/"*.sh 2>/dev/null || true
+
+# Clean up deprecated scripts from vault
+for f in process-inbox.sh stage1-extract.sh stage2-plan.sh stage3-create.sh reindex.sh build_batch_prompt.py; do
+  [ -f "$VAULT_PATH/Meta/Scripts/$f" ] && rm "$VAULT_PATH/Meta/Scripts/$f" && cp_count=$((cp_count + 1))
+done
 
 # Python helpers
 for f in "$SCRIPT_DIR"/scripts/*.py; do
   [ -f "$f" ] || continue
+  case "$(basename "$f")" in
+    build_batch_prompt.py) continue ;;  # deprecated
+  esac
   dest="$VAULT_PATH/Meta/Scripts/$(basename "$f")"
   if [ ! -f "$dest" ] || ! diff -q "$f" "$dest" &>/dev/null; then
     cp "$f" "$dest"
@@ -216,13 +228,31 @@ fi
 echo ""
 echo -e "${BOLD}[5/5] Creating run wrapper...${NC}"
 
+# Install Python package if setup.py/pyproject.toml exists
+if [ -f "$SCRIPT_DIR/pyproject.toml" ] || [ -f "$SCRIPT_DIR/setup.py" ]; then
+  if pip install -e "$SCRIPT_DIR" --quiet 2>/dev/null; then
+    ok "Installed pipeline Python package (editable)"
+  else
+    warn "pip install failed — run.sh will use python3 -m pipeline.cli from repo"
+  fi
+fi
+
 cat > "$VAULT_PATH/run.sh" << 'RUNEOF'
 #!/usr/bin/env bash
 # Wrapper: process inbox without remembering VAULT_PATH every time
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export VAULT_PATH="$SCRIPT_DIR"
-exec bash "$SCRIPT_DIR/Meta/Scripts/process-inbox.sh" "$@"
+
+# Use Python pipeline (canonical). Fallback to shell if Python not available.
+if command -v pipeline &>/dev/null; then
+  exec pipeline ingest "$SCRIPT_DIR" "$@"
+elif python3 -c "import pipeline.cli" 2>/dev/null; then
+  exec python3 -m pipeline.cli ingest "$SCRIPT_DIR" "$@"
+else
+  echo "ERROR: Python pipeline not found. Install with: pip install -e /path/to/obsidian-automation" >&2
+  exit 1
+fi
 RUNEOF
 chmod +x "$VAULT_PATH/run.sh"
 ok "Created $VAULT_PATH/run.sh"

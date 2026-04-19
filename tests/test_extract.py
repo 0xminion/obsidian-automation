@@ -136,7 +136,7 @@ class TestExtractTitle:
 
     def test_heading_with_markdown(self):
         content = "# **Bold** Title Here\n\nBody."
-        assert extract_title(content) == "**Bold** Title Here"
+        assert extract_title(content) == "Bold Title Here"
 
     def test_chinese_title(self):
         content = "# 深度学习入门指南\n\n正文内容。"

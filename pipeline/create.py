@@ -198,7 +198,11 @@ def build_batch_prompt(
         extract_file = extract_dir / f"{h}.json"
         try:
             ext = json.loads(extract_file.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
+        except FileNotFoundError:
+            log.warning("Extract file missing for hash %s, skipping", h)
+            continue
+        except json.JSONDecodeError:
+            log.warning("Corrupt extract file for hash %s, skipping", h)
             continue
 
         title = plan.title
@@ -253,7 +257,7 @@ CONTENT:
 
     # Compose batch-create prompt with variable substitution
     batch_filled = batch_create
-    batch_filled = batch_filled.replace("{VAULT}", vault)
+    batch_filled = batch_filled.replace("{VAULT_PATH}", vault)
     batch_filled = batch_filled.replace("{SOURCES_BLOCK}", sources_block)
     batch_filled = batch_filled.replace("{ENTRY_STRUCTURE}", entry_structure)
     batch_filled = batch_filled.replace("{CONCEPT_STRUCTURE}", concept_structure)
@@ -482,12 +486,11 @@ def create_all(plans: Plans, cfg: Config, parallel: int = 3) -> dict:
         log.info("Output validation passed")
 
     # 2. Reindex
-    if plan_count >= 1:
-        log.info("Rebuilding wiki-index...")
-        try:
-            reindex(cfg)
-        except Exception:
-            log.exception("Reindex failed")
+    log.info("Rebuilding wiki-index...")
+    try:
+        reindex(cfg)
+    except Exception:
+        log.exception("Reindex failed")
 
     # 3. Log to vault
     try:

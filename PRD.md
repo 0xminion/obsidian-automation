@@ -1,10 +1,10 @@
-# PRD: obsidian-automation v2.1.0
+# PRD: obsidian-automation v2.2.0
 
 ## Executive Summary
 
-v2.1.0 is the self-contained Obsidian vault automation system that turns raw web content into a structured, interconnected wiki. Pipeline: Source → Entry → Concept → MoC. All automation baked into scripts, no external cron dependencies.
+v2.2.0 is the self-contained Obsidian vault automation system that turns raw web content into a structured, interconnected wiki. Pipeline: Source → Entry → Concept → MoC. All automation baked into the Python pipeline, no external cron dependencies.
 
-**Architecture:** 3-stage pipeline (Extract → Plan → Create) with parallel extraction, semantic concept search via qmd (Qwen3-Embedding-0.6B-Q8), and parallel write agents. 4-6x faster than the monolithic v1.
+**Architecture:** 3-stage Python pipeline (Extract → Plan → Create) with parallel extraction, semantic concept search via qmd (Qwen3-Embedding-0.6B-Q8), and parallel write agents. Shell scripts deprecated — Python is the single source of truth.
 
 ## Problem Statement
 
@@ -105,19 +105,27 @@ Format (both languages):
 
 | Script | Purpose |
 |---|---|
-| `process-inbox.sh` | **Primary pipeline.** 3-stage: Extract → Plan → Create. Supports `--review`, `--resume`, `--parallel N`, `--dry-run` |
-| `review-pass.sh` | Review entries: `--untouched`, `--last N`, `--topic TAG`, `--entry NAME`, `--interactive` |
+| `setup.sh` | One-command vault setup (installs Python package, creates run.sh) |
 | `compile-pass.sh` | Cross-linking, concept convergence, MoC rebuild, edges, schema review |
-| `query-vault.sh` | Q&A with compound-back (answers update existing pages) |
-| `lint-vault.sh` | 12 health checks (orphans, unreviewed, stale, broken links, empty, concept structure, template sections, orphaned concepts, index drift, edges, stubs, tags) |
+| `review-pass.sh` | Review entries: `--untouched`, `--last N`, `--topic TAG`, `--interactive` |
+| `query-vault.sh` | Q&A with compound-back |
+| `lint-vault.sh` | 12 health checks (orphans, unreviewed, stale, broken links, etc.) |
 | `vault-stats.sh` | Dashboard generation |
-| `reindex.sh` | Full wiki-index.md rebuild |
+| `validate-output.sh` | Validates pipeline output: frontmatter, sections, stubs, tags. Supports `--fix` |
 | `setup-git-hooks.sh` | Git initialization + hooks |
 | `update-tag-registry.sh` | Tag registry rebuild |
 | `extract-transcript.sh` | Standalone transcript extraction |
 | `migrate-vault.sh` | Adopt existing vaults (scan/dry-run/execute) |
-| `validate-output.sh` | Validates pipeline output: frontmatter, sections, stubs, tags. Supports `--fix` |
 | `setup-qmd.sh` | One-time setup for qmd semantic search |
+
+**Python pipeline** (canonical):
+| Command | Purpose |
+|---|---|
+| `pipeline ingest` | Full 3-stage pipeline (extract → plan → create) |
+| `pipeline lint` | Vault health checks |
+| `pipeline reindex` | Rebuild wiki-index.md |
+| `pipeline stats` | Show vault statistics |
+| `pipeline validate` | Validate pipeline output |
 
 ### Key Design Decisions
 

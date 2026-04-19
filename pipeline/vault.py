@@ -134,7 +134,6 @@ def write_source(cfg: Config, source: ExtractedSource) -> Path:
     filename = resolve_collision(cfg.sources_dir, filename)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    tags_str = ""  # sources don't typically get tags per conventions
 
     frontmatter = _build_frontmatter({
         "title": source.title,
@@ -142,7 +141,7 @@ def write_source(cfg: Config, source: ExtractedSource) -> Path:
         "source_type": source.type.value if hasattr(source.type, "value") else str(source.type),
         "author": source.author or "",
         "date_captured": now,
-        "tags": [] if not tags_str else [tags_str],
+        "tags": [],
         "status": "raw",
     })
 
@@ -167,11 +166,12 @@ def write_entry(cfg: Config, plan: Plan, content: str) -> Path:
     filename = resolve_collision(cfg.entries_dir, filename)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Source note uses same filename as entry (per naming convention: match source filename)
     source_link = f"[[{title_to_filename(plan.title)}]]"
 
     frontmatter = _build_frontmatter({
         "title": plan.title,
-        "source": source_link,
+        "source": source_link,  # links to the Source note (same filename)
         "date_entry": now,
         "status": "draft",
         "template": plan.template.value if hasattr(plan.template, "value") else str(plan.template),

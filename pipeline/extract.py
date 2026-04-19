@@ -74,7 +74,7 @@ def extract_title(content: str) -> str:
         if stripped.startswith("# ") and not stripped.lstrip("# ").startswith("Original content"):
             title = stripped.lstrip("# ").strip()
             if len(title) > 5:
-                return title[:120]
+                return _strip_markdown(title[:120])
 
     # Fallback: first non-empty, non-URL, non-image line
     for line in content.split("\n"):
@@ -84,15 +84,28 @@ def extract_title(content: str) -> str:
         if stripped.startswith(("http", "!", "[")):
             continue
         if len(stripped) > 20:
-            return stripped[:120]
+            return _strip_markdown(stripped[:120])
 
     # Last resort: first non-empty line
     for line in content.split("\n"):
         stripped = line.strip()
         if stripped:
-            return stripped[:120]
+            return _strip_markdown(stripped[:120])
 
     return ""
+
+
+def _strip_markdown(text: str) -> str:
+    """Strip markdown formatting from text for clean titles."""
+    # Remove bold/italic markers
+    text = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', text)
+    # Remove inline code
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # Remove links: [text](url) → text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Remove images: ![alt](url) → alt
+    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', text)
+    return text.strip()
 
 
 # ─── URL Helpers ──────────────────────────────────────────────────────────────
