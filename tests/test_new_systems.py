@@ -11,7 +11,7 @@ from pipeline.models import (
     ExtractedSource, Language, Manifest, Plan, Plans, SourceType, Template, ConceptMatch,
 )
 from pipeline.plan import (
-    detect_language, select_template, extract_tags,
+    detect_language, select_template,
     generate_plan_heuristic, generate_plans_deterministic,
 )
 from pipeline.create import (
@@ -218,22 +218,6 @@ class TestSelectTemplate:
     def test_general_content(self):
         content = "This is a blog post about personal experiences and opinions on life."
         assert select_template(SourceType.WEB, content) == Template.STANDARD
-
-
-class TestExtractTags:
-    def test_crypto_content(self):
-        content = "This article discusses cryptocurrency, blockchain technology, and ethereum smart contracts for defi applications."
-        tags = extract_tags(content)
-        assert "crypto" in tags
-
-    def test_no_matches(self):
-        tags = extract_tags("Hello world.")
-        assert tags == []
-
-    def test_max_tags(self):
-        content = " ".join(["cryptocurrency blockchain"] * 10 + ["machine learning artificial intelligence"] * 10)
-        tags = extract_tags(content, max_tags=2)
-        assert len(tags) <= 2
 
 
 class TestGeneratePlanHeuristic:
