@@ -146,7 +146,7 @@ def approve_reviews(cfg: Config, review_ids: Optional[list[int]] = None) -> dict
         try:
             from pipeline.vault import reindex as vault_reindex, archive_inbox
             vault_reindex(cfg)
-            archive_inbox(cfg)
+            archive_inbox(cfg, set())
         except Exception as e:
             log.warning("Post-approve reindex/archive failed: %s", e)
 

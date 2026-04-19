@@ -344,7 +344,7 @@ def build_plan_prompt(
         concept_count = len(list(cfg.concepts_dir.glob("*.md")))
 
     # Build sources block
-    sources_block = ""
+    sources_block_parts = []
     for i, entry in enumerate(manifest.entries):
         h = entry.hash
         title = entry.title[:120]
@@ -354,7 +354,7 @@ def build_plan_prompt(
         matches = concept_matches.get(h, [])
         match_dicts = [{"concept": m.concept, "score": m.score} for m in matches]
 
-        sources_block += f"""
+        sources_block_parts.append(f"""
 ---
 Source {i+1}:
   hash: {h}
@@ -363,7 +363,8 @@ Source {i+1}:
   author: {author}
   content_preview: {content_preview}
   concept_matches: {json.dumps(match_dicts)}
-"""
+""")
+    sources_block = "".join(sources_block_parts)
 
     common_section = f"{common}\n\n" if common else ""
 

@@ -468,7 +468,7 @@ def build_batch_prompt(
     # Build per-source data blocks
     MAX_TOTAL_CONTENT = 15000
     total_content_chars = 0
-    sources_block = ""
+    sources_block_parts = []
 
     for plan in batch:
         h = plan.hash
@@ -514,7 +514,7 @@ def build_batch_prompt(
                 f"{conv_lines}\n"
             )
 
-        sources_block += f"""
+        sources_block_parts.append(f"""
 ══════════════════════════════════════
 SOURCE: {title}
 HASH: {h}
@@ -530,7 +530,8 @@ MOC_TARGETS: {moc_targets}{convergence_block}
 CONTENT:
 {content}
 ══════════════════════════════════════
-"""
+""")
+    sources_block = "".join(sources_block_parts)
 
     # Compose batch-create prompt with variable substitution
     batch_filled = batch_create
@@ -972,7 +973,7 @@ def create_all(plans: Plans, cfg: Config, parallel: int = 3) -> dict:
     _sync_vault(cfg)
 
     # ─── Compute stats ────────────────────────────────────────────────────
-    created = plan_count - failed_count
+    created = sum(1 for r in results if r["status"] == "ok")
     # Count entries and concepts from successful results
     entries_count = sum(r["plans"] for r in results if r["status"] == "ok")
 

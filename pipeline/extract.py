@@ -191,7 +191,7 @@ def extract_url(url: str, cfg: Config,
     source = ExtractedSource(
         url=url,
         title=url,
-        content=f"URL: {url}\\n\\nNote: Extraction failed after {max_retries} attempts. Last error: {last_error}",
+        content=f"URL: {url}\n\nNote: Extraction failed after {max_retries} attempts. Last error: {last_error}",
         type=source_type,
     )
     source.save(cfg.resolved_extract_dir)
@@ -228,31 +228,32 @@ def extract_all(urls: list[str], cfg: Config, parallel: int = 4) -> Manifest:
 
     # Open content store for dedup and DLQ
     store = ContentStore.open(cfg.resolved_extract_dir)
+    try:
 
-    def _extract_one(url: str) -> Optional[ExtractedSource]:
-        try:
-            source = extract_url(url, cfg, store=store)
-            # Skip dedup stubs (empty content, title starts with [dedup:)
-            if not source.content or source.title.startswith("[dedup:"):
+        def _extract_one(url: str) -> Optional[ExtractedSource]:
+            try:
+                source = extract_url(url, cfg, store=store)
+                # Skip dedup stubs (empty content, title starts with [dedup:)
+                if not source.content or source.title.startswith("[dedup:"):
+                    return None
+                return source
+            except Exception as e:
+                log.error("Failed to extract %s: %s", url, e)
                 return None
-            return source
-        except Exception as e:
-            log.error("Failed to extract %s: %s", url, e)
-            return None
 
-    with ThreadPoolExecutor(max_workers=parallel) as executor:
-        futures = {executor.submit(_extract_one, url): url for url in urls}
-        for future in as_completed(futures):
-            result = future.result()
-            if result:
-                is_valid, reason = _validate_extraction(result.content)
-                if is_valid:
-                    manifest.entries.append(result)
-                else:
-                    url = futures[future]
-                    log.warning("Skipping invalid extraction for %s: %s", url, reason)
-
-    store.close()
+        with ThreadPoolExecutor(max_workers=parallel) as executor:
+            futures = {executor.submit(_extract_one, url): url for url in urls}
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    is_valid, reason = _validate_extraction(result.content)
+                    if is_valid:
+                        manifest.entries.append(result)
+                    else:
+                        url = futures[future]
+                        log.warning("Skipping invalid extraction for %s: %s", url, reason)
+    finally:
+        store.close()
 
     # Save manifest
     manifest.save(cfg.resolved_extract_dir)

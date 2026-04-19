@@ -87,16 +87,13 @@ def _run_agent(cfg: Config, prompt: str, description: str, max_retries: int = 3)
 
 def run_compile(cfg: Config) -> dict:
     """Run the compile pass. Returns result dict."""
-    # Locate prompts dir relative to this file
-    this_dir = Path(__file__).parent
-    repo_root = this_dir.parent
-    prompts_dir = repo_root / "prompts"
+    # Load and substitute prompt
+    prompts_dir = cfg.prompts_dir if cfg.prompts_dir.exists() else Path(__file__).parent.parent / "prompts"
 
     entry_count = _count_md(cfg.entries_dir)
     concept_count = _count_md(cfg.concepts_dir)
     moc_count = _count_md(cfg.mocs_dir)
 
-    # Load and substitute prompt
     prompt = _load_prompt("compile-pass", prompts_dir)
     if not prompt:
         return {"success": False, "error": "compile-pass.prompt not found"}

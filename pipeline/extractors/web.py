@@ -67,7 +67,7 @@ def extract_web(url: str, cfg: Config, source_type: SourceType = SourceType.WEB)
 
     if not content:
         log.warning("All web extraction methods failed for %s", url)
-        content = f"URL: {url}\\n\\nNote: Content extraction failed (all methods exhausted)."
+        content = f"URL: {url}\n\nNote: Content extraction failed (all methods exhausted)."
 
     title = extract_title(content)
 
@@ -210,7 +210,8 @@ def _try_archive_extract(url: str, timeout: int = 45) -> str:
 
     Fetches the most recent archived version of the page.
     """
-    archive_url = f"https://web.archive.org/web/2024/{url}"
+    from datetime import datetime
+    archive_url = f"https://web.archive.org/web/{datetime.now().year}/{url}"
     try:
         content = _try_defuddle(archive_url, timeout)
         if content and len(content) > 200:

@@ -220,7 +220,7 @@ def transcribe_with_whisper(audio_file: str) -> str:
     try:
         from faster_whisper import WhisperModel
         model = WhisperModel("base", device="cpu", compute_type="int8")
-        segments, _info = model.transcribe(audio_file, language="en")
+        segments, _info = model.transcribe(audio_file)
         return " ".join(s.text for s in segments)
     except ImportError:
         return ""
