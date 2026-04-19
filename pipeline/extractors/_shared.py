@@ -215,12 +215,13 @@ def validate_extraction(content: str) -> tuple[bool, str]:
 
 # ─── Whisper Transcription ───────────────────────────────────────────────────
 
-def transcribe_with_whisper(audio_file: str) -> str:
+def transcribe_with_whisper(audio_file: str, language: str = "") -> str:
     """Transcribe audio file with local faster-whisper."""
     try:
         from faster_whisper import WhisperModel
         model = WhisperModel("base", device="cpu", compute_type="int8")
-        segments, _info = model.transcribe(audio_file)
+        kwargs = {"language": language} if language else {}
+        segments, _info = model.transcribe(audio_file, **kwargs)
         return " ".join(s.text for s in segments)
     except ImportError:
         return ""

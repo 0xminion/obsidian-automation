@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from pipeline.config import Config
+from pipeline.utils import count_md
 
 log = logging.getLogger(__name__)
 
@@ -36,10 +37,6 @@ def _load_prompt(name: str, prompts_dir: Path) -> str:
     return ""
 
 
-def _count_md(directory: Path) -> int:
-    if not directory.exists():
-        return 0
-    return len(list(directory.glob("*.md")))
 
 
 def _run_agent(cfg: Config, prompt: str, description: str, max_retries: int = 3) -> bool:
@@ -90,9 +87,9 @@ def run_compile(cfg: Config) -> dict:
     # Load and substitute prompt
     prompts_dir = cfg.prompts_dir if cfg.prompts_dir.exists() else Path(__file__).parent.parent / "prompts"
 
-    entry_count = _count_md(cfg.entries_dir)
-    concept_count = _count_md(cfg.concepts_dir)
-    moc_count = _count_md(cfg.mocs_dir)
+    entry_count = count_md(cfg.entries_dir)
+    concept_count = count_md(cfg.concepts_dir)
+    moc_count = count_md(cfg.mocs_dir)
 
     prompt = _load_prompt("compile-pass", prompts_dir)
     if not prompt:

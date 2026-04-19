@@ -69,6 +69,14 @@ class Config:
     agent_timeout: int = 900
     plan_timeout: int = 600
 
+    # Content limits (configurable for token optimization)
+    max_content_per_source: int = 8000  # max chars per source in batch prompt
+    max_total_content: int = 15000  # max total content chars in batch prompt
+    max_content_insights: int = 6000  # max chars for insight agent
+
+    # Whisper
+    whisper_language: str = ""  # empty = auto-detect, "en", "zh", etc.
+
     @property
     def resolved_extract_dir(self) -> Path:
         if self.extract_dir:

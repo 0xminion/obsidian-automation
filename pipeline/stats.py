@@ -10,20 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from pipeline.config import Config
-
-
-def _count_md(directory: Path) -> int:
-    """Count .md files in a directory."""
-    if not directory.exists():
-        return 0
-    return len(list(directory.glob("*.md")))
-
-
-def _extract_frontmatter_field(content: str, field: str) -> str:
-    """Extract a single field value from YAML frontmatter."""
-    import re
-    match = re.search(rf"^{field}:\s*[\"']?(.*?)[\"']?\s*$", content, re.MULTILINE)
-    return match.group(1).strip() if match else ""
+from pipeline.utils import count_md, extract_frontmatter_field
 
 
 def generate_dashboard(cfg: Config) -> str:
@@ -32,10 +19,10 @@ def generate_dashboard(cfg: Config) -> str:
     lines = [f"# Wiki Dashboard — {today}", ""]
 
     # ─── Vault Size ────────────────────────────────────────────────────────────
-    entries = _count_md(cfg.entries_dir)
-    concepts = _count_md(cfg.concepts_dir)
-    mocs = _count_md(cfg.mocs_dir)
-    sources = _count_md(cfg.sources_dir)
+    entries = count_md(cfg.entries_dir)
+    concepts = count_md(cfg.concepts_dir)
+    mocs = count_md(cfg.mocs_dir)
+    sources = count_md(cfg.sources_dir)
     total = entries + concepts + mocs + sources
 
     lines.extend([
@@ -57,7 +44,7 @@ def generate_dashboard(cfg: Config) -> str:
     if cfg.entries_dir.exists():
         for md in cfg.entries_dir.glob("*.md"):
             content = md.read_text(encoding="utf-8", errors="replace")
-            entry_date = _extract_frontmatter_field(content, "date_entry")
+            entry_date = extract_frontmatter_field(content, "date_entry")
             if entry_date and entry_date > cutoff:
                 recent_entries += 1
 
@@ -74,7 +61,7 @@ def generate_dashboard(cfg: Config) -> str:
     if cfg.entries_dir.exists():
         for md in cfg.entries_dir.glob("*.md"):
             content = md.read_text(encoding="utf-8", errors="replace")
-            reviewed = _extract_frontmatter_field(content, "reviewed")
+            reviewed = extract_frontmatter_field(content, "reviewed")
             if not reviewed or reviewed in ("", "null", "None"):
                 unreviewed_count += 1
             else:
@@ -91,26 +78,21 @@ def generate_dashboard(cfg: Config) -> str:
     ])
 
     # ─── Health Indicators ─────────────────────────────────────────────────────
-    # Orphan check (quick)
+    # Orphan check — O(N) indexed approach: build reference set once
+    import re as _re
+    all_refs: set[str] = set()
+    for ref_dir in (cfg.entries_dir, cfg.concepts_dir, cfg.mocs_dir, cfg.sources_dir):
+        if not ref_dir.exists():
+            continue
+        for md in ref_dir.glob("*.md"):
+            content = md.read_text(encoding="utf-8", errors="replace")
+            for m in _re.finditer(r'\[\[([^\]]+)\]\]', content):
+                all_refs.add(m.group(1))
+
     orphan_count = 0
     if cfg.entries_dir.exists():
         for md in cfg.entries_dir.glob("*.md"):
-            name = md.stem
-            # Check if any other file references this entry
-            referenced = False
-            for other_dir in (cfg.entries_dir, cfg.concepts_dir, cfg.mocs_dir, cfg.sources_dir):
-                if not other_dir.exists():
-                    continue
-                for other_md in other_dir.glob("*.md"):
-                    if other_md == md:
-                        continue
-                    other_content = other_md.read_text(encoding="utf-8", errors="replace")
-                    if f"[[{name}]]" in other_content:
-                        referenced = True
-                        break
-                if referenced:
-                    break
-            if not referenced:
+            if md.stem not in all_refs:
                 orphan_count += 1
 
     # Edges count
@@ -172,10 +154,10 @@ def run_stats(cfg: Config) -> dict:
     dashboard_path.write_text(content, encoding="utf-8")
 
     # Parse counts for return
-    entries = _count_md(cfg.entries_dir)
-    concepts = _count_md(cfg.concepts_dir)
-    mocs = _count_md(cfg.mocs_dir)
-    sources = _count_md(cfg.sources_dir)
+    entries = count_md(cfg.entries_dir)
+    concepts = count_md(cfg.concepts_dir)
+    mocs = count_md(cfg.mocs_dir)
+    sources = count_md(cfg.sources_dir)
     total = entries + concepts + mocs + sources
 
     return {

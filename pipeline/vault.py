@@ -376,10 +376,7 @@ to find relevant notes instead of using RAG.
 """
 
 
-def _extract_frontmatter_field(content: str, field: str) -> str:
-    """Extract a single field value from YAML frontmatter."""
-    match = re.search(rf"^{field}:\s*[\"']?(.*?)[\"']?\s*$", content, re.MULTILINE)
-    return match.group(1).strip() if match else ""
+from pipeline.utils import extract_frontmatter_field as _extract_frontmatter_field
 
 
 def _extract_summary(content: str) -> str:

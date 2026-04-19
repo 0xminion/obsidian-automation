@@ -22,8 +22,7 @@ class SourceType(str, Enum):
     WEB = "web"
     YOUTUBE = "youtube"
     PODCAST = "podcast"
-    PDF = "pdf"
-    TWITTER = "twitter"
+    TWITTER = "twitter"  # Routes through web extractor (x.com/twitter.com)
     UNKNOWN = "unknown"
 
 

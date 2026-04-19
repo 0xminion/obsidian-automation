@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from pipeline.compile import _load_prompt, _count_md, run_compile
+from pipeline.compile import _load_prompt, run_compile
+from pipeline.utils import count_md
 from pipeline.config import Config
 
 
@@ -40,7 +41,7 @@ class TestCountMd:
     def test_empty_dir(self, tmp_path):
         d = tmp_path / "empty"
         d.mkdir()
-        assert _count_md(d) == 0
+        assert count_md(d) == 0
 
     def test_counts_md_files(self, tmp_path):
         d = tmp_path / "notes"
@@ -48,10 +49,10 @@ class TestCountMd:
         (d / "a.md").write_text("# A\n")
         (d / "b.md").write_text("# B\n")
         (d / "c.txt").write_text("not md\n")
-        assert _count_md(d) == 2
+        assert count_md(d) == 2
 
     def test_nonexistent_dir(self, tmp_path):
-        assert _count_md(tmp_path / "nope") == 0
+        assert count_md(tmp_path / "nope") == 0
 
 
 class TestRunCompile:

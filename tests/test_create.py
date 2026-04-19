@@ -117,7 +117,7 @@ class TestLoadPrompt:
 
 class TestRunAgent:
     def test_successful_run(self, cfg: Config):
-        with patch("pipeline.create.subprocess.run") as mock_run:
+        with patch("pipeline.create.agent.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="Agent output here",
@@ -132,7 +132,7 @@ class TestRunAgent:
             assert "-Q" in args
 
     def test_timeout_returns_partial(self, cfg: Config):
-        with patch("pipeline.create.subprocess.run") as mock_run:
+        with patch("pipeline.create.agent.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=124,
                 stdout="Partial output",
@@ -142,19 +142,19 @@ class TestRunAgent:
             assert result == "Partial output"
 
     def test_timeout_expired_exception(self, cfg: Config):
-        with patch("pipeline.create.subprocess.run") as mock_run:
+        with patch("pipeline.create.agent.subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(cmd="hermes", timeout=10)
             result = _run_agent("test prompt", cfg, timeout=10)
             assert result == ""
 
     def test_command_not_found(self, cfg: Config):
-        with patch("pipeline.create.subprocess.run") as mock_run:
+        with patch("pipeline.create.agent.subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError("hermes not found")
             result = _run_agent("test prompt", cfg, timeout=10)
             assert result == ""
 
     def test_non_zero_exit(self, cfg: Config):
-        with patch("pipeline.create.subprocess.run") as mock_run:
+        with patch("pipeline.create.agent.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=1,
                 stdout="Some output",
@@ -213,7 +213,7 @@ class TestConceptConvergence:
             {"file": "04-Wiki/concepts/tangential.md", "score": 0.3},
         ])
 
-        with patch("pipeline.create.subprocess.run") as mock_run:
+        with patch("pipeline.create.agent.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=qmd_output,
@@ -235,7 +235,7 @@ class TestConceptConvergence:
             json.dumps({"content": "test"}), encoding="utf-8"
         )
 
-        with patch("pipeline.create.subprocess.run") as mock_run:
+        with patch("pipeline.create.agent.subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(cmd="qmd", timeout=300)
             result = concept_convergence([sample_plan], cfg)
 
@@ -247,7 +247,7 @@ class TestConceptConvergence:
             json.dumps({"content": "test"}), encoding="utf-8"
         )
 
-        with patch("pipeline.create.subprocess.run") as mock_run:
+        with patch("pipeline.create.agent.subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError("qmd not found")
             result = concept_convergence([sample_plan], cfg)
 
@@ -261,7 +261,7 @@ class TestConceptConvergence:
 
     def test_handles_nonexistent_extract(self, cfg: Config, sample_plan: Plan):
         """If extract file doesn't exist, still searches with plan metadata."""
-        with patch("pipeline.create.subprocess.run") as mock_run:
+        with patch("pipeline.create.agent.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="[]",
@@ -663,8 +663,8 @@ class TestCreateBatch:
             "---\ntitle: Test Article\n---\n## Summary\nTest summary.\n", encoding="utf-8"
         )
 
-        with patch("pipeline.create.concept_convergence") as mock_conv, \
-             patch("pipeline.create._run_agent") as mock_agent:
+        with patch("pipeline.create.agent.concept_convergence") as mock_conv, \
+             patch("pipeline.create.agent._run_agent") as mock_agent:
             mock_conv.return_value = {sample_plan.hash: []}
             mock_agent.return_value = "Agent created files successfully"
 
@@ -679,8 +679,8 @@ class TestCreateBatch:
         cfg.extract_dir = extract_dir
         _create_extract(extract_dir, sample_plan)
 
-        with patch("pipeline.create.concept_convergence") as mock_conv, \
-             patch("pipeline.create._run_agent") as mock_agent:
+        with patch("pipeline.create.agent.concept_convergence") as mock_conv, \
+             patch("pipeline.create.agent._run_agent") as mock_agent:
             mock_conv.return_value = {sample_plan.hash: []}
             mock_agent.return_value = "output"
 
@@ -695,8 +695,8 @@ class TestCreateBatch:
         cfg.extract_dir = extract_dir
         _create_extract(extract_dir, sample_plan)
 
-        with patch("pipeline.create.concept_convergence") as mock_conv, \
-             patch("pipeline.create._run_agent") as mock_agent:
+        with patch("pipeline.create.agent.concept_convergence") as mock_conv, \
+             patch("pipeline.create.agent._run_agent") as mock_agent:
             mock_conv.return_value = {sample_plan.hash: []}
             mock_agent.return_value = "Agent output"
 
@@ -710,8 +710,8 @@ class TestCreateBatch:
         cfg.extract_dir = extract_dir
         _create_extract(extract_dir, sample_plan)
 
-        with patch("pipeline.create.concept_convergence") as mock_conv, \
-             patch("pipeline.create._run_agent") as mock_agent:
+        with patch("pipeline.create.agent.concept_convergence") as mock_conv, \
+             patch("pipeline.create.agent._run_agent") as mock_agent:
             mock_conv.return_value = {sample_plan.hash: []}
             mock_agent.return_value = ""  # Empty output = failed
 
@@ -742,7 +742,7 @@ class TestCreateAll:
         cfg.extract_dir = extract_dir
         _create_extract(extract_dir, sample_plan)
 
-        with patch("pipeline.create.create_batch") as mock_batch:
+        with patch("pipeline.create.agent.create_batch") as mock_batch:
             mock_batch.return_value = {
                 "batch_idx": 0,
                 "status": "ok",
@@ -760,7 +760,7 @@ class TestCreateAll:
         cfg.extract_dir = extract_dir
         _create_extract(extract_dir, sample_plan)
 
-        with patch("pipeline.create.create_batch") as mock_batch:
+        with patch("pipeline.create.agent.create_batch") as mock_batch:
             mock_batch.return_value = {
                 "batch_idx": 0,
                 "status": "failed",
@@ -781,7 +781,7 @@ class TestCreateAll:
             plans_list.append(plan)
             _create_extract(extract_dir, plan)
 
-        with patch("pipeline.create.create_batch") as mock_batch:
+        with patch("pipeline.create.agent.create_batch") as mock_batch:
             mock_batch.return_value = {
                 "batch_idx": 0,
                 "status": "ok",
@@ -816,7 +816,7 @@ class TestCreateAll:
                 "hashes": [p.hash for p in batch],
             }
 
-        with patch("pipeline.create.create_batch", side_effect=track_batch):
+        with patch("pipeline.create.agent.create_batch", side_effect=track_batch):
             plans = Plans(plans=plans_list)
             create_all(plans, cfg, parallel=2)
 
@@ -827,8 +827,8 @@ class TestCreateAll:
         cfg.extract_dir = extract_dir
         _create_extract(extract_dir, sample_plan)
 
-        with patch("pipeline.create.create_batch") as mock_batch, \
-             patch("pipeline.create.reindex") as mock_reindex:
+        with patch("pipeline.create.agent.create_batch") as mock_batch, \
+             patch("pipeline.create.orchestrator.reindex") as mock_reindex:
             mock_batch.return_value = {
                 "batch_idx": 0,
                 "status": "ok",
@@ -844,7 +844,7 @@ class TestCreateAll:
         cfg.extract_dir = extract_dir
         _create_extract(extract_dir, sample_plan)
 
-        with patch("pipeline.create.create_batch") as mock_batch:
+        with patch("pipeline.create.agent.create_batch") as mock_batch:
             mock_batch.return_value = {
                 "batch_idx": 0,
                 "status": "ok",
@@ -864,7 +864,7 @@ class TestCreateAll:
         cfg.extract_dir = extract_dir
         _create_extract(extract_dir, sample_plan)
 
-        with patch("pipeline.create.create_batch") as mock_batch:
+        with patch("pipeline.create.agent.create_batch") as mock_batch:
             mock_batch.side_effect = Exception("Unexpected error")
             plans = Plans(plans=[sample_plan])
             result = create_all(plans, cfg, parallel=1)

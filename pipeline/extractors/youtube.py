@@ -135,7 +135,7 @@ def _try_youtube_transcript(url: str, video_id: str, cfg: Config) -> str:
             if dl.returncode != 0 or not os.path.exists(tmp_audio):
                 return ""
 
-            text = transcribe_with_whisper(tmp_audio)
+            text = transcribe_with_whisper(tmp_audio, cfg.whisper_language)
             return text if len(text) > 50 else ""
         finally:
             if os.path.exists(tmp_audio):

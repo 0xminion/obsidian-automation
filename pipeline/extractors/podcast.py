@@ -410,7 +410,7 @@ def _transcribe_podcast_audio(audio_url: str, cfg: Config) -> str:
                 return transcript
 
         # Fallback to local whisper
-        return transcribe_with_whisper(tmp_audio)
+        return transcribe_with_whisper(tmp_audio, cfg.whisper_language)
 
     finally:
         if os.path.exists(tmp_audio):
