@@ -355,6 +355,11 @@ def build_plan_prompt(
         matches = concept_matches.get(h, [])
         match_dicts = [{"concept": m.concept, "score": m.score} for m in matches]
 
+        # Heuristic tag candidates — agent curates from these
+        tag_candidates = extract_tags(
+            entry.content, title=entry.title, url=entry.url, max_tags=12,
+        )
+
         sources_block += f"""
 ---
 Source {i+1}:
@@ -364,6 +369,7 @@ Source {i+1}:
   author: {author}
   content_preview: {content_preview}
   concept_matches: {json.dumps(match_dicts)}
+  tag_candidates: {json.dumps(tag_candidates)}
 """
 
     common_section = f"{common}\n\n" if common else ""
@@ -384,7 +390,13 @@ RULES:
 - NEVER use: "Tweet - user - ID", "Blog - slug", "YouTube - VIDEO_ID", URL slugs
 - language: Chinese content → "zh", everything else → "en"
 - template: Data/methodology/findings → "technical". Narrative/philosophical → "standard". Chinese → "chinese".
-- tags: Topic-specific English only. NO: x.com, tweet, source, url
+- tag_candidates are pre-extracted heuristically — CURATE from them:
+  * Pick the 3-6 most relevant and specific tags
+  * You MAY add tags not in candidates if the content clearly warrants it
+  * You MAY merge/split candidates (e.g. pick "bitcoin" over generic "crypto" if Bitcoin is the focus)
+  * Prioritize: specific entities > compound concepts > broad categories
+  * NO generic tags: source, url, content, video, podcast, article, blog, tweet
+  * Tags must be lowercase, hyphenated if multi-word
 - concept_matches are pre-found via semantic search — rank-sorted by relevance, confirm which are real matches vs tangential
 - concept_new: only if genuinely new concept
 - Be concise. Output ONLY the JSON array, no explanation.
