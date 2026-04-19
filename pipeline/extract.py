@@ -319,6 +319,26 @@ def _extract_podcast(url: str, cfg: Config) -> ExtractedSource:
             except (json.JSONDecodeError, KeyError, IndexError):
                 pass
 
+    # Fallback: iTunes lookup uses different IDs than Apple Podcasts store URLs.
+    # If lookup returned 0 results, search by podcast name from URL path.
+    if not feed_url and podcast_id:
+        # Extract podcast name from URL path: /us/podcast/NAME/id123456
+        name_match = re.search(r"/podcast/([^/]+)/id\d+", url)
+        if name_match:
+            search_term = name_match.group(1).replace("-", " ")
+            search_json = _curl_get(
+                f"https://itunes.apple.com/search?term={quote(search_term)}&media=podcast&limit=1",
+                timeout=timeout,
+            )
+            if search_json:
+                try:
+                    search = json.loads(search_json)
+                    if search.get("results"):
+                        feed_url = search["results"][0].get("feedUrl", "")
+                        podcast_name = search["results"][0].get("collectionName", podcast_name)
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    pass
+
     # Step 2: Parse RSS feed
     audio_url = ""
     description = ""
@@ -531,7 +551,7 @@ def _transcribe_assemblyai(audio_file: str, cfg: Config) -> str:
 
 # ─── Web Extraction ──────────────────────────────────────────────────────────
 
-def _extract_web(url: str, cfg: Config) -> ExtractedSource:
+def _extract_web(url: str, cfg: Config, source_type: SourceType = SourceType.WEB) -> ExtractedSource:
     """Extract web content via defuddle CLI with curl fallback.
 
     Handles arxiv URLs specially (alphaxiv.org fallback).
@@ -539,7 +559,7 @@ def _extract_web(url: str, cfg: Config) -> ExtractedSource:
     timeout = cfg.extract_timeout
     content = _extract_web_content(url, timeout)
 
-    if not content or len(content) < 50:
+    if not content:
         log.warning("Web extraction failed for %s", url)
         content = f"URL: {url}\n\nNote: Content extraction failed."
 
@@ -549,7 +569,7 @@ def _extract_web(url: str, cfg: Config) -> ExtractedSource:
         url=url,
         title=title or url,
         content=content,
-        type=SourceType.WEB,
+        type=source_type,
     )
 
 
@@ -586,7 +606,7 @@ def _extract_web_content(url: str, timeout: int = 45) -> str:
 
     # Standard defuddle extraction
     content = _try_defuddle(url, timeout)
-    if content and len(content) > 200:
+    if content and len(content) > 10:  # defuddle returns clean markdown — accept even short content (tweets)
         return content
 
     # Fallback: curl + liteparse
@@ -683,7 +703,7 @@ def extract_url(url: str, cfg: Config) -> ExtractedSource:
         elif source_type == SourceType.PODCAST:
             source = _extract_podcast(url, cfg)
         else:
-            source = _extract_web(url, cfg)
+            source = _extract_web(url, cfg, source_type=source_type)
     except Exception as e:
         log.error("Extraction failed for %s: %s", url, e)
         source = ExtractedSource(
