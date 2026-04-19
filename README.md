@@ -74,22 +74,25 @@ That's it. URLs in `01-Raw/` → pipeline creates Sources, Entries, Concepts, an
 
 ### Manual stage execution
 
-If `process-inbox.sh` fails mid-pipeline, run stages individually:
+If the pipeline fails mid-run, stages can be retried individually:
 
 ```bash
-HASH=$(echo -n "$VAULT_PATH" | md5sum | cut -c1-8)
-export PIPELINE_TMPDIR="/tmp/obsidian-extracted-${HASH}"
-
 cd ~/MyVault
-VAULT_PATH=$(pwd) bash Meta/Scripts/stage1-extract.sh
-VAULT_PATH=$(pwd) bash Meta/Scripts/stage2-plan.sh
-VAULT_PATH=$(pwd) bash Meta/Scripts/stage3-create.sh --parallel 3
 
-# Post-processing (if stage 3 timed out):
-bash Meta/Scripts/reindex.sh && ob sync --path "$(pwd)"
+# Dry-run to preview
+./run.sh --dry-run
+
+# Review mode (run stages 1+2, save plans for manual review)
+./run.sh --review
+
+# Resume from reviewed plans (skip stages 1+2)
+./run.sh --resume
 ```
 
-**Important:** `PIPELINE_TMPDIR` must be set so stages share the same temp directory. `process-inbox.sh` sets this automatically; manual runs must export it explicitly.
+If post-processing (reindex) needs to be re-run:
+```bash
+pipeline reindex ~/MyVault
+```
 
 ## Vault structure
 
@@ -157,11 +160,10 @@ The Python pipeline (`pipeline/cli.py`) is the canonical entry point. Remaining 
 | `validate-output.sh` | Validates pipeline output. Supports `--fix` |
 | `setup-git-hooks.sh` | Git initialization + hooks |
 | `update-tag-registry.sh` | Tag registry rebuild |
-| `extract-transcript.sh` | Standalone transcript extraction |
 | `migrate-vault.sh` | Adopt existing vaults (scan/dry-run/execute) |
 | `setup-qmd.sh` | One-time qmd setup |
 
-**Deprecated** (moved to `scripts/_deprecated/`): `process-inbox.sh`, `stage1-extract.sh`, `stage2-plan.sh`, `stage3-create.sh`, `reindex.sh`, `build_batch_prompt.py` — replaced by Python pipeline modules.
+**Deleted** (replaced by Python pipeline): `process-inbox.sh`, `stage1-extract.sh`, `stage2-plan.sh`, `stage3-create.sh`, `reindex.sh`, `build_batch_prompt.py`, `extract-transcript.sh`.
 
 ## Python Pipeline
 
@@ -257,4 +259,4 @@ Suites: `stage1`, `stage2`, `stage3`, `integration`, `edge`, `qmd`
 
 **Weekly:** `compile-pass.sh` → `review-pass.sh --untouched` → `lint-vault.sh`
 
-**Monthly:** `reindex.sh` if lint flags drift (usually auto-rebuilt)
+**Monthly:** `pipeline reindex ~/MyVault` if lint flags drift (usually auto-rebuilt)

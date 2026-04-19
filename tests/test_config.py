@@ -61,12 +61,12 @@ class TestLoadConfig:
 
     def test_load_from_dotenv(self, tmp_path, monkeypatch):
         dotenv = tmp_path / ".env"
-        dotenv.write_text("TRANSCRIPT_API_KEY=test-key-123\nPARALLEL=7\n")
+        dotenv.write_text("TRANSCRIPT_API_KEY=test-key-abc\nPARALLEL=7\n")
         monkeypatch.delenv("VAULT_PATH", raising=False)
         monkeypatch.delenv("TRANSCRIPT_API_KEY", raising=False)
         monkeypatch.delenv("PARALLEL", raising=False)
         cfg = load_config(env_file=dotenv)
-        assert cfg.transcript_api_key == "test-key-123"
+        assert cfg.transcript_api_key == "test-key-abc"
         assert cfg.parallel == 7
 
 

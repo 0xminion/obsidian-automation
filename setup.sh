@@ -175,15 +175,6 @@ for cmd in qmd yt-dlp ffmpeg defuddle ob; do
   fi
 done
 
-# Python packages
-for pkg in yaml; do
-  if python3 -c "import $pkg" 2>/dev/null; then
-    ok "python3-$pkg: installed"
-  else
-    warn "python3-$pkg: not found (pip install pyyaml)"
-  fi
-done
-
 # ─── Step 4: Set up .env ─────────────────────────────────────────────────────
 
 echo ""
@@ -201,7 +192,7 @@ TRANSCRIPT_API_KEY=
 SUPADATA_API_KEY=
 ASSEMBLYAI_API_KEY=
 
-# Vault path (set once, scripts use it)
+# Vault path
 VAULT_PATH=$HOME/MyVault
 
 # Agent (hermes is default)

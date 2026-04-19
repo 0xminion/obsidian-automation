@@ -25,15 +25,13 @@ AGENT AVAILABLE: obsidian-markdown, humanizer, youtube-full (TranscriptAPI), lit
 TRANSCRIPTION TOOLS (for podcast processing):
 - download_audio(url) → path to downloaded MP3
 - transcribe_audio(audio_path) → transcript text
-  Backends: AssemblyAI (TRANSCRIBE_BACKEND=assemblyai) or local whisper (TRANSCRIBE_BACKEND=local)
-  Both are in lib/transcribe.sh, already sourced by process-inbox.sh
+  Backends: AssemblyAI or local whisper (faster-whisper Python module)
 
 FILENAME COLLISION DETECTION:
-Before creating any Entry, Concept, or MoC file, CHECK for collisions:
-  check_collision "entries" "Note-Title"    → returns 0 (safe) or 1 (exists)
-  resolve_collision "entries" "Note-Title"  → returns unique name (appends -1, -2, etc.)
-If a note with the same name exists, use resolve_collision to get a unique filename.
-Do NOT overwrite existing notes — they may contain user edits.
+Before creating any Entry, Concept, or MoC file, CHECK if it already exists:
+  - Read the target file path first
+  - If it exists (non-empty), append -1, -2, etc. to get a unique name
+  - Do NOT overwrite existing notes — they may contain user edits
 
 CRITICAL RULES:
 1. NEVER touch anything in '07-WIP/'. Off-limits.

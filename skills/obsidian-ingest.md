@@ -80,9 +80,9 @@ The Python pipeline is canonical. Remaining shell scripts provide unique functio
 | `validate-output.sh` | Validate output + `--fix` auto-repair |
 | `vault-stats.sh` | Dashboard generation |
 
-These shell scripts use `lib/common.sh` for shared functions (logging, collision detection, qmd integration, edge management).
+These shell scripts use `lib/common.sh` for shared functions (logging, collision detection, edge management).
 
-**Deprecated** (moved to `scripts/_deprecated/`): `process-inbox.sh`, `stage1-extract.sh`, `stage2-plan.sh`, `stage3-create.sh`, `reindex.sh`, `build_batch_prompt.py`
+**Deleted** (replaced by Python pipeline): `process-inbox.sh`, `stage1-extract.sh`, `stage2-plan.sh`, `stage3-create.sh`, `reindex.sh`, `build_batch_prompt.py`, `extract-transcript.sh`.
 
 ## Pitfalls
 

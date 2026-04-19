@@ -20,7 +20,7 @@ The system needs to:
 ### 3-Stage Pipeline
 
 ```
-01-Raw/ → process-inbox.sh → 04-Wiki/{sources, entries, concepts, mocs}
+01-Raw/ → pipeline ingest → 04-Wiki/{sources, entries, concepts, mocs}
                                     ↓
                              Post-ingest auto-updates:
                              - vault-stats output
@@ -114,7 +114,6 @@ Format (both languages):
 | `validate-output.sh` | Validates pipeline output: frontmatter, sections, stubs, tags. Supports `--fix` |
 | `setup-git-hooks.sh` | Git initialization + hooks |
 | `update-tag-registry.sh` | Tag registry rebuild |
-| `extract-transcript.sh` | Standalone transcript extraction |
 | `migrate-vault.sh` | Adopt existing vaults (scan/dry-run/execute) |
 | `setup-qmd.sh` | One-time setup for qmd semantic search |
 
@@ -143,7 +142,7 @@ Format (both languages):
 
 7. **4-column edges** — `source<tab>target<tab>type<tab>description` format for edges.tsv.
 
-8. **Self-contained automation** — no external cron. Run process-inbox.sh, everything updates.
+8. **Self-contained automation** — no external cron. Run `pipeline ingest`, everything updates.
 
 9. **Chinese stays Chinese** — all 04-Wiki body text for Chinese sources stays in Chinese. Only YAML keys, tags, and filenames use English.
 
@@ -157,7 +156,7 @@ Format (both languages):
 
 ## Acceptance Criteria
 
-- [x] process-inbox.sh handles URLs, YouTube, podcasts, PDFs, arxiv
+- [x] pipeline ingest handles URLs, YouTube, podcasts, PDFs, arxiv
 - [x] 3-stage pipeline: Extract (shell) → Plan (1 agent) → Create (N agents)
 - [x] Semantic concept search via qmd + Qwen3-Embedding-0.6B-Q8
 - [x] `--review` and `--resume` flags for human-in-the-loop

@@ -12,12 +12,6 @@ aliases: []
 
 # Title
 
-> [!info] Source metadata
-> **Author:** Author
-> **URL:** Link
-> **Type:** Type
-> **Captured:** Date
-
 ## Original content
 
 (Extracted or full content)

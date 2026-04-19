@@ -1,7 +1,7 @@
 ---
 title: "Concept name as concise phrase"
 type: concept
-date_created: YYYY-MM-DD
+created: YYYY-MM-DD
 last_updated: YYYY-MM-DD
 sources:
   - "[[Source note 1]]"
