@@ -44,7 +44,7 @@ The system needs to:
 - Parallel write agents (default 3, configurable `--parallel N`)
 - Concept convergence uses pre-fetched qmd semantic matches
 - Per-agent prompt: ~5K chars (vs ~18K in v1)
-- Output validation via `validate-output.sh` runs automatically
+- Output validation via `pipeline validate` runs automatically
 - Each agent has 900s internal timeout — terminal call must use ≥960s
 - Output: Files written to vault, inbox archived, wiki-index updated
 
@@ -106,25 +106,26 @@ Format (both languages):
 | Script | Purpose |
 |---|---|
 | `setup.sh` | One-command vault setup (installs Python package, creates run.sh) |
-| `compile-pass.sh` | Cross-linking, concept convergence, MoC rebuild, edges, schema review |
 | `review-pass.sh` | Review entries: `--untouched`, `--last N`, `--topic TAG`, `--interactive` |
 | `query-vault.sh` | Q&A with compound-back |
-| `lint-vault.sh` | 12 health checks (orphans, unreviewed, stale, broken links, etc.) |
-| `vault-stats.sh` | Dashboard generation |
-| `validate-output.sh` | Validates pipeline output: frontmatter, sections, stubs, tags. Supports `--fix` |
 | `setup-git-hooks.sh` | Git initialization + hooks |
 | `update-tag-registry.sh` | Tag registry rebuild |
 | `migrate-vault.sh` | Adopt existing vaults (scan/dry-run/execute) |
 | `setup-qmd.sh` | One-time setup for qmd semantic search |
 
-**Python pipeline** (canonical):
+**Migrated to Python** (deleted shell scripts): `lint-vault.sh`, `compile-pass.sh`, `vault-stats.sh`, `validate-output.sh`, `process-inbox.sh`, `stage1-extract.sh`, `stage2-plan.sh`, `stage3-create.sh`, `reindex.sh`.
+
+**Python pipeline** (canonical — all automation in Python):
 | Command | Purpose |
 |---|---|
 | `pipeline ingest` | Full 3-stage pipeline (extract → plan → create) |
-| `pipeline lint` | Vault health checks |
+| `pipeline lint` | 15 health checks + report generation |
+| `pipeline lint --fix` | Auto-fix safe issues (frontmatter, format, banned tags) |
+| `pipeline validate` | Post-write quality gate (frontmatter, sections, stubs, tags, format) |
+| `pipeline validate --fix` | Auto-fix validation issues |
+| `pipeline compile` | Concept convergence, MoC rebuild, edges, schema review |
 | `pipeline reindex` | Rebuild wiki-index.md |
-| `pipeline stats` | Show vault statistics |
-| `pipeline validate` | Validate pipeline output |
+| `pipeline stats` | Dashboard: size, growth, review status, health |
 
 ### Key Design Decisions
 
@@ -171,8 +172,8 @@ Format (both languages):
 - [x] Prompts externalized in prompts/*.prompt files
 - [x] Collision detection prevents note overwrites
 - [x] Git auto-commit after every operation
-- [x] 12 lint checks covering all structural requirements
-- [x] Output validation with `validate-output.sh --fix` auto-repair
+- [x] 15 lint checks covering all structural requirements
+- [x] Output validation with `pipeline validate --fix` auto-repair
 - [x] Per-vault temp directory isolation (PIPELINE_TMPDIR) — no cross-vault races
 - [x] Preflight dependency check (check_dependencies)
 - [x] Manifest persistence for --resume across reboots

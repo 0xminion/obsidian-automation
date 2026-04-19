@@ -148,22 +148,18 @@ Core concept → Context (flowing prose) → Links
 
 ## Scripts
 
-The Python pipeline (`pipeline/cli.py`) is the canonical entry point. Remaining shell scripts provide supplementary functionality not yet ported to Python.
+The Python pipeline (`pipeline/cli.py`) is the canonical entry point. All lint, validation, stats, and compile operations are Python. Remaining shell scripts provide interactive/user-facing functionality.
 
 | Script | Purpose |
 |---|---|
-| `compile-pass.sh` | Cross-linking, concept merge, MoC rebuild, edges, schema review |
 | `review-pass.sh` | Review entries: `--untouched`, `--last N`, `--topic TAG` |
 | `query-vault.sh` | Q&A with compound-back |
-| `lint-vault.sh` | 12 health checks |
-| `vault-stats.sh` | Dashboard: size, growth, health |
-| `validate-output.sh` | Validates pipeline output. Supports `--fix` |
 | `setup-git-hooks.sh` | Git initialization + hooks |
 | `update-tag-registry.sh` | Tag registry rebuild |
 | `migrate-vault.sh` | Adopt existing vaults (scan/dry-run/execute) |
 | `setup-qmd.sh` | One-time qmd setup |
 
-**Deleted** (replaced by Python pipeline): `process-inbox.sh`, `stage1-extract.sh`, `stage2-plan.sh`, `stage3-create.sh`, `reindex.sh`, `build_batch_prompt.py`, `extract-transcript.sh`.
+**Deleted** (replaced by Python pipeline): `lint-vault.sh`, `compile-pass.sh`, `vault-stats.sh`, `validate-output.sh`, `process-inbox.sh`, `stage1-extract.sh`, `stage2-plan.sh`, `stage3-create.sh`, `reindex.sh`, `build_batch_prompt.py`, `extract-transcript.sh`, `lib/common.sh` (trimmed to minimal for remaining scripts).
 
 ## Python Pipeline
 
@@ -174,10 +170,13 @@ cd ~/MyVault && ./run.sh
 pipeline ingest ~/MyVault
 
 # Other commands:
-pipeline lint ~/MyVault        # vault health checks
-pipeline reindex ~/MyVault     # rebuild wiki-index.md
-pipeline stats ~/MyVault       # show vault statistics
-pipeline validate ~/MyVault    # validate pipeline output
+pipeline lint ~/MyVault            # 15 health checks
+pipeline lint ~/MyVault --fix      # auto-fix safe issues
+pipeline validate ~/MyVault        # post-write quality gate
+pipeline validate ~/MyVault --fix  # auto-fix validation issues
+pipeline compile ~/MyVault         # concept convergence, MoC rebuild, edges
+pipeline reindex ~/MyVault         # rebuild wiki-index.md
+pipeline stats ~/MyVault           # dashboard with growth/health metrics
 ```
 
 ## Pipeline details
@@ -230,7 +229,7 @@ Relationships stored in `06-Config/edges.tsv` (4-column: source, target, type, d
 
 Types: extends, contradicts, supports, supersedes, tested_by, depends_on, inspired_by
 
-Built automatically during `compile-pass.sh`.
+Built automatically during `pipeline compile`.
 
 ## Critical rules
 
@@ -246,17 +245,14 @@ Built automatically during `compile-pass.sh`.
 ## Testing
 
 ```bash
-cd ~/MyVault
-bash Meta/Scripts/tests/run_all_tests.sh           # all tests
-bash Meta/Scripts/tests/run_all_tests.sh stage1     # single suite
+python3 -m pytest tests/ -v           # all Python tests
+bash scripts/tests/run_all_tests.sh   # shell integration tests
 ```
-
-Suites: `stage1`, `stage2`, `stage3`, `integration`, `edge`, `qmd`
 
 ## Recommended workflow
 
 **Daily:** Drop sources in `01-Raw/`, run `./run.sh`
 
-**Weekly:** `compile-pass.sh` → `review-pass.sh --untouched` → `lint-vault.sh`
+**Weekly:** `pipeline compile` → `review-pass.sh --untouched` → `pipeline lint`
 
 **Monthly:** `pipeline reindex ~/MyVault` if lint flags drift (usually auto-rebuilt)

@@ -261,11 +261,24 @@ class TestLintCommand:
 
     def test_lint_clean_vault(self, vault: Path):
         """A healthy vault should pass lint."""
-        # Add a wiki-index and at least one file in each checked dir
-        (vault / "06-Config" / "wiki-index.md").write_text("# Wiki Index\n")
-        (vault / "04-Wiki" / "entries" / "placeholder.md").write_text("# Placeholder\n")
-        (vault / "04-Wiki" / "concepts" / "placeholder.md").write_text("# Placeholder\n")
-        (vault / "04-Wiki" / "sources" / "placeholder.md").write_text("# Placeholder\n")
+        # Create well-formed vault contents
+        (vault / "06-Config" / "wiki-index.md").write_text(
+            "# Wiki Index\n\n---\n\n## Entries\n\n- [[test-entry]]: Test entry (entry)\n\n## Concepts\n\n- [[test-concept]]: Test concept (concept)\n\n## Maps of Content\n\n- [[test-moc]]: Overview of test MoC (moc)\n\n---\n\n*Reindexed*\n"
+        )
+        (vault / "06-Config" / "edges.tsv").write_text("source\ttarget\ttype\tdescription\n")
+
+        (vault / "04-Wiki" / "entries" / "test-entry.md").write_text(
+            '---\ntitle: "Test Entry"\nsource: "[[test-source]]"\ndate_entry: "2026-04-19"\nstatus: "draft"\ntemplate: "standard"\ntags:\n  - test\nreviewed: "2026-04-19"\n---\n# Test Entry\n\n## Summary\n\nThis is a well-formed test entry with enough content to pass all checks.\n\n## Core insights\n\nFirst insight from the source material that adds value.\n\n## Other takeaways\n\nA key takeaway that provides additional context and understanding.\n\n## Diagrams\n\nn/a\n\n## Open questions\n\nWhat should we explore next about this topic?\n\n## Linked concepts\n\n- [[test-concept]]\n\n## Maps\n\n- [[test-moc]]\n'
+        )
+        (vault / "04-Wiki" / "concepts" / "test-concept.md").write_text(
+            '---\ntitle: "Test Concept"\ntype: "concept"\nlanguage: "en"\nstatus: "draft"\nsources: []\ntags: []\n---\n# Test Concept\n\n## Core concept\n\nA test concept for the lint check that provides foundational understanding.\n\n## Context\n\nThe context of this concept is testing. It verifies that the lint module works correctly on well-formed content with sufficient depth and detail.\n\n## Links\n\n- [[test-entry]]\n'
+        )
+        (vault / "04-Wiki" / "sources" / "test-source.md").write_text(
+            '---\ntitle: "Test Source"\nsource_url: "https://example.com/article"\nsource_type: "blog"\nauthor: "Test Author"\ndate_captured: "2026-04-19"\ntags:\n  - test\nstatus: "raw"\n---\n# Test Source\n\nThis is a detailed source note with enough body content to pass the empty note check. The source material covers interesting topics that will be processed into entries and concepts.\n'
+        )
+        (vault / "04-Wiki" / "mocs" / "test-moc.md").write_text(
+            '---\ntitle: "Test MoC"\ntype: "moc"\nstatus: "draft"\ntags: []\n---\n# Test MoC\n\n## Overview / 概述\n\nOverview of test MoC that provides a comprehensive map of the topics covered.\n\n## Topic / 主题\n\n- [[test-entry]]: A test entry that covers key topics\n\n'
+        )
         result = runner.invoke(app, ["lint", str(vault)])
         assert result.exit_code == 0
         assert "passed" in result.output
@@ -275,12 +288,13 @@ class TestLintCommand:
         entries = vault / "04-Wiki" / "entries"
         entries.mkdir(parents=True, exist_ok=True)
         (entries / "stub-entry.md").write_text(
-            "---\ntitle: Stub\ntags: []\n---\n> TODO: fill this in\n"
+            "---\ntitle: Stub\ntags: []\n---\n# Stub\n\n> TODO: fill this in\n"
         )
         (vault / "06-Config" / "wiki-index.md").write_text("# Wiki Index\n")
+        (vault / "06-Config" / "edges.tsv").write_text("source\ttarget\ttype\tdescription\n")
         result = runner.invoke(app, ["lint", str(vault)])
         assert result.exit_code == 1
-        assert "TODO" in result.output
+        assert "Stubs" in result.output or "stubs" in result.output.lower()
 
 
 # ─── test_reindex_command ──────────────────────────────────────────────────────
@@ -329,29 +343,21 @@ class TestStatsCommand:
 class TestValidateCommand:
     """Test the validate CLI command."""
 
-    def test_validate_no_manifest(self, vault: Path):
-        """validate with no manifest should exit cleanly."""
+    def test_validate_empty_vault(self, vault: Path):
+        """validate on empty vault should pass."""
         result = runner.invoke(app, ["validate", str(vault)])
         assert result.exit_code == 0
-        assert "nothing to validate" in result.output
+        assert "passed" in result.output
 
     def test_validate_catches_issues(self, vault: Path):
         """validate should catch entry violations."""
-        cfg = Config(vault_path=vault)
-        extract_dir = cfg.resolved_extract_dir
-        extract_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create a manifest
-        Manifest(entries=[]).save(extract_dir)
-
-        # Create a bad entry (missing required sections, created after manifest)
         entries = vault / "04-Wiki" / "entries"
         entries.mkdir(parents=True, exist_ok=True)
-        import time
-        time.sleep(0.1)
-        (entries / "bad-entry.md").write_text(
-            "---\ntitle: Bad\ntags:\n  - x.com\n---\n# Bad\nNo sections.\n"
-        )
 
+        # Create a bad entry (missing required sections, no H1)
+        (entries / "bad-entry.md").write_text(
+            '---\ntitle: "Bad Entry"\n---\nJust prose, no sections.\n'
+        )
         result = runner.invoke(app, ["validate", str(vault)])
         assert result.exit_code == 1
+        assert result.output

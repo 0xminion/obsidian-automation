@@ -23,7 +23,7 @@ import typer
 from pipeline.config import Config, load_config
 from pipeline.extract import extract_all
 from pipeline.plan import plan_sources
-from pipeline.create import create_all, validate_output
+from pipeline.create import create_all
 from pipeline.models import Manifest, Plans
 from pipeline.vault import archive_inbox, reindex as vault_reindex
 
@@ -271,51 +271,30 @@ def ingest(
 @app.command()
 def lint(
     vault: Path = typer.Argument(None, help="Vault path (default: ~/MyVault)"),
+    fix: bool = typer.Option(False, "--fix", help="Auto-fix safe issues (frontmatter, format, banned tags)"),
 ):
-    """Run vault health checks."""
+    """Run comprehensive vault health checks (12 checks)."""
+    from pipeline.lint import run_lint
+
     cfg = _load_cfg(vault)
-    issues = []
+    result = run_lint(cfg.vault_path, fix=fix)
 
-    # Check vault structure
-    errors = cfg.validate()
-    issues.extend(errors)
+    typer.echo(f"Files checked: {result.files_checked}")
+    typer.echo(f"Total issues:  {result.total_issues}")
+    if result.fixes_applied:
+        typer.echo(f"Fixes applied: {result.fixes_applied}")
 
-    # Check for empty dirs
-    for label, d in [
-        ("entries", cfg.entries_dir),
-        ("concepts", cfg.concepts_dir),
-        ("sources", cfg.sources_dir),
-    ]:
-        if d.exists() and not list(d.glob("*.md")):
-            issues.append(f"{label} directory exists but contains no .md files: {d}")
-
-    # Check for stub entries
-    _STUB_PATTERNS = [
-        "> 待补充",
-        "> TODO",
-        "Content extracted via Tavily",
-    ]
-    for d in [cfg.entries_dir, cfg.concepts_dir]:
-        if not d.exists():
-            continue
-        for md in d.glob("*.md"):
-            content = md.read_text(encoding="utf-8", errors="replace")
-            for pat in _STUB_PATTERNS:
-                if pat.lower() in content.lower():
-                    issues.append(f"Stub content in {md.name}: {pat}")
-
-    # Check wiki-index exists
-    if not cfg.wiki_index.exists():
-        issues.append(f"wiki-index.md not found: {cfg.wiki_index}")
-
-    if issues:
-        typer.echo(f"Found {len(issues)} issue(s):")
-        for issue in issues:
-            typer.echo(f"  ⚠ {issue}")
-        raise typer.Exit(code=1)
-    else:
+    if result.total_issues == 0:
         typer.echo("Vault health check passed ✓")
         raise typer.Exit(code=0)
+
+    for check_name, count in sorted(result.issues_by_check.items()):
+        if count:
+            typer.echo(f"  ⚠ {check_name}: {count}")
+
+    report_path = cfg.vault_path / "Meta" / "Scripts" / "lint-report.md"
+    typer.echo(f"\nFull report: {report_path}")
+    raise typer.Exit(code=1)
 
 
 # ─── reindex ───────────────────────────────────────────────────────────────────
@@ -338,37 +317,19 @@ def reindex(
 def stats(
     vault: Path = typer.Argument(None, help="Vault path (default: ~/MyVault)"),
 ):
-    """Show vault statistics."""
+    """Generate vault dashboard with growth, review status, and health metrics."""
+    from pipeline.stats import run_stats
+
     cfg = _load_cfg(vault)
-
-    def _count_md(directory: Path) -> int:
-        if not directory.exists():
-            return 0
-        return len(list(directory.glob("*.md")))
-
-    entries = _count_md(cfg.entries_dir)
-    concepts = _count_md(cfg.concepts_dir)
-    sources = _count_md(cfg.sources_dir)
-    mocs = _count_md(cfg.mocs_dir)
-
-    # Count edges
-    edge_count = 0
-    if cfg.edges_file.exists():
-        lines = cfg.edges_file.read_text().strip().split("\n")
-        edge_count = max(0, len(lines) - 1)  # subtract header
-
-    # Inbox count
-    inbox_count = 0
-    if cfg.inbox_dir.exists():
-        inbox_count = len(list(cfg.inbox_dir.glob("*.url")))
+    summary = run_stats(cfg)
 
     typer.echo(f"Vault: {cfg.vault_path}")
-    typer.echo(f"  Entries:  {entries}")
-    typer.echo(f"  Concepts: {concepts}")
-    typer.echo(f"  Sources:  {sources}")
-    typer.echo(f"  MoCs:     {mocs}")
-    typer.echo(f"  Edges:    {edge_count}")
-    typer.echo(f"  Inbox:    {inbox_count} .url files")
+    typer.echo(f"  Entries:  {summary['entries']}")
+    typer.echo(f"  Concepts: {summary['concepts']}")
+    typer.echo(f"  Sources:  {summary['sources']}")
+    typer.echo(f"  MoCs:     {summary['mocs']}")
+    typer.echo(f"  Total:    {summary['total']}")
+    typer.echo(f"\nDashboard written to: {summary['dashboard_path']}")
 
 
 # ─── validate ──────────────────────────────────────────────────────────────────
@@ -376,28 +337,55 @@ def stats(
 @app.command()
 def validate(
     vault: Path = typer.Argument(None, help="Vault path (default: ~/MyVault)"),
-    fix: bool = typer.Option(False, "--fix", help="Attempt to auto-fix issues"),
+    fix: bool = typer.Option(False, "--fix", help="Auto-fix safe issues"),
 ):
-    """Validate pipeline output."""
+    """Validate pipeline output (frontmatter, sections, stubs, tags, format)."""
+    from pipeline.lint import run_validate
+
     cfg = _load_cfg(vault)
-    extract_dir = cfg.resolved_extract_dir
-    manifest_path = extract_dir / "manifest.json"
+    result = run_validate(cfg.vault_path, fix=fix)
 
-    if not manifest_path.exists():
-        typer.echo("No manifest.json found — nothing to validate.")
-        raise typer.Exit(code=0)
+    typer.echo(f"Files checked: {result.files_checked}")
+    if result.fixes_applied:
+        typer.echo(f"Fixes applied:  {result.fixes_applied}")
 
-    violations = validate_output(cfg, manifest_path)
-    if violations:
-        typer.echo(f"Found {len(violations)} violation(s):")
-        for v in violations:
-            typer.echo(f"  ✗ {v}")
-        if fix:
-            typer.echo("Auto-fix not yet implemented — violations listed above require manual correction.")
-        raise typer.Exit(code=1)
-    else:
+    if result.total_issues == 0:
         typer.echo("Output validation passed ✓")
         raise typer.Exit(code=0)
+
+    typer.echo(f"Violations:    {result.total_issues}")
+    for issue in result.issues:
+        prefix = {"error": "✗", "warning": "⚠", "info": "ℹ"}[issue.severity.value]
+        typer.echo(f"  {prefix} [{issue.check}] {issue.note}: {issue.detail}")
+
+    raise typer.Exit(code=1)
+
+
+# ─── compile ──────────────────────────────────────────────────────────────────
+
+@app.command()
+def compile(
+    vault: Path = typer.Argument(None, help="Vault path (default: ~/MyVault)"),
+):
+    """Run the compile pass — concept convergence, MoC updates, edge construction."""
+    from pipeline.compile import run_compile
+    from pipeline.vault import reindex as vault_reindex
+
+    cfg = _load_cfg(vault)
+    typer.echo(f"Compile pass — vault: {cfg.vault_path}")
+
+    result = run_compile(cfg)
+
+    if result["success"]:
+        typer.echo(f"Compile pass complete. ({result['entries']} entries, "
+                    f"{result['concepts']} concepts, {result['mocs']} MoCs)")
+        # Reindex after compile
+        content = vault_reindex(cfg)
+        typer.echo(f"Reindexed wiki-index.md ({content.count(chr(10))} lines)")
+    else:
+        error = result.get("error", "Unknown error")
+        typer.echo(f"Compile pass failed: {error}", err=True)
+        raise typer.Exit(code=1)
 
 
 # ─── Entry point ───────────────────────────────────────────────────────────────

@@ -438,8 +438,8 @@ aliases: []' "$note" 2>/dev/null || true
     fi
     report ""
     report "Next steps:"
-    report "1. Run \`lint-vault.sh\` to check remaining issues"
-    report "2. Run \`reindex.sh\` to rebuild wiki-index.md"
+    report "1. Run \`pipeline lint\` to check remaining issues"
+    report "2. Run \`pipeline reindex\` to rebuild wiki-index.md"
     report "3. Review notes without frontmatter manually"
   fi
 }

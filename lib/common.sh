@@ -1,23 +1,16 @@
 #!/usr/bin/env bash
-# ============================================================================
-# v2.1.0: Common Library — Shared functions for all wiki scripts
-# ============================================================================
+# ═══════════════════════════════════════════════════════════
+# v2.2.0: Common Library — Shared functions for remaining shell scripts
+# ═══════════════════════════════════════════════════════════
 # Source this file from any script: source "$(dirname "$0")/../lib/common.sh"
-# Or: source "$SCRIPT_DIR/lib/common.sh"
 #
-# Provides: log(), run_with_retry(), lock management, directory setup,
-#            url dedup helpers, logging to structured log.md
+# Provides: log(), lock management, directory setup, URL dedup,
+#            prompt loading, git auto-commit, title cleaning
 #
-# MoC FORMATTING RULES (CRITICAL — learned 2026-04-18):
-#   - Entries mixed under single bilingual heading: ## Section / 中文
-#   - NO ### English / ### 中文 sub-headings
-#   - NO ## English Resources / ## Chinese Resources separation
-#   - Use topic-specific bilingual sections (e.g., "Funding Rates / 资金费率")
-#   - ## Bridge Concepts / 桥接概念 — connecting frameworks across subtopics
-#   - ## Cross-References / 关联图谱 with ASCII diagram
-#   - ## Related MoCs / 相关图谱
-#   - Reference: prediction-markets.md is the canonical format
-# ============================================================================
+# NOTE: The Python pipeline (pipeline/) is canonical. This lib exists
+# only for the remaining shell scripts (query-vault, review-pass, etc.)
+# that haven't been migrated to Python yet.
+# ═══════════════════════════════════════════════════════════
 
 set -euo pipefail
 
@@ -357,49 +350,6 @@ HEADER
 source	target	type	description
 HEADER
   fi
-}
-
-# ═══════════════════════════════════════════════════════════
-# EDGES: Typed relationship management
-# ═══════════════════════════════════════════════════════════
-EDGES_FILE="$VAULT_PATH/06-Config/edges.tsv"
-
-# Add an edge between two notes
-# Usage: add_edge "Source Note" "Target Note" "contradicts" "why it contradicts"
-add_edge() {
-  local source="$1"
-  local target="$2"
-  local edge_type="$3"
-  local description="${4:-}"
-  local edges_file="$EDGES_FILE"
-  mkdir -p "$(dirname "$edges_file")"
-  touch "$edges_file"
-
-  # Check for duplicate edge
-  if grep -qF "${source}	${target}	${edge_type}" "$edges_file" 2>/dev/null; then
-    return 0
-  fi
-
-  echo -e "${source}\t${target}\t${edge_type}\t${description}" >> "$edges_file"
-}
-
-# Get all edges for a note (both directions)
-# Usage: get_edges "Note Name"
-get_edges() {
-  local note="$1"
-  local edges_file="$EDGES_FILE"
-  [ -f "$edges_file" ] || return
-  # Exact match on source (col 1) or target (col 2) — avoids substring false positives
-  awk -F'\t' -v n="$note" '$1 == n || $2 == n' "$edges_file" 2>/dev/null || true
-}
-
-# Get edges by type
-# Usage: get_edges_by_type "contradicts"
-get_edges_by_type() {
-  local edge_type="$1"
-  local edges_file="$EDGES_FILE"
-  [ -f "$edges_file" ] || return
-  awk -F'\t' -v et="$edge_type" '$3 == et' "$edges_file" 2>/dev/null || true
 }
 
 # ═══════════════════════════════════════════════════════════

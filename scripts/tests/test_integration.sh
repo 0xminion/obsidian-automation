@@ -332,11 +332,8 @@ fi
 # Test 3: Output validation
 # ═══════════════════════════════════════════════════════════════════════════
 
-test_start "validate-output.sh on created files"
-
-if [ "$(find "$vault/04-Wiki" -name "*.md" | wc -l)" -gt 0 ]; then
-  validate_result=0
-  bash "$PIPELINE_DIR/validate-output.sh" --vault "$vault" 2>&1 || validate_result=$?
+test_start "validate (Python) on created files"
+  python3 -m pipeline.cli validate --vault "$vault" 2>&1 || validate_result=$?
   
   # Validation may find warnings but should not crash
   # Exit code 0 = all good, 1 = violations, 2 = fatal error
