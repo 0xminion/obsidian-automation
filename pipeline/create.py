@@ -29,6 +29,7 @@ from pipeline.models import Plan, Plans
 from pipeline.vault import (
     archive_inbox,
     reindex,
+    title_to_filename,
 )
 
 log = logging.getLogger(__name__)
@@ -274,7 +275,6 @@ CONTENT:
 _STUB_PATTERNS = [
     re.compile(r">\s*待补充", re.IGNORECASE),
     re.compile(r">\s*TODO\b", re.IGNORECASE),
-    re.compile(r"Content extracted via Tavily", re.IGNORECASE),
     re.compile(r"Full article text available in raw extraction", re.IGNORECASE),
 ]
 
@@ -548,9 +548,9 @@ def create_batch(batch: list[Plan], batch_idx: int, cfg: Config) -> dict:
         # Check if files were actually created for this batch's plans
         created_any = False
         for plan in batch:
-            # Check if any file references this plan's hash/title
-            entry_file = cfg.entries_dir / f"{plan.title}.md"
-            source_file = cfg.sources_dir / f"{plan.title}.md"
+            filename = title_to_filename(plan.title)
+            entry_file = cfg.entries_dir / f"{filename}.md"
+            source_file = cfg.sources_dir / f"{filename}.md"
             if entry_file.exists() or source_file.exists():
                 created_any = True
                 break

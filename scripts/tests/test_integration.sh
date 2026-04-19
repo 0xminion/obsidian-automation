@@ -333,8 +333,10 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════
 
 test_start "validate (Python) on created files"
+validate_result=0
+if [ "$source_count" -gt 0 ] || [ "$entry_count" -gt 0 ]; then
   python3 -m pipeline.cli validate --vault "$vault" 2>&1 || validate_result=$?
-  
+
   # Validation may find warnings but should not crash
   # Exit code 0 = all good, 1 = violations, 2 = fatal error
   if [ $validate_result -le 1 ]; then

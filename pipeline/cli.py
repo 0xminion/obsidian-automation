@@ -72,6 +72,15 @@ class PipelineLock:
         except FileExistsError:
             pid_file = self.lock_dir / "pid"
             if pid_file.exists():
+                # Check lock age — stale after 30 minutes
+                try:
+                    lock_age = time.time() - self.lock_dir.stat().st_mtime
+                    if lock_age > 1800:
+                        log.warning("Stale lock detected (age: %.0fs), forcing release", lock_age)
+                        self._force_release()
+                        return self.acquire()
+                except OSError:
+                    pass
                 try:
                     old_pid = int(pid_file.read_text().strip())
                     if not _pid_running(old_pid):
@@ -363,13 +372,12 @@ def validate(
 
 # ─── compile ──────────────────────────────────────────────────────────────────
 
-@app.command()
-def compile(
+@app.command(name="compile")
+def compile_pass(
     vault: Path = typer.Argument(None, help="Vault path (default: ~/MyVault)"),
 ):
     """Run the compile pass — concept convergence, MoC updates, edge construction."""
     from pipeline.compile import run_compile
-    from pipeline.vault import reindex as vault_reindex
 
     cfg = _load_cfg(vault)
     typer.echo(f"Compile pass — vault: {cfg.vault_path}")

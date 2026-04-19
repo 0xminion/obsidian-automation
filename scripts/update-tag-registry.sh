@@ -23,7 +23,8 @@ log "=== Starting tag registry update ==="
 # Temporary files for tag collection
 ENTRY_TAGS_TMP=$(mktemp)
 CONCEPT_TAGS_TMP=$(mktemp)
-trap 'rm -f "$ENTRY_TAGS_TMP" "$CONCEPT_TAGS_TMP"' EXIT
+moc_tags_tmp=""
+trap 'rm -f "$ENTRY_TAGS_TMP" "$CONCEPT_TAGS_TMP" "$moc_tags_tmp"' EXIT
 
 # Extract tags from entries (handles both inline and multi-line YAML)
 echo "# Tag Registry" > "$TAG_REGISTRY"
@@ -38,7 +39,7 @@ extract_yaml_tags() {
   local file="$1"
   python3 -c "
 import re, sys
-with open('$file') as f:
+with open(sys.argv[1]) as f:
     content = f.read()
 # Extract frontmatter
 m = re.search(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
@@ -67,7 +68,7 @@ else:
                 tag = tag.strip().strip('\"')
                 if tag:
                     print(tag)
-" 2>/dev/null
+" "$file" 2>/dev/null
 }
 
 # Collect entry tags

@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -60,7 +61,6 @@ from pipeline.extractors.web import (  # noqa: F401
     _try_defuddle,
     _try_defuddle_json,
     _try_curl_extract,
-    _try_tavily_extract,
     _try_archive_extract,
 )
 
@@ -96,6 +96,7 @@ class ContentIndex:
         self.index_path = index_path
         self._url_index: dict[str, str] = {}      # url_hash -> url
         self._content_index: dict[str, str] = {}   # content_hash -> vault filename
+        self._lock = threading.Lock()
         self._load()
 
     def _load(self) -> None:
@@ -154,21 +155,25 @@ class ContentIndex:
         return hashlib.md5(normalized.encode()).hexdigest()[:16]
 
     def is_url_processed(self, url: str) -> bool:
-        return self._url_hash(url) in self._url_index
+        with self._lock:
+            return self._url_hash(url) in self._url_index
 
     def is_content_duplicate(self, content: str) -> bool:
-        return self._content_hash(content) in self._content_index
+        with self._lock:
+            return self._content_hash(content) in self._content_index
 
     def get_content_duplicate(self, content: str) -> str:
         """Return vault filename of duplicate content, or empty string."""
-        return self._content_index.get(self._content_hash(content), "")
+        with self._lock:
+            return self._content_index.get(self._content_hash(content), "")
 
     def register(self, url: str, content_hash: str, vault_filename: str = "") -> None:
         """Register a processed URL and its content hash."""
-        self._url_index[self._url_hash(url)] = url
-        if content_hash:
-            self._content_index[content_hash] = vault_filename
-        self._save()
+        with self._lock:
+            self._url_index[self._url_hash(url)] = url
+            if content_hash:
+                self._content_index[content_hash] = vault_filename
+            self._save()
 
     @classmethod
     def load_or_create(cls, extract_dir: Path) -> ContentIndex:

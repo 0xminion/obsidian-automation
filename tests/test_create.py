@@ -655,9 +655,11 @@ class TestCreateBatch:
         cfg.extract_dir = extract_dir
         _create_extract(extract_dir, sample_plan)
 
-        # Create the file the agent would have written
+        # Create the file the agent would have written (using title_to_filename)
+        from pipeline.vault import title_to_filename
+        filename = title_to_filename(sample_plan.title)
         cfg.entries_dir.mkdir(parents=True, exist_ok=True)
-        (cfg.entries_dir / f"{sample_plan.title}.md").write_text(
+        (cfg.entries_dir / f"{filename}.md").write_text(
             "---\ntitle: Test Article\n---\n## Summary\nTest summary.\n", encoding="utf-8"
         )
 

@@ -1,8 +1,8 @@
-# PRD: obsidian-automation v2.2.0
+# PRD: obsidian-automation v0.1.0
 
 ## Executive Summary
 
-v2.2.0 is the self-contained Obsidian vault automation system that turns raw web content into a structured, interconnected wiki. Pipeline: Source → Entry → Concept → MoC. All automation baked into the Python pipeline, no external cron dependencies.
+v0.1.0 is the self-contained Obsidian vault automation system that turns raw web content into a structured, interconnected wiki. Pipeline: Source → Entry → Concept → MoC. All automation baked into the Python pipeline, no external cron dependencies.
 
 **Architecture:** 3-stage Python pipeline (Extract → Plan → Create) with parallel extraction, semantic concept search via qmd (Qwen3-Embedding-0.6B-Q8), and parallel write agents. Shell scripts deprecated — Python is the single source of truth.
 
@@ -147,7 +147,7 @@ Format (both languages):
 
 9. **Chinese stays Chinese** — all 04-Wiki body text for Chinese sources stays in Chinese. Only YAML keys, tags, and filenames use English.
 
-10. **Defuddle primary** — removed tavily as extraction fallback. Defuddle is primary for all web content including X/Twitter.
+10. **Defuddle primary** — defuddle is primary for all web content including X/Twitter.
 
 11. **3-stage pipeline** — separates extraction (shell), planning (1 agent), and creation (N agents). Extraction never touches LLM. Planning is batched. Creation is parallelizable.
 

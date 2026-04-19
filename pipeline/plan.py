@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -346,12 +347,10 @@ def generate_plans(
             log.warning("Plan agent attempt %d failed (exit %d): %s",
                         attempt + 1, result.returncode,
                         result.stderr[:200] if result.stderr else "no stderr")
-            import time
             if attempt < cfg.max_retries - 1:
                 time.sleep(2 ** attempt)
         except subprocess.TimeoutExpired:
             log.warning("Plan agent timeout on attempt %d", attempt + 1)
-            import time
             if attempt < cfg.max_retries - 1:
                 time.sleep(2 ** attempt)
 

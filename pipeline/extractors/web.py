@@ -1,6 +1,6 @@
 """Web content extraction with Cloudflare detection and fallback chain.
 
-Chain: defuddle → curl+liteparse → defuddle --json → tavily → archive.org.
+Chain: defuddle → curl+liteparse → defuddle --json → archive.org.
 Detects and retries on Cloudflare challenge pages.
 Handles arxiv specially via alphaxiv.org.
 """
@@ -20,7 +20,6 @@ from pipeline.config import Config
 from pipeline.models import ExtractedSource, SourceType
 from pipeline.extractors._shared import (
     _curl_get,
-    _curl_post_json,
     _run,
     _ARXIV_PATTERN,
     _extract_arxiv_paper_id,
@@ -34,7 +33,7 @@ log = logging.getLogger(__name__)
 def extract_web(url: str, cfg: Config, source_type: SourceType = SourceType.WEB) -> ExtractedSource:
     """Extract web content via defuddle CLI with curl fallback and retry logic.
 
-    Chain: defuddle → curl+liteparse → defuddle --json → tavily → archive.org
+    Chain: defuddle → curl+liteparse → defuddle --json → archive.org
     Detects and retries on Cloudflare challenge pages.
     """
     timeout = cfg.extract_timeout
@@ -60,13 +59,7 @@ def extract_web(url: str, cfg: Config, source_type: SourceType = SourceType.WEB)
 
         break  # Success
 
-    # If all retries failed, try tavily as last resort
-    if not content or _is_challenge_page(content):
-        content = _try_tavily_extract(url, cfg)
-        if content:
-            log.info("Tavily extraction succeeded for %s", url)
-
-    # If still nothing, try archive.org
+    # If all retries failed, try archive.org
     if not content or _is_challenge_page(content):
         content = _try_archive_extract(url, timeout)
         if content:
@@ -209,34 +202,6 @@ def _try_curl_extract(url: str, timeout: int = 45, attempt: int = 0) -> str:
                 os.unlink(tmpfile)
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
-    return ""
-
-
-def _try_tavily_extract(url: str, cfg: Config) -> str:
-    """Try tavily_extract as fallback for Cloudflare-blocked sites.
-
-    Uses Tavily's extract API which has its own browser rendering.
-    """
-    tavily_key = os.environ.get("TAVILY_API_KEY", "")
-    if not tavily_key:
-        return ""
-
-    try:
-        resp = _curl_post_json(
-            "https://api.tavily.com/extract",
-            data={"urls": [url], "extract_depth": "advanced"},
-            headers={"Authorization": f"Bearer {tavily_key}"},
-            timeout=60,
-        )
-        if resp:
-            data = json.loads(resp)
-            results = data.get("results", [])
-            if results:
-                content = results[0].get("raw_content", "") or results[0].get("content", "")
-                if content and len(content) > 100:
-                    return content[:50000]
-    except (json.JSONDecodeError, KeyError, IndexError, subprocess.TimeoutExpired, Exception) as e:
-        log.debug("Tavily extract failed: %s", e)
     return ""
 
 
