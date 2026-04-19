@@ -34,6 +34,7 @@ from pipeline.extractors._shared import (  # noqa: F401
     _extract_arxiv_paper_id,
     _is_challenge_page,
     validate_extraction as _validate_extraction,
+    ExtractionError,
     _YT_PATTERNS,
     _PODCAST_PATTERNS,
     _TWITTER_PATTERNS,
@@ -148,6 +149,27 @@ def extract_url(url: str, cfg: Config,
             source.save(cfg.resolved_extract_dir)
             return source
 
+        except ExtractionError as e:
+            # Loud failure — no retry, no metadata-only fallback
+            last_error = str(e)
+            log.error("ExtractionError for %s: %s", url, e)
+            if store:
+                store.dlq_add(
+                    url=url,
+                    reason="no_transcript",
+                    error=last_error,
+                    metadata={"source_type": source_type.value},
+                )
+                store.register_url(url, source_type.value, status="failed")
+            source = ExtractedSource(
+                url=url,
+                title=url,
+                content=f"URL: {url}\n\nExtractionError: {last_error}",
+                type=source_type,
+            )
+            source.save(cfg.resolved_extract_dir)
+            return source
+
         except Exception as e:
             last_error = str(e)
             log.error("Extraction failed (attempt %d/%d) for %s: %s",
@@ -189,6 +211,8 @@ def _classify_failure(error: str) -> str:
         return "empty_content"
     if "connection" in error_lower or "resolve" in error_lower:
         return "network"
+    if "transcript" in error_lower:
+        return "no_transcript"
     return "unknown"
 
 

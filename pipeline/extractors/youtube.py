@@ -24,6 +24,7 @@ from pipeline.extractors._shared import (
     _extract_youtube_video_id,
     extract_title,
     transcribe_with_whisper,
+    ExtractionError,
 )
 
 log = logging.getLogger(__name__)
@@ -57,8 +58,13 @@ def extract_youtube(url: str, cfg: Config) -> ExtractedSource:
     transcript = _try_youtube_transcript(url, video_id, cfg)
 
     if not transcript or len(transcript) < 50:
-        log.warning("YouTube transcript extraction failed for %s", video_id)
-        content = f"Title: {title}\nAuthor: {author}\nURL: {url}\n\nNote: Full transcript unavailable (extraction failed)."
+        log.error("YouTube transcript extraction failed for %s", video_id)
+        raise ExtractionError(
+            f"YouTube transcript extraction failed for {url} (video ID: {video_id}). "
+            f"TranscriptAPI, Supadata, and whisper all failed or returned <50 chars. "
+            f"Check API keys and whisper installation. "
+            f"NEVER accept metadata-only for YouTube."
+        )
     else:
         content = transcript
 

@@ -18,6 +18,15 @@ from urllib.parse import quote
 log = logging.getLogger(__name__)
 
 
+class ExtractionError(Exception):
+    """Raised when extraction fails and must not fall back to metadata-only.
+
+    Use for YouTube transcripts and podcast audio — these sources MUST have
+    full content, never just title/description metadata.
+    """
+    pass
+
+
 # ─── Subprocess / HTTP Helpers ────────────────────────────────────────────────
 
 def _run(args: list[str], timeout: int = 45, check: bool = False,
@@ -111,8 +120,12 @@ _YT_PATTERNS = re.compile(
     r"(?:youtube\.com|youtu\.be|youtube-nocookie\.com)"
 )
 _PODCAST_PATTERNS = re.compile(
-    r"(?:podcasts\.apple\.com|open\.spotify\.com/show|"
-    r"feeds\.|podbean\.com|anchor\.fm|spotify\.com/episode)"
+    r"(?:podcasts\.apple\.com|open\.spotify\.com/(?:show|episode)|"
+    r"spotify\.com/(?:show|episode)|podcasts\.google\.com|"
+    r"pca\.st|podbay\.fm|overcast\.fm|pocketcasts\.com|"
+    r"castbox\.fm|podbean\.com|anchor\.fm|feeds\.|"
+    r"podlink\.com|pod\.link|buzzsprout\.com|libsyn\.com|"
+    r"transistor\.fm|simplecast\.com|megaphone\.fm|acast\.com)"
 )
 _TWITTER_PATTERNS = re.compile(
     r"(?:x\.com|twitter\.com)/"

@@ -25,6 +25,7 @@ from pipeline.extract import (
     _curl_get,
     _curl_post_json,
     _run,
+    ExtractionError,
 )
 from pipeline.models import ExtractedSource, SourceType
 
@@ -385,26 +386,24 @@ class TestExtractYoutube:
 
     @patch("pipeline.extractors.youtube._try_youtube_transcript")
     @patch("pipeline.extractors.youtube._curl_get")
-    def test_without_transcript(self, mock_curl, mock_transcript, cfg: Config):
+    def test_without_transcript_raises_error(self, mock_curl, mock_transcript, cfg: Config):
         mock_curl.return_value = json.dumps({
             "title": "Test Video",
             "author_name": "Test Author",
         })
         mock_transcript.return_value = ""
 
-        source = _extract_youtube("https://www.youtube.com/watch?v=abc12345678", cfg)
-        assert "transcript unavailable" in source.content.lower()
-        assert source.type == SourceType.YOUTUBE
+        with pytest.raises(ExtractionError, match="transcript extraction failed"):
+            _extract_youtube("https://www.youtube.com/watch?v=abc12345678", cfg)
 
     @patch("pipeline.extractors.youtube._try_youtube_transcript")
     @patch("pipeline.extractors.youtube._curl_get")
-    def test_metadata_failure(self, mock_curl, mock_transcript, cfg: Config):
+    def test_metadata_failure_with_no_transcript(self, mock_curl, mock_transcript, cfg: Config):
         mock_curl.return_value = "invalid json"
         mock_transcript.return_value = ""
 
-        source = _extract_youtube("https://www.youtube.com/watch?v=abc12345678", cfg)
-        assert source.url == "https://www.youtube.com/watch?v=abc12345678"
-        assert source.type == SourceType.YOUTUBE
+        with pytest.raises(ExtractionError, match="transcript extraction failed"):
+            _extract_youtube("https://www.youtube.com/watch?v=abc12345678", cfg)
 
 
 # ─── _extract_podcast ────────────────────────────────────────────────────────
@@ -435,7 +434,7 @@ class TestExtractPodcast:
     @patch("pipeline.extractors.podcast._transcribe_podcast_audio")
     @patch("pipeline.extractors.podcast._parse_rss_episode")
     @patch("pipeline.extractors.podcast._curl_get")
-    def test_fallback_to_description(self, mock_curl, mock_rss, mock_transcribe, cfg: Config):
+    def test_transcription_failure_raises_error(self, mock_curl, mock_rss, mock_transcribe, cfg: Config):
         mock_curl.return_value = json.dumps({
             "results": [{"feedUrl": "https://feeds.example.com/show.xml",
                          "collectionName": "Test Podcast"}]
@@ -445,22 +444,21 @@ class TestExtractPodcast:
                                   "Episode 1")
         mock_transcribe.return_value = ""  # transcription fails
 
-        source = _extract_podcast(
-            "https://podcasts.apple.com/us/podcast/test/id123456?i=789",
-            cfg,
-        )
-        assert "Description" in source.content
+        with pytest.raises(ExtractionError, match="transcription failed"):
+            _extract_podcast(
+                "https://podcasts.apple.com/us/podcast/test/id123456?i=789",
+                cfg,
+            )
 
     @patch("pipeline.extractors.podcast._curl_get")
-    def test_no_feed_url(self, mock_curl, cfg: Config):
+    def test_no_feed_url_raises_error(self, mock_curl, cfg: Config):
         mock_curl.return_value = json.dumps({"results": []})
 
-        source = _extract_podcast(
-            "https://podcasts.apple.com/us/podcast/test/id123456?i=789",
-            cfg,
-        )
-        assert source.type == SourceType.PODCAST
-        assert "unavailable" in source.content.lower()
+        with pytest.raises(ExtractionError, match="no audio URL found"):
+            _extract_podcast(
+                "https://podcasts.apple.com/us/podcast/test/id123456?i=789",
+                cfg,
+            )
 
 
 # ─── extract_url ─────────────────────────────────────────────────────────────

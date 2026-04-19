@@ -192,17 +192,84 @@ def concept_search(manifest: Manifest, cfg: Config) -> dict[str, list[ConceptMat
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f]")
 
-# Common topic keywords → tags
+# Common topic keywords → tags (15 categories)
 _TOPIC_KEYWORDS = {
-    "crypto": ["cryptocurrency", "blockchain", "bitcoin", "ethereum", "defi", "token", "web3"],
-    "economics": ["inflation", "monetary", "fiscal", "gdp", "recession", "economy", "market"],
-    "geopolitics": ["geopolitical", "sanctions", "diplomacy", "military", "war", "conflict"],
-    "ai": ["artificial intelligence", "machine learning", "neural network", "llm", "gpt", "transformer"],
-    "philosophy": ["epistemology", "ontology", "metaphysics", "ethics", "rationality", "consciousness"],
-    "technology": ["software", "programming", "api", "infrastructure", "cloud", "database"],
-    "finance": ["trading", "portfolio", "yield", "interest rate", "bond", "equity"],
-    "science": ["research", "experiment", "hypothesis", "peer review", "study", "findings"],
+    "crypto": ["cryptocurrency", "blockchain", "bitcoin", "ethereum", "defi", "token", "web3", "solana"],
+    "economics": ["inflation", "monetary", "fiscal", "gdp", "recession", "economy", "macroeconomics"],
+    "geopolitics": ["geopolitical", "sanctions", "diplomacy", "military", "war", "conflict", "nato", "alliance"],
+    "ai-ml": ["artificial intelligence", "machine learning", "neural network", "llm", "gpt", "transformer", "deep learning"],
+    "philosophy": ["epistemology", "ontology", "metaphysics", "ethics", "rationality", "consciousness", "phenomenology"],
+    "software-engineering": ["software", "programming", "api", "infrastructure", "cloud", "database", "microservices"],
+    "finance": ["trading", "portfolio", "yield", "interest rate", "bond", "equity", "derivatives", "hedge"],
+    "science": ["research", "experiment", "hypothesis", "peer review", "study", "findings", "methodology"],
+    "history": ["historical", "century", "civilization", "empire", "revolution", "dynasty", "ancient"],
+    "psychology": ["cognitive", "behavioral", "bias", "heuristic", "mental model", "decision making"],
+    "security": ["cybersecurity", "vulnerability", "exploit", "encryption", "authentication", "zero-day"],
+    "energy": ["solar", "nuclear", "oil", "renewable", "battery", "grid", "carbon", "climate"],
+    "biology": ["genetics", "evolution", "cell", "organism", "protein", "genome", "neuroscience"],
+    "urbanism": ["housing", "zoning", "transit", "density", "suburb", "urban planning", "infrastructure"],
+    "healthcare": ["clinical", "patient", "treatment", "diagnosis", "pharmaceutical", "medical"],
 }
+
+# Named entity patterns (case-sensitive)
+_ENTITY_PATTERNS = [
+    (re.compile(r"\b(Bitcoin|BTC|Ethereum|ETH|Solana|SOL|USDC|USDT|DeFi|NFT)\b"), "crypto"),
+    (re.compile(r"\b(GPT-\d|Claude|Gemini|Llama|Mistral|Whisper|Stable Diffusion)\b"), "ai-ml"),
+    (re.compile(r"\b(Fed|Federal Reserve|SEC|CFTC|ECB|BOJ|IMF|World Bank)\b"), "finance"),
+    (re.compile(r"\b(NATO|UN|WHO|WTO|G7|G20|BRICS|EU)\b"), "geopolitics"),
+    (re.compile(r"\b(Linux|Docker|Kubernetes|PostgreSQL|Redis|AWS|GCP|Azure)\b"), "software-engineering"),
+    (re.compile(r"\b(S&P 500|NASDAQ|NYSE|FTSE|Nikkei)\b"), "finance"),
+]
+
+_STOP_WORDS = {
+    "this", "that", "with", "from", "they", "been", "have", "their", "which",
+    "about", "would", "these", "other", "into", "more", "also", "some", "than",
+    "very", "just", "only", "over", "such", "after", "before", "between",
+    "under", "again", "there", "where", "being", "does", "will", "should",
+    "could", "through", "during", "each", "every", "both", "few", "most",
+    "then", "once", "here", "when", "what", "your", "make", "like", "time",
+    "just", "know", "take", "come", "could", "good", "many", "some", "them",
+    "than", "first", "would", "into", "year", "your", "way", "may", "say",
+}
+
+
+def extract_tags(content: str, max_tags: int = 5) -> list[str]:
+    """Extract meaningful topic tags using keyword + entity + frequency analysis.
+
+    Returns specific tags — never generic ones like 'source' or 'url'.
+    Tags are weighted: entities (5.0) > keywords (1.5) > word frequency (0.5).
+    """
+    content_lower = content[:8000].lower()
+    content_upper = content[:8000]
+    tags_with_scores: dict[str, float] = {}
+
+    # 1. Named entity detection (high weight)
+    for pattern, category in _ENTITY_PATTERNS:
+        matches = pattern.findall(content_upper)
+        if matches:
+            tags_with_scores[category] = tags_with_scores.get(category, 0) + len(matches) * 3.0
+            for entity in set(matches):
+                entity_tag = entity.lower().replace(" ", "-")
+                tags_with_scores[entity_tag] = tags_with_scores.get(entity_tag, 0) + 5.0
+
+    # 2. Topic keyword matching (medium weight)
+    for tag, keywords in _TOPIC_KEYWORDS.items():
+        matches = sum(1 for kw in keywords if kw in content_lower)
+        if matches >= 2:
+            tags_with_scores[tag] = tags_with_scores.get(tag, 0) + matches * 1.5
+
+    # 3. Repeated significant words (low weight)
+    words = re.findall(r'\b[a-z]{4,}\b', content_lower)
+    word_freq: dict[str, int] = {}
+    for w in words:
+        if w not in _STOP_WORDS:
+            word_freq[w] = word_freq.get(w, 0) + 1
+    for word, count in word_freq.items():
+        if count >= 3 and len(word) >= 5:
+            tags_with_scores[word] = tags_with_scores.get(word, 0) + count * 0.5
+
+    sorted_tags = sorted(tags_with_scores.items(), key=lambda x: -x[1])
+    return [tag for tag, _ in sorted_tags[:max_tags]]
 
 
 def detect_language(content: str) -> Language:
