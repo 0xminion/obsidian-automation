@@ -189,6 +189,10 @@ def load_config(
         extract_timeout=int(os.environ.get("EXTRACT_TIMEOUT", "45")),
         agent_timeout=int(os.environ.get("AGENT_TIMEOUT", "900")),
         plan_timeout=int(os.environ.get("PLAN_TIMEOUT", "600")),
+        max_content_per_source=int(os.environ.get("MAX_CONTENT_PER_SOURCE", "8000")),
+        max_total_content=int(os.environ.get("MAX_TOTAL_CONTENT", "15000")),
+        max_content_insights=int(os.environ.get("MAX_CONTENT_INSIGHTS", "6000")),
+        whisper_language=os.environ.get("WHISPER_LANGUAGE", ""),
     )
 
     # Override extract dir if PIPELINE_TMPDIR is set
