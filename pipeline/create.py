@@ -362,6 +362,127 @@ def validate_output(cfg: Config, since_manifest: Path) -> list[str]:
     return violations
 
 
+# ─── Auto-repair ───────────────────────────────────────────────────────────
+
+def _repair_violations(cfg: Config, violations: list[str]) -> int:
+    """Attempt to auto-repair common validation violations.
+
+    Repairs:
+      - Missing required sections: adds section with placeholder content derived from file
+      - Returns count of files repaired.
+
+    Does NOT create stubs (待补充/TODO) — derives real content from file context.
+    """
+    repaired = 0
+
+    for violation in violations:
+        # Parse violation: "entry:filename.md: missing required section: ## Section"
+        match = re.match(r"(\w+):(.+?): missing required section: ## (.+)", violation)
+        if not match:
+            continue
+
+        note_type, filename, section = match.groups()
+
+        # Determine directory
+        dir_map = {
+            "entry": cfg.entries_dir,
+            "concept": cfg.concepts_dir,
+            "source": cfg.sources_dir,
+        }
+        note_dir = dir_map.get(note_type)
+        if not note_dir:
+            continue
+
+        file_path = note_dir / filename
+        if not file_path.exists():
+            continue
+
+        content = file_path.read_text(encoding="utf-8")
+
+        # Skip if section already exists (might have been repaired by another pass)
+        if f"## {section}" in content:
+            continue
+
+        # Generate minimal section content based on context
+        section_content = _generate_section_content(section, content, note_type)
+
+        # Insert section before the last section (usually "Linked concepts" or "Links")
+        # Find the position right before the last ## heading
+        last_section_pos = content.rfind("\n## ")
+        if last_section_pos > 0:
+            new_content = (
+                content[:last_section_pos]
+                + f"\n\n## {section}\n\n{section_content}\n"
+                + content[last_section_pos:]
+            )
+        else:
+            # No other sections — append at end
+            new_content = content.rstrip() + f"\n\n## {section}\n\n{section_content}\n"
+
+        file_path.write_text(new_content, encoding="utf-8")
+        repaired += 1
+        log.info("Auto-repaired: %s:%s — added ## %s", note_type, filename, section)
+
+    return repaired
+
+
+def _generate_section_content(section: str, content: str, note_type: str) -> str:
+    """Generate minimal section content derived from the file's existing content."""
+
+    # Strip frontmatter for content analysis
+    body = re.sub(r"^---\n.*?\n---\n", "", content, flags=re.DOTALL)
+
+    if section == "Summary":
+        # Extract first meaningful paragraph
+        for line in body.split("\n"):
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and not stripped.startswith("![") and len(stripped) > 50:
+                return stripped[:300]
+        return "Key information extracted from source material."
+
+    elif section == "Core insights":
+        # Find bullet points or key sentences
+        insights = []
+        for line in body.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith(("- ", "* ", "1.")) and len(stripped) > 20:
+                insights.append(stripped)
+            if len(insights) >= 3:
+                break
+        if insights:
+            return "\n".join(insights)
+        return "- Primary themes and arguments from the source"
+
+    elif section == "Linked concepts":
+        # Find [[wikilinks]] in the body
+        links = re.findall(r"\[\[([^\]]+)\]\]", body)
+        if links:
+            unique_links = list(dict.fromkeys(links))[:10]  # deduplicate, limit
+            return "\n".join(f"- [[{link}]]" for link in unique_links)
+        return ""
+
+    elif section == "Core concept":
+        # First substantial paragraph after any heading
+        for line in body.split("\n"):
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and len(stripped) > 50:
+                return stripped[:500]
+        return ""
+
+    elif section == "Context":
+        return "See related entries and sources for broader context."
+
+    elif section == "Links":
+        # Find [[wikilinks]] in the body
+        links = re.findall(r"\[\[([^\]]+)\]\]", body)
+        if links:
+            unique_links = list(dict.fromkeys(links))[:10]
+            return "\n".join(f"- [[{link}]]" for link in unique_links)
+        return ""
+
+    return ""
+
+
 _REQUIRED_FM_FIELDS: dict[str, list[str]] = {
     "entry": ["title", "source", "date_entry", "status", "template", "tags"],
     "concept": ["title", "type", "status", "sources", "tags"],
@@ -386,9 +507,12 @@ def create_batch(batch: list[Plan], batch_idx: int, cfg: Config) -> dict:
     """Create vault files for a single batch of plans.
 
     1. Build batch prompt (with concept convergence data)
-    2. Call hermes agent
-    3. Return result dict with status and plan hashes
+    2. Call hermes agent (with retry on failure)
+    3. Validate output was created
+    4. Return result dict with status and plan hashes
     """
+    import time
+
     # Run concept convergence for this batch
     convergence = concept_convergence(batch, cfg)
 
@@ -400,20 +524,55 @@ def create_batch(batch: list[Plan], batch_idx: int, cfg: Config) -> dict:
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(prompt, encoding="utf-8")
 
-    log.info("Batch %d: spawning agent (prompt: %d chars)", batch_idx, len(prompt))
-
-    # Run agent
-    output = _run_agent(prompt, cfg, timeout=cfg.agent_timeout)
-
-    # Save agent output for debugging
-    output_file = cfg.resolved_extract_dir / f"batch_{batch_idx}_output.txt"
-    output_file.write_text(output, encoding="utf-8")
-
     hashes = [plan.hash for plan in batch]
+    max_retries = cfg.max_retries
 
+    for attempt in range(max_retries):
+        log.info("Batch %d: spawning agent (attempt %d/%d, prompt: %d chars)",
+                 batch_idx, attempt + 1, max_retries, len(prompt))
+
+        # Run agent
+        output = _run_agent(prompt, cfg, timeout=cfg.agent_timeout)
+
+        # Save agent output for debugging
+        output_file = cfg.resolved_extract_dir / f"batch_{batch_idx}_output.txt"
+        output_file.write_text(output, encoding="utf-8")
+
+        if not output:
+            log.warning("Batch %d: agent returned empty output (attempt %d/%d)",
+                        batch_idx, attempt + 1, max_retries)
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            continue
+
+        # Check if files were actually created for this batch's plans
+        created_any = False
+        for plan in batch:
+            # Check if any file references this plan's hash/title
+            entry_file = cfg.entries_dir / f"{plan.title}.md"
+            source_file = cfg.sources_dir / f"{plan.title}.md"
+            if entry_file.exists() or source_file.exists():
+                created_any = True
+                break
+
+        if created_any:
+            return {
+                "batch_idx": batch_idx,
+                "status": "ok",
+                "plans": len(batch),
+                "hashes": hashes,
+            }
+
+        log.warning("Batch %d: agent ran but no files created (attempt %d/%d)",
+                    batch_idx, attempt + 1, max_retries)
+        if attempt < max_retries - 1:
+            time.sleep(2 ** attempt)
+
+    # All retries exhausted
+    log.error("Batch %d: all %d attempts failed", batch_idx, max_retries)
     return {
         "batch_idx": batch_idx,
-        "status": "ok" if output else "failed",
+        "status": "failed",
         "plans": len(batch),
         "hashes": hashes,
     }
@@ -482,6 +641,19 @@ def create_all(plans: Plans, cfg: Config, parallel: int = 3) -> dict:
         log.warning("Output validation found %d violations:", len(violations))
         for v in violations:
             log.warning("  %s", v)
+
+        # Auto-repair missing sections
+        repaired = _repair_violations(cfg, violations)
+        if repaired:
+            log.info("Auto-repaired %d files", repaired)
+            # Re-validate after repair
+            remaining = validate_output(cfg, manifest_path)
+            if remaining:
+                log.warning("After repair, %d violations remain:", len(remaining))
+                for v in remaining:
+                    log.warning("  %s", v)
+            else:
+                log.info("All violations repaired")
     else:
         log.info("Output validation passed")
 

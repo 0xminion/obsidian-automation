@@ -655,6 +655,12 @@ class TestCreateBatch:
         cfg.extract_dir = extract_dir
         _create_extract(extract_dir, sample_plan)
 
+        # Create the file the agent would have written
+        cfg.entries_dir.mkdir(parents=True, exist_ok=True)
+        (cfg.entries_dir / f"{sample_plan.title}.md").write_text(
+            "---\ntitle: Test Article\n---\n## Summary\nTest summary.\n", encoding="utf-8"
+        )
+
         with patch("pipeline.create.concept_convergence") as mock_conv, \
              patch("pipeline.create._run_agent") as mock_agent:
             mock_conv.return_value = {sample_plan.hash: []}

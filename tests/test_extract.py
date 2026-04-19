@@ -205,8 +205,8 @@ class TestRunHelper:
 # ─── _try_defuddle ───────────────────────────────────────────────────────────
 
 class TestTryDefuddle:
-    @patch("pipeline.extract._run")
-    @patch("pipeline.extract.Path.read_text")
+    @patch("pipeline.extractors.web._run")
+    @patch("pipeline.extractors.web.Path.read_text")
     @patch("tempfile.NamedTemporaryFile")
     @patch("os.path.exists")
     @patch("os.path.getsize")
@@ -222,19 +222,19 @@ class TestTryDefuddle:
         result = _try_defuddle("https://example.com", timeout=30)
         assert result == "# Title\n\nContent here."
 
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors.web._run")
     def test_defuddle_not_found(self, mock_run):
         mock_run.side_effect = FileNotFoundError("defuddle not found")
         result = _try_defuddle("https://example.com", timeout=30)
         assert result == ""
 
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors.web._run")
     def test_defuddle_timeout(self, mock_run):
         mock_run.side_effect = subprocess.TimeoutExpired(["defuddle"], 30)
         result = _try_defuddle("https://example.com", timeout=30)
         assert result == ""
 
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors.web._run")
     @patch("tempfile.NamedTemporaryFile")
     @patch("os.unlink")
     def test_defuddle_fails(self, mock_unlink, mock_tmpfile, mock_run):
@@ -247,7 +247,7 @@ class TestTryDefuddle:
 # ─── _try_defuddle_json ─────────────────────────────────────────────────────
 
 class TestTryDefuddleJson:
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors.web._run")
     def test_success(self, mock_run):
         content_text = "Extracted content from defuddle JSON mode. " * 10
         mock_run.return_value = MagicMock(
@@ -257,19 +257,19 @@ class TestTryDefuddleJson:
         result = _try_defuddle_json("https://example.com", timeout=30)
         assert "Extracted content" in result
 
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors.web._run")
     def test_empty_content(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout='{"content": "short"}')
         result = _try_defuddle_json("https://example.com", timeout=30)
         assert result == ""
 
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors.web._run")
     def test_invalid_json(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="not json")
         result = _try_defuddle_json("https://example.com", timeout=30)
         assert result == ""
 
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors.web._run")
     def test_defuddle_not_found(self, mock_run):
         mock_run.side_effect = FileNotFoundError
         result = _try_defuddle_json("https://example.com", timeout=30)
@@ -279,7 +279,7 @@ class TestTryDefuddleJson:
 # ─── _try_curl_extract ──────────────────────────────────────────────────────
 
 class TestTryCurlExtract:
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors.web._run")
     @patch("tempfile.NamedTemporaryFile")
     @patch("os.path.exists")
     @patch("os.path.getsize")
@@ -298,7 +298,7 @@ class TestTryCurlExtract:
         result = _try_curl_extract("https://example.com", timeout=30)
         assert "Parsed content" in result
 
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors.web._run")
     @patch("tempfile.NamedTemporaryFile")
     @patch("os.unlink")
     def test_curl_fails(self, mock_unlink, mock_tmpfile, mock_run):
@@ -311,7 +311,7 @@ class TestTryCurlExtract:
 # ─── _extract_web ────────────────────────────────────────────────────────────
 
 class TestExtractWeb:
-    @patch("pipeline.extract._extract_web_content")
+    @patch("pipeline.extractors.web._extract_web_content")
     def test_returns_extracted_source(self, mock_content, cfg: Config):
         mock_content.return_value = "# Test Article\n\nThis is the body of the article with enough content."
         source = _extract_web("https://example.com/article", cfg)
@@ -320,7 +320,7 @@ class TestExtractWeb:
         assert source.type == SourceType.WEB
         assert "body of the article" in source.content
 
-    @patch("pipeline.extract._extract_web_content")
+    @patch("pipeline.extractors.web._extract_web_content")
     def test_fallback_on_failure(self, mock_content, cfg: Config):
         mock_content.return_value = ""
         source = _extract_web("https://example.com/article", cfg)
@@ -331,15 +331,15 @@ class TestExtractWeb:
 # ─── _extract_web_content ───────────────────────────────────────────────────
 
 class TestExtractWebContent:
-    @patch("pipeline.extract._try_defuddle")
+    @patch("pipeline.extractors.web._try_defuddle")
     def test_defuddle_succeeds(self, mock_defuddle):
         mock_defuddle.return_value = "# Title\n\n" + "A" * 300
         result = _extract_web_content("https://example.com", timeout=30)
         assert len(result) > 200
 
-    @patch("pipeline.extract._try_defuddle_json")
-    @patch("pipeline.extract._try_curl_extract")
-    @patch("pipeline.extract._try_defuddle")
+    @patch("pipeline.extractors.web._try_defuddle_json")
+    @patch("pipeline.extractors.web._try_curl_extract")
+    @patch("pipeline.extractors.web._try_defuddle")
     def test_fallback_chain(self, mock_defuddle, mock_curl, mock_json):
         mock_defuddle.return_value = "short"
         mock_curl.return_value = "also short"
@@ -347,16 +347,16 @@ class TestExtractWebContent:
         result = _extract_web_content("https://example.com", timeout=30)
         assert "final content" in result
 
-    @patch("pipeline.extract._curl_get")
-    @patch("pipeline.extract._try_defuddle")
+    @patch("pipeline.extractors.web._curl_get")
+    @patch("pipeline.extractors.web._try_defuddle")
     def test_arxiv_html_succeeds(self, mock_defuddle, mock_curl):
         # arxiv HTML via defuddle succeeds
         mock_defuddle.return_value = "# Paper Title\n\n" + "A" * 600
         result = _extract_web_content("https://arxiv.org/abs/2503.03312", timeout=30)
         assert len(result) > 500
 
-    @patch("pipeline.extract._curl_get")
-    @patch("pipeline.extract._try_defuddle")
+    @patch("pipeline.extractors.web._curl_get")
+    @patch("pipeline.extractors.web._try_defuddle")
     def test_arxiv_alphaxiv_fallback(self, mock_defuddle, mock_curl):
         # defuddle fails, alphaxiv succeeds
         mock_defuddle.return_value = ""
@@ -368,8 +368,8 @@ class TestExtractWebContent:
 # ─── _extract_youtube ───────────────────────────────────────────────────────
 
 class TestExtractYoutube:
-    @patch("pipeline.extract._try_youtube_transcript")
-    @patch("pipeline.extract._curl_get")
+    @patch("pipeline.extractors.youtube._try_youtube_transcript")
+    @patch("pipeline.extractors.youtube._curl_get")
     def test_with_transcript(self, mock_curl, mock_transcript, cfg: Config):
         mock_curl.return_value = json.dumps({
             "title": "Test Video",
@@ -383,8 +383,8 @@ class TestExtractYoutube:
         assert source.type == SourceType.YOUTUBE
         assert "full transcript" in source.content
 
-    @patch("pipeline.extract._try_youtube_transcript")
-    @patch("pipeline.extract._curl_get")
+    @patch("pipeline.extractors.youtube._try_youtube_transcript")
+    @patch("pipeline.extractors.youtube._curl_get")
     def test_without_transcript(self, mock_curl, mock_transcript, cfg: Config):
         mock_curl.return_value = json.dumps({
             "title": "Test Video",
@@ -396,8 +396,8 @@ class TestExtractYoutube:
         assert "transcript unavailable" in source.content.lower()
         assert source.type == SourceType.YOUTUBE
 
-    @patch("pipeline.extract._try_youtube_transcript")
-    @patch("pipeline.extract._curl_get")
+    @patch("pipeline.extractors.youtube._try_youtube_transcript")
+    @patch("pipeline.extractors.youtube._curl_get")
     def test_metadata_failure(self, mock_curl, mock_transcript, cfg: Config):
         mock_curl.return_value = "invalid json"
         mock_transcript.return_value = ""
@@ -410,9 +410,9 @@ class TestExtractYoutube:
 # ─── _extract_podcast ────────────────────────────────────────────────────────
 
 class TestExtractPodcast:
-    @patch("pipeline.extract._transcribe_podcast_audio")
-    @patch("pipeline.extract._parse_rss_episode")
-    @patch("pipeline.extract._curl_get")
+    @patch("pipeline.extractors.podcast._transcribe_podcast_audio")
+    @patch("pipeline.extractors.podcast._parse_rss_episode")
+    @patch("pipeline.extractors.podcast._curl_get")
     def test_with_transcript(self, mock_curl, mock_rss, mock_transcribe, cfg: Config):
         # iTunes lookup response
         mock_curl.return_value = json.dumps({
@@ -432,9 +432,9 @@ class TestExtractPodcast:
         assert "transcript" in source.content.lower()
         assert "Test Podcast" in source.content
 
-    @patch("pipeline.extract._transcribe_podcast_audio")
-    @patch("pipeline.extract._parse_rss_episode")
-    @patch("pipeline.extract._curl_get")
+    @patch("pipeline.extractors.podcast._transcribe_podcast_audio")
+    @patch("pipeline.extractors.podcast._parse_rss_episode")
+    @patch("pipeline.extractors.podcast._curl_get")
     def test_fallback_to_description(self, mock_curl, mock_rss, mock_transcribe, cfg: Config):
         mock_curl.return_value = json.dumps({
             "results": [{"feedUrl": "https://feeds.example.com/show.xml",
@@ -451,7 +451,7 @@ class TestExtractPodcast:
         )
         assert "Description" in source.content
 
-    @patch("pipeline.extract._curl_get")
+    @patch("pipeline.extractors.podcast._curl_get")
     def test_no_feed_url(self, mock_curl, cfg: Config):
         mock_curl.return_value = json.dumps({"results": []})
 
@@ -480,7 +480,9 @@ class TestExtractUrl:
     def test_routes_podcast(self, mock_pod, cfg: Config):
         mock_pod.return_value = ExtractedSource(
             url="https://podcasts.apple.com/us/p/test/id1",
-            title="Episode", content="desc", type=SourceType.PODCAST,
+            title="Episode",
+            content="Podcast description with sufficient content for validation",
+            type=SourceType.PODCAST,
         )
         source = extract_url("https://podcasts.apple.com/us/p/test/id1", cfg)
         assert source.type == SourceType.PODCAST
@@ -490,7 +492,8 @@ class TestExtractUrl:
     def test_routes_web(self, mock_web, cfg: Config):
         mock_web.return_value = ExtractedSource(
             url="https://example.com", title="Article",
-            content="body", type=SourceType.WEB,
+            content="Article body content with enough text for validation",
+            type=SourceType.WEB,
         )
         source = extract_url("https://example.com/article", cfg)
         assert source.type == SourceType.WEB
@@ -567,7 +570,7 @@ class TestExtractAll:
 # ─── _curl_get / _curl_post_json ────────────────────────────────────────────
 
 class TestCurlHelpers:
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors._shared._run")
     def test_curl_get(self, mock_run):
         mock_run.return_value = MagicMock(stdout='{"key": "value"}', returncode=0)
         result = _curl_get("https://api.example.com/data", timeout=10)
@@ -576,7 +579,7 @@ class TestCurlHelpers:
         assert "curl" in args
         assert "-sL" in args
 
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors._shared._run")
     def test_curl_get_with_headers(self, mock_run):
         mock_run.return_value = MagicMock(stdout="response", returncode=0)
         _curl_get("https://api.example.com", headers={"Authorization": "Bearer key"}, timeout=10)
@@ -584,7 +587,7 @@ class TestCurlHelpers:
         assert "-H" in args
         assert "Authorization: Bearer key" in args
 
-    @patch("pipeline.extract._run")
+    @patch("pipeline.extractors._shared._run")
     def test_curl_post_json(self, mock_run):
         mock_run.return_value = MagicMock(stdout="ok", returncode=0)
         result = _curl_post_json(

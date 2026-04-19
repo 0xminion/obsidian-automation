@@ -330,8 +330,9 @@ def generate_plans(
     cmd = [cfg.agent_cmd, "chat", "-q", prompt, "-Q"]
     plan_dicts: list[dict] = []
 
-    for attempt in range(2):  # max 2 attempts
+    for attempt in range(cfg.max_retries):  # configurable retries
         try:
+            log.info("Plan agent attempt %d/%d", attempt + 1, cfg.max_retries)
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -342,9 +343,17 @@ def generate_plans(
                 plan_dicts = _parse_agent_output(result.stdout)
                 if plan_dicts:
                     break
-            log.warning("Plan agent attempt %d failed (exit %d)", attempt + 1, result.returncode)
+            log.warning("Plan agent attempt %d failed (exit %d): %s",
+                        attempt + 1, result.returncode,
+                        result.stderr[:200] if result.stderr else "no stderr")
+            import time
+            if attempt < cfg.max_retries - 1:
+                time.sleep(2 ** attempt)
         except subprocess.TimeoutExpired:
             log.warning("Plan agent timeout on attempt %d", attempt + 1)
+            import time
+            if attempt < cfg.max_retries - 1:
+                time.sleep(2 ** attempt)
 
     if not plan_dicts:
         log.error("Could not parse any plans from agent output")

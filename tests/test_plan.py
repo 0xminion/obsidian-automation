@@ -463,7 +463,7 @@ class TestGeneratePlans:
         monkeypatch.setattr("pipeline.plan.subprocess.run", mock_run)
         plans = generate_plans(manifest, {}, cfg)
         assert plans.plans == []
-        assert call_count == 2  # retried once
+        assert call_count == cfg.max_retries  # retried per config
 
     def test_agent_failure_returns_empty(self, tmp_path, monkeypatch):
         cfg = _make_config(tmp_path)
