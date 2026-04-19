@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import re
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -22,6 +21,7 @@ from typing import Optional
 
 from pipeline.config import Config
 from pipeline.models import ExtractedSource, Manifest, SourceType
+from pipeline.store import ContentStore
 
 # ─── Re-exports for backward compatibility (tests patch these names) ──────────
 from pipeline.extractors._shared import (  # noqa: F401
@@ -80,123 +80,24 @@ def detect_source_type(url: str) -> SourceType:
     return SourceType.WEB
 
 
-# ─── Content Index (Recommendation 5: URL + Content Dedup) ───────────────────
-
-class ContentIndex:
-    """Persistent index of processed URLs and content hashes.
-
-    Prevents re-extraction of already-processed content and detects
-    cross-source duplicates (same content, different URLs).
-
-    Stored as JSON at extract_dir/content_index.json.
-    Isolated per vault via PIPELINE_TMPDIR or per-vault extract dirs.
-    """
-
-    def __init__(self, index_path: Path):
-        self.index_path = index_path
-        self._url_index: dict[str, str] = {}      # url_hash -> url
-        self._content_index: dict[str, str] = {}   # content_hash -> vault filename
-        self._lock = threading.Lock()
-        self._load()
-
-    def _load(self) -> None:
-        if self.index_path.exists():
-            try:
-                data = json.loads(self.index_path.read_text())
-                self._url_index = data.get("urls", {})
-                self._content_index = data.get("content", {})
-                log.info("Loaded content index: %d URLs, %d content hashes",
-                         len(self._url_index), len(self._content_index))
-            except (json.JSONDecodeError, Exception) as e:
-                log.warning("Failed to load content index: %s", e)
-                self._url_index = {}
-                self._content_index = {}
-
-    def _save(self) -> None:
-        self.index_path.parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            "urls": self._url_index,
-            "content": self._content_index,
-        }
-        self.index_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-
-    @staticmethod
-    def _normalize_url(url: str) -> str:
-        """Normalize URL for dedup comparison.
-
-        Strips tracking params, trailing slashes, and lowercases.
-        """
-        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-        parsed = urlparse(url)
-        # Strip common tracking params
-        skip_params = {"utm_source", "utm_medium", "utm_campaign", "utm_content",
-                       "utm_term", "ref", "source", "fbclid", "gclid"}
-        params = parse_qs(parsed.query)
-        filtered = {k: v for k, v in params.items() if k.lower() not in skip_params}
-        clean_query = urlencode(filtered, doseq=True)
-        # Lowercase scheme + host, strip trailing slash
-        normalized = urlunparse((
-            parsed.scheme.lower(),
-            parsed.netloc.lower(),
-            parsed.path.rstrip("/") or "/",
-            parsed.params,
-            clean_query,
-            "",  # fragment
-        ))
-        return normalized
-
-    @staticmethod
-    def _url_hash(url: str) -> str:
-        return hashlib.md5(ContentIndex._normalize_url(url).encode()).hexdigest()[:12]
-
-    @staticmethod
-    def _content_hash(content: str) -> str:
-        normalized = re.sub(r"\s+", " ", content.lower().strip())[:2000]
-        return hashlib.md5(normalized.encode()).hexdigest()[:16]
-
-    def is_url_processed(self, url: str) -> bool:
-        with self._lock:
-            return self._url_hash(url) in self._url_index
-
-    def is_content_duplicate(self, content: str) -> bool:
-        with self._lock:
-            return self._content_hash(content) in self._content_index
-
-    def get_content_duplicate(self, content: str) -> str:
-        """Return vault filename of duplicate content, or empty string."""
-        with self._lock:
-            return self._content_index.get(self._content_hash(content), "")
-
-    def register(self, url: str, content_hash: str, vault_filename: str = "") -> None:
-        """Register a processed URL and its content hash."""
-        with self._lock:
-            self._url_index[self._url_hash(url)] = url
-            if content_hash:
-                self._content_index[content_hash] = vault_filename
-            self._save()
-
-    @classmethod
-    def load_or_create(cls, extract_dir: Path) -> ContentIndex:
-        index_path = extract_dir / "content_index.json"
-        return cls(index_path)
-
-
 # ─── Main Entry Points ───────────────────────────────────────────────────────
 
 def extract_url(url: str, cfg: Config,
-                content_index: Optional[ContentIndex] = None) -> ExtractedSource:
+                store: Optional[ContentStore] = None) -> ExtractedSource:
     """Extract a single URL with retry logic, quality validation, and dedup.
 
     Routes to appropriate extractor based on type.
     Retries on transient failures (network errors, timeouts).
+    Dedup via SQLite content store.
+    Failed extractions recorded to dead letter queue.
     Returns ExtractedSource and saves JSON to cfg.resolved_extract_dir / {hash}.json.
     """
-    # URL-level dedup: skip if already processed
-    if content_index and content_index.is_url_processed(url):
-        log.info("Dedup: skipping already-processed URL %s", url[:80])
+    # URL-level dedup: skip if already extracted
+    if store and store.is_url_extracted(url):
+        log.info("Dedup: skipping already-extracted URL %s", url[:80])
         return ExtractedSource(
             url=url,
-            title="[dedup: already processed]",
+            title="[dedup: already extracted]",
             content="",
             type=detect_source_type(url),
         )
@@ -227,10 +128,10 @@ def extract_url(url: str, cfg: Config,
                 continue
 
             # Content-level dedup: check if extracted content already exists
-            if content_index:
-                chash = source.content_hash
-                if content_index.is_content_duplicate(source.content):
-                    dup_name = content_index.get_content_duplicate(source.content)
+            if store:
+                chash = store.content_hash(source.content)
+                dup_name = store.get_content_duplicate(source.content)
+                if dup_name:
                     log.info("Dedup: content matches existing source '%s' — skipping %s",
                              dup_name, url[:80])
                     return ExtractedSource(
@@ -239,7 +140,10 @@ def extract_url(url: str, cfg: Config,
                         content="",
                         type=source_type,
                     )
-                content_index.register(url, chash)
+                store.register_url(url, source_type.value, chash)
+                store.register_content(
+                    source.content, source.title, source_type.value,
+                )
 
             source.save(cfg.resolved_extract_dir)
             return source
@@ -251,8 +155,17 @@ def extract_url(url: str, cfg: Config,
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
 
-    # All retries exhausted — create a minimal source
+    # All retries exhausted — record to DLQ
     log.error("All %d extraction attempts failed for %s: %s", max_retries, url, last_error)
+    if store:
+        store.dlq_add(
+            url=url,
+            reason=_classify_failure(last_error),
+            error=last_error,
+            metadata={"source_type": source_type.value, "attempts": max_retries},
+        )
+        store.register_url(url, source_type.value, status="failed")
+
     source = ExtractedSource(
         url=url,
         title=url,
@@ -263,21 +176,38 @@ def extract_url(url: str, cfg: Config,
     return source
 
 
+def _classify_failure(error: str) -> str:
+    """Classify extraction failure reason for DLQ."""
+    error_lower = error.lower()
+    if "cloudflare" in error_lower or "challenge" in error_lower:
+        return "cloudflare"
+    if "paywall" in error_lower or "subscriber" in error_lower:
+        return "paywall"
+    if "timeout" in error_lower:
+        return "timeout"
+    if "empty" in error_lower or "too short" in error_lower:
+        return "empty_content"
+    if "connection" in error_lower or "resolve" in error_lower:
+        return "network"
+    return "unknown"
+
+
 def extract_all(urls: list[str], cfg: Config, parallel: int = 4) -> Manifest:
     """Extract multiple URLs in parallel with quality validation and dedup.
 
+    Uses SQLite content store for dedup and DLQ recording.
     Invalid extractions (empty, Cloudflare, too short, duplicates) are excluded.
     """
     manifest = Manifest()
     if not urls:
         return manifest
 
-    # Load or create content index for dedup
-    content_index = ContentIndex.load_or_create(cfg.resolved_extract_dir)
+    # Open content store for dedup and DLQ
+    store = ContentStore.open(cfg.resolved_extract_dir)
 
     def _extract_one(url: str) -> Optional[ExtractedSource]:
         try:
-            source = extract_url(url, cfg, content_index=content_index)
+            source = extract_url(url, cfg, store=store)
             # Skip dedup stubs (empty content, title starts with [dedup:)
             if not source.content or source.title.startswith("[dedup:"):
                 return None
@@ -297,6 +227,8 @@ def extract_all(urls: list[str], cfg: Config, parallel: int = 4) -> Manifest:
                 else:
                     url = futures[future]
                     log.warning("Skipping invalid extraction for %s: %s", url, reason)
+
+    store.close()
 
     # Save manifest
     manifest.save(cfg.resolved_extract_dir)

@@ -23,7 +23,7 @@ import typer
 from pipeline.config import Config, load_config
 from pipeline.extract import extract_all
 from pipeline.plan import plan_sources
-from pipeline.create import create_all
+from pipeline.create import create_all, create_file_templates
 from pipeline.models import Manifest, Plans
 from pipeline.vault import archive_inbox, reindex as vault_reindex
 
@@ -152,8 +152,9 @@ def ingest(
     vault: Path = typer.Argument(None, help="Vault path (default: ~/MyVault)"),
     parallel: int = typer.Option(3, "--parallel", "-p", help="Parallel workers per stage"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Run pipeline without writing files"),
-    review: bool = typer.Option(False, "--review", help="Save plans for manual review, skip Stage 3"),
+    review: bool = typer.Option(False, "--review", help="Stage files for review, skip Stage 3"),
     resume: bool = typer.Option(False, "--resume", help="Resume from saved plans (skip Stages 1+2)"),
+    template: bool = typer.Option(False, "--template", "-t", help="Use template-based creation (deterministic + insight agent)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
 ):
     """Process inbox: extract → plan → create."""
@@ -241,9 +242,13 @@ def ingest(
             typer.echo(f"  Generated {len(plans.plans)} plans in {elapsed_2:.1f}s")
 
         if review and not resume:
-            typer.echo("Review mode: plans saved to extract dir. Exiting before Stage 3.")
-            plans_path = extract_dir / "plans.json"
-            typer.echo(f"  Plans file: {plans_path}")
+            typer.echo("Review mode: staging files for approval...")
+            from pipeline.review import stage_for_review
+            t_review = time.time()
+            review_stats = stage_for_review(plans, cfg)
+            elapsed_review = time.time() - t_review
+            typer.echo(f"  Staged: {review_stats['staged']}, Failed: {review_stats['failed']} in {elapsed_review:.1f}s")
+            typer.echo(f"  Run 'pipeline approve' to write to vault or 'pipeline reject' to discard.")
             elapsed_total = time.time() - t0
             typer.echo(f"Done (review mode) in {elapsed_total:.1f}s")
             raise typer.Exit(code=0)
@@ -254,6 +259,9 @@ def ingest(
         if dry_run:
             typer.echo("  [DRY RUN] Would create vault files for plans.")
             stats = {"created": 0, "failed": 0, "sources": 0, "entries": 0}
+        elif template:
+            typer.echo("  Using template-based creation (deterministic + insight agent)")
+            stats = create_file_templates(plans.plans, cfg, use_agent_insights=True)
         else:
             stats = create_all(plans, cfg, parallel=parallel)
         elapsed_3 = time.time() - t3
@@ -394,6 +402,112 @@ def compile_pass(
         error = result.get("error", "Unknown error")
         typer.echo(f"Compile pass failed: {error}", err=True)
         raise typer.Exit(code=1)
+
+
+# ─── approve ──────────────────────────────────────────────────────────────────
+
+@app.command()
+def approve(
+    vault: Path = typer.Argument(None, help="Vault path (default: ~/MyVault)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be written"),
+):
+    """Approve pending reviews and write files to the vault."""
+    from pipeline.review import show_pending, approve_reviews
+
+    cfg = _load_cfg(vault)
+    pending = show_pending(cfg)
+
+    if not pending:
+        typer.echo("No pending reviews.")
+        raise typer.Exit(code=0)
+
+    typer.echo(f"Pending reviews: {len(pending)}")
+    for r in pending:
+        typer.echo(f"  [{r['file_type']}] {Path(r['file_path']).name}")
+
+    if dry_run:
+        typer.echo("\nDry run — no files written.")
+        raise typer.Exit(code=0)
+
+    stats = approve_reviews(cfg)
+    typer.echo(f"\nApproved: {stats['approved']}, Written: {stats['written']}, Failed: {stats['failed']}")
+
+
+# ─── reject ───────────────────────────────────────────────────────────────────
+
+@app.command()
+def reject(
+    vault: Path = typer.Argument(None, help="Vault path (default: ~/MyVault)"),
+):
+    """Reject and discard all pending reviews."""
+    from pipeline.review import reject_reviews, show_pending
+
+    cfg = _load_cfg(vault)
+    pending = show_pending(cfg)
+
+    if not pending:
+        typer.echo("No pending reviews.")
+        raise typer.Exit(code=0)
+
+    count = reject_reviews(cfg)
+    typer.echo(f"Rejected {count} pending reviews.")
+
+
+# ─── dlq ──────────────────────────────────────────────────────────────────────
+
+@app.command()
+def dlq(
+    vault: Path = typer.Argument(None, help="Vault path (default: ~/MyVault)"),
+    clear: bool = typer.Option(False, "--clear", help="Clear all pending DLQ items"),
+    reason: str = typer.Option("", "--reason", help="Filter/clear by reason"),
+):
+    """Show or manage the dead letter queue (failed extractions)."""
+    from pipeline.store import ContentStore
+
+    cfg = _load_cfg(vault)
+    store = ContentStore.open(cfg.resolved_extract_dir)
+
+    if clear:
+        cleared = store.dlq_clear(reason=reason or None)
+        typer.echo(f"Cleared {cleared} DLQ items.")
+        store.close()
+        raise typer.Exit(code=0)
+
+    pending = store.dlq_get_pending()
+    store.close()
+
+    if not pending:
+        typer.echo("Dead letter queue is empty.")
+        raise typer.Exit(code=0)
+
+    typer.echo(f"Dead letter queue: {len(pending)} items")
+    for item in pending:
+        typer.echo(f"\n  URL: {item['url']}")
+        typer.echo(f"  Reason: {item['reason']}")
+        typer.echo(f"  Attempts: {item['attempts']}")
+        if item.get("last_error"):
+            typer.echo(f"  Error: {item['last_error'][:100]}")
+
+
+# ─── store ────────────────────────────────────────────────────────────────────
+
+@app.command()
+def store_stats(
+    vault: Path = typer.Argument(None, help="Vault path (default: ~/MyVault)"),
+):
+    """Show content store statistics."""
+    from pipeline.store import ContentStore
+
+    cfg = _load_cfg(vault)
+    store = ContentStore.open(cfg.resolved_extract_dir)
+    stats = store.get_stats()
+    store.close()
+
+    typer.echo(f"Content Store: {cfg.resolved_extract_dir / 'store.db'}")
+    typer.echo(f"  URLs:    {stats['urls_total']} total ({stats['urls_ok']} ok, {stats['urls_failed']} failed)")
+    typer.echo(f"  Content: {stats['content_total']} entries")
+    typer.echo(f"  DLQ:     {stats['dlq_pending']} pending")
+    typer.echo(f"  Reviews: {stats['reviews_pending']} pending")
 
 
 # ─── Entry point ───────────────────────────────────────────────────────────────

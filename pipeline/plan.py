@@ -22,7 +22,9 @@ from pathlib import Path
 from typing import Optional
 
 from pipeline.config import Config
-from pipeline.models import ConceptMatch, ExtractedSource, Language, Manifest, Plan, Plans, Template
+from pipeline.models import (
+    ConceptMatch, ExtractedSource, Language, Manifest, Plan, Plans, Template, SourceType,
+)
 
 log = logging.getLogger(__name__)
 
@@ -184,6 +186,154 @@ def concept_search(manifest: Manifest, cfg: Config) -> dict[str, list[ConceptMat
         result[entry.hash] = matches
 
     return result
+
+
+# ─── Deterministic Planning (Rec 3) ──────────────────────────────────────────
+
+_CJK_RE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f]")
+
+# Common topic keywords → tags
+_TOPIC_KEYWORDS = {
+    "crypto": ["cryptocurrency", "blockchain", "bitcoin", "ethereum", "defi", "token", "web3"],
+    "economics": ["inflation", "monetary", "fiscal", "gdp", "recession", "economy", "market"],
+    "geopolitics": ["geopolitical", "sanctions", "diplomacy", "military", "war", "conflict"],
+    "ai": ["artificial intelligence", "machine learning", "neural network", "llm", "gpt", "transformer"],
+    "philosophy": ["epistemology", "ontology", "metaphysics", "ethics", "rationality", "consciousness"],
+    "technology": ["software", "programming", "api", "infrastructure", "cloud", "database"],
+    "finance": ["trading", "portfolio", "yield", "interest rate", "bond", "equity"],
+    "science": ["research", "experiment", "hypothesis", "peer review", "study", "findings"],
+}
+
+
+def detect_language(content: str) -> Language:
+    """Detect content language from character distribution."""
+    if not content:
+        return Language.EN
+    sample = content[:2000]
+    cjk_chars = len(_CJK_RE.findall(sample))
+    total_chars = len(re.sub(r"\s", "", sample))
+    if total_chars == 0:
+        return Language.EN
+    # If >20% CJK characters, treat as Chinese
+    if cjk_chars / total_chars > 0.2:
+        return Language.ZH
+    return Language.EN
+
+
+def select_template(source_type: SourceType, content: str) -> Template:
+    """Select template based on source type and content characteristics."""
+    if source_type == SourceType.PODCAST:
+        return Template.STANDARD
+    if source_type == SourceType.YOUTUBE:
+        return Template.STANDARD
+    # Technical content indicators
+    technical_markers = [
+        "methodology", "data analysis", "results indicate",
+        "findings suggest", "empirical", "statistical",
+        "p-value", "regression", "hypothesis",
+    ]
+    content_lower = content[:3000].lower()
+    if any(m in content_lower for m in technical_markers):
+        return Template.TECHNICAL
+    return Template.STANDARD
+
+
+def extract_tags(content: str, max_tags: int = 5) -> list[str]:
+    """Extract topic tags from content using keyword matching."""
+    content_lower = content[:5000].lower()
+    tags = []
+    for tag, keywords in _TOPIC_KEYWORDS.items():
+        matches = sum(1 for kw in keywords if kw in content_lower)
+        if matches >= 2:
+            tags.append(tag)
+    return tags[:max_tags]
+
+
+def generate_plan_heuristic(
+    entry: ExtractedSource,
+    concept_matches: list[ConceptMatch],
+) -> Plan:
+    """Generate a creation plan using heuristics — no LLM involved.
+
+    Deterministic decisions: title, language, template, tags.
+    Concept linking uses qmd semantic search results.
+    """
+    from pipeline.extractors._shared import extract_title
+
+    title = extract_title(entry.content) or entry.title or entry.url
+    language = detect_language(entry.content)
+    template = (
+        Template.CHINESE if language == Language.ZH
+        else select_template(entry.type, entry.content)
+    )
+    tags = extract_tags(entry.content)
+
+    # Determine concept actions from qmd matches
+    concept_updates = []
+    concept_new = []
+    if concept_matches:
+        # Top match > 0.5 → update existing
+        for match in concept_matches[:3]:
+            if match.score > 0.5:
+                concept_updates.append(match.concept)
+            elif match.score > 0.3:
+                # Borderline — still link but note as potential new
+                concept_updates.append(match.concept)
+        # If only weak matches, suggest new concept
+        if concept_matches[0].score < 0.3:
+            concept_new.append(title[:80])
+    else:
+        # No concept matches at all → suggest new concept from title
+        if title and title != entry.url:
+            concept_new.append(title[:80])
+
+    return Plan(
+        hash=entry.hash,
+        title=title[:120],
+        language=language,
+        template=template,
+        tags=tags,
+        concept_updates=concept_updates,
+        concept_new=concept_new,
+        moc_targets=[],
+    )
+
+
+def generate_plans_deterministic(
+    manifest: Manifest,
+    concept_matches: dict[str, list[ConceptMatch]],
+) -> tuple[Plans, list[ExtractedSource]]:
+    """Generate plans deterministically. Returns (plans, uncertain_sources).
+
+    Sources where heuristics are confident get plans.
+    Sources with ambiguous language, no title, or no concept matches
+    are returned as uncertain for agent fallback.
+    """
+    plans = []
+    uncertain = []
+
+    for entry in manifest.entries:
+        matches = concept_matches.get(entry.hash, [])
+        plan = generate_plan_heuristic(entry, matches)
+
+        # Confidence check: does this plan need agent help?
+        needs_agent = False
+        # No title found from content
+        if not plan.title or plan.title == entry.url:
+            needs_agent = True
+        # Very short content — hard to plan deterministically
+        if len(entry.content.strip()) < 50:
+            needs_agent = True
+        # No concept matches AND suggesting new concept
+        if not matches and not plan.concept_new:
+            needs_agent = True
+
+        if needs_agent:
+            uncertain.append(entry)
+        else:
+            plans.append(plan)
+
+    return Plans(plans=plans), uncertain
 
 
 # ─── Plan prompt builder ─────────────────────────────────────────────────────
@@ -405,7 +555,8 @@ def plan_sources(manifest: Manifest, cfg: Config) -> Plans:
 
     Step 0: Dedup check — skip sources already in vault
     Step 1: Semantic concept pre-search via qmd
-    Step 2: Generate plans via hermes agent
+    Step 2: Deterministic planning (heuristics) — handles ~80% of sources
+    Step 3: Agent fallback — only for uncertain sources
 
     Returns Plans object (possibly empty on total failure).
     """
@@ -438,13 +589,35 @@ def plan_sources(manifest: Manifest, cfg: Config) -> Plans:
         len(filtered_manifest.entries),
     )
 
-    # Step 2: Generate plans
-    log.info("Spawning planning agent...")
-    plans = generate_plans(filtered_manifest, concept_matches, cfg)
+    # Step 2: Deterministic planning
+    log.info("Generating plans deterministically...")
+    deterministic_plans, uncertain = generate_plans_deterministic(
+        filtered_manifest, concept_matches,
+    )
+    log.info("Deterministic: %d plans, %d uncertain (need agent)",
+             len(deterministic_plans.plans), len(uncertain))
 
-    if plans.plans:
-        log.info("=== Stage 2 complete: %d plans generated ===", len(plans.plans))
+    # Step 3: Agent fallback for uncertain sources only
+    if uncertain:
+        log.info("Spawning planning agent for %d uncertain sources...", len(uncertain))
+        uncertain_manifest = Manifest(entries=uncertain)
+        uncertain_concept_matches = {
+            e.hash: concept_matches.get(e.hash, []) for e in uncertain
+        }
+        agent_plans = generate_plans(uncertain_manifest, uncertain_concept_matches, cfg)
+        # Merge: deterministic plans first, then agent plans
+        all_plans = Plans(plans=deterministic_plans.plans + agent_plans.plans)
+    else:
+        all_plans = deterministic_plans
+
+    # Save plans
+    extract_dir = cfg.resolved_extract_dir
+    extract_dir.mkdir(parents=True, exist_ok=True)
+    all_plans.save(extract_dir)
+
+    if all_plans.plans:
+        log.info("=== Stage 2 complete: %d plans generated ===", len(all_plans.plans))
     else:
         log.error("=== Stage 2 complete: 0 plans generated ===")
 
-    return plans
+    return all_plans

@@ -135,19 +135,21 @@ class TestFullPipelineIngest:
         assert len(entries) == 0
 
     def test_ingest_review_mode(self, vault: Path):
-        """--review should save plans and exit before Stage 3."""
+        """--review should stage files for approval and exit before Stage 3."""
         _make_url_file(vault / "01-Raw", "https://example.com/article", "article.url")
 
-        # Mock extract_all and plan_sources
+        # Mock extract_all, plan_sources, and stage_for_review
         url = "https://example.com/article"
         h = _url_hash(url)
         source = _make_extracted_source(url)
 
         with patch("pipeline.cli.extract_all") as mock_extract, \
-             patch("pipeline.cli.plan_sources") as mock_plan:
+             patch("pipeline.cli.plan_sources") as mock_plan, \
+             patch("pipeline.review.stage_for_review") as mock_stage:
             mock_extract.return_value = Manifest(entries=[source])
             plan = _make_plan(h)
             mock_plan.return_value = Plans(plans=[plan])
+            mock_stage.return_value = {"staged": 1, "failed": 0}
 
             result = runner.invoke(app, [
                 "ingest", str(vault), "--review"
@@ -155,10 +157,8 @@ class TestFullPipelineIngest:
 
         assert result.exit_code == 0
         assert "review mode" in result.output.lower()
-        # Plans should be saved
-        plans_file = Config(vault_path=vault).resolved_extract_dir / "plans.json"
-        # extract_dir may differ — check output
-        assert "Plans file:" in result.output
+        assert "staged" in result.output.lower()
+        assert "approve" in result.output.lower()
 
     def test_ingest_resume_mode(self, vault: Path):
         """--resume should skip Stages 1+2 and use saved manifest + plans."""

@@ -1,0 +1,378 @@
+"""SQLite-backed content store.
+
+Replaces the flat-file ContentIndex with a proper database.
+Provides: URL dedup, content dedup, extraction history, stats, and DLQ storage.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import re
+import sqlite3
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class UrlRecord:
+    url_hash: str
+    url: str
+    canonical_url: str
+    source_type: str
+    extracted_at: float
+    status: str
+    content_hash: Optional[str] = None
+
+
+@dataclass
+class ContentRecord:
+    content_hash: str
+    title: str
+    source_type: str
+    word_count: int
+    created_at: float
+    vault_filename: Optional[str] = None
+
+
+class ContentStore:
+    """SQLite-backed content store for dedup, history, and stats.
+
+    Replaces ContentIndex. Single file at .pipeline/store.db.
+    Thread-safe via SQLite's built-in locking.
+    """
+
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(
+            str(db_path),
+            check_same_thread=False,
+            timeout=30,
+        )
+        self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
+        self._init_schema()
+
+    def _init_schema(self) -> None:
+        self._conn.executescript("""
+            CREATE TABLE IF NOT EXISTS urls (
+                url_hash TEXT PRIMARY KEY,
+                url TEXT NOT NULL,
+                canonical_url TEXT NOT NULL,
+                source_type TEXT DEFAULT 'unknown',
+                extracted_at REAL NOT NULL,
+                status TEXT DEFAULT 'ok',
+                content_hash TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_urls_canonical ON urls(canonical_url);
+            CREATE INDEX IF NOT EXISTS idx_urls_content ON urls(content_hash);
+            CREATE INDEX IF NOT EXISTS idx_urls_status ON urls(status);
+
+            CREATE TABLE IF NOT EXISTS content (
+                content_hash TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                source_type TEXT DEFAULT 'unknown',
+                word_count INTEGER DEFAULT 0,
+                created_at REAL NOT NULL,
+                vault_filename TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_content_title ON content(title);
+
+            CREATE TABLE IF NOT EXISTS dead_letter_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                attempts INTEGER DEFAULT 1,
+                last_error TEXT,
+                first_failed_at REAL NOT NULL,
+                last_failed_at REAL NOT NULL,
+                metadata TEXT DEFAULT '{}',
+                status TEXT DEFAULT 'pending'
+            );
+            CREATE INDEX IF NOT EXISTS idx_dlq_status ON dead_letter_queue(status);
+            CREATE INDEX IF NOT EXISTS idx_dlq_url ON dead_letter_queue(url);
+
+            CREATE TABLE IF NOT EXISTS pending_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plan_hash TEXT NOT NULL,
+                plan_data TEXT NOT NULL,
+                file_type TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                file_content TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                status TEXT DEFAULT 'pending'
+            );
+            CREATE INDEX IF NOT EXISTS idx_reviews_status ON pending_reviews(status);
+        """)
+        self._conn.commit()
+
+    # ─── URL Operations ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def normalize_url(url: str) -> str:
+        """Normalize URL for dedup comparison."""
+        parsed = urlparse(url)
+        skip_params = {
+            "utm_source", "utm_medium", "utm_campaign", "utm_content",
+            "utm_term", "ref", "source", "fbclid", "gclid",
+        }
+        params = parse_qs(parsed.query)
+        filtered = {k: v for k, v in params.items() if k.lower() not in skip_params}
+        clean_query = urlencode(filtered, doseq=True)
+        normalized = urlunparse((
+            parsed.scheme.lower(),
+            parsed.netloc.lower(),
+            parsed.path.rstrip("/") or "/",
+            parsed.params,
+            clean_query,
+            "",
+        ))
+        return normalized
+
+    @staticmethod
+    def url_hash(url: str) -> str:
+        return hashlib.md5(ContentStore.normalize_url(url).encode()).hexdigest()[:12]
+
+    @staticmethod
+    def content_hash(content: str) -> str:
+        normalized = re.sub(r"\s+", " ", content.lower().strip())[:2000]
+        return hashlib.md5(normalized.encode()).hexdigest()[:16]
+
+    def is_url_extracted(self, url: str) -> bool:
+        """Check if URL has been successfully extracted."""
+        row = self._conn.execute(
+            "SELECT 1 FROM urls WHERE url_hash = ? AND status = 'ok'",
+            (self.url_hash(url),),
+        ).fetchone()
+        return row is not None
+
+    def get_content_duplicate(self, content: str) -> Optional[str]:
+        """Return vault filename of duplicate content, or None."""
+        chash = self.content_hash(content)
+        row = self._conn.execute(
+            "SELECT vault_filename FROM content WHERE content_hash = ?",
+            (chash,),
+        ).fetchone()
+        return row["vault_filename"] if row else None
+
+    def register_url(
+        self,
+        url: str,
+        source_type: str = "unknown",
+        content_hash: Optional[str] = None,
+        status: str = "ok",
+    ) -> None:
+        """Register an extracted URL."""
+        now = time.time()
+        self._conn.execute(
+            """INSERT OR REPLACE INTO urls
+               (url_hash, url, canonical_url, source_type, extracted_at, status, content_hash)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                self.url_hash(url),
+                url,
+                self.normalize_url(url),
+                source_type,
+                now,
+                status,
+                content_hash,
+            ),
+        )
+        self._conn.commit()
+
+    def register_content(
+        self,
+        content: str,
+        title: str,
+        source_type: str = "unknown",
+        vault_filename: str = "",
+    ) -> str:
+        """Register content and return its hash."""
+        chash = self.content_hash(content)
+        word_count = len(content.split())
+        now = time.time()
+        self._conn.execute(
+            """INSERT OR REPLACE INTO content
+               (content_hash, title, source_type, word_count, created_at, vault_filename)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (chash, title, source_type, word_count, now, vault_filename or None),
+        )
+        self._conn.commit()
+        return chash
+
+    # ─── Dead Letter Queue ────────────────────────────────────────────────────
+
+    def dlq_add(
+        self,
+        url: str,
+        reason: str,
+        error: str = "",
+        metadata: Optional[dict] = None,
+    ) -> int:
+        """Add a failed extraction to the dead letter queue."""
+        now = time.time()
+        # Check if URL already in DLQ — increment attempts
+        existing = self._conn.execute(
+            "SELECT id, attempts FROM dead_letter_queue WHERE url = ? AND status = 'pending'",
+            (url,),
+        ).fetchone()
+        if existing:
+            self._conn.execute(
+                """UPDATE dead_letter_queue
+                   SET attempts = attempts + 1, last_error = ?, last_failed_at = ?,
+                       reason = ?, metadata = ?
+                   WHERE id = ?""",
+                (error, now, reason, json.dumps(metadata or {}), existing["id"]),
+            )
+            self._conn.commit()
+            return existing["id"]
+        else:
+            cursor = self._conn.execute(
+                """INSERT INTO dead_letter_queue
+                   (url, reason, attempts, last_error, first_failed_at, last_failed_at, metadata)
+                   VALUES (?, ?, 1, ?, ?, ?, ?)""",
+                (url, reason, error, now, now, json.dumps(metadata or {})),
+            )
+            self._conn.commit()
+            return cursor.lastrowid
+
+    def dlq_get_pending(self, limit: int = 50) -> list[dict]:
+        """Get pending failed extractions."""
+        rows = self._conn.execute(
+            """SELECT * FROM dead_letter_queue
+               WHERE status = 'pending'
+               ORDER BY last_failed_at DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def dlq_resolve(self, item_id: int) -> None:
+        """Mark a DLQ item as resolved."""
+        self._conn.execute(
+            "UPDATE dead_letter_queue SET status = 'resolved' WHERE id = ?",
+            (item_id,),
+        )
+        self._conn.commit()
+
+    def dlq_clear(self, reason: Optional[str] = None) -> int:
+        """Clear DLQ items. Returns count cleared."""
+        if reason:
+            cursor = self._conn.execute(
+                "DELETE FROM dead_letter_queue WHERE status = 'pending' AND reason = ?",
+                (reason,),
+            )
+        else:
+            cursor = self._conn.execute(
+                "DELETE FROM dead_letter_queue WHERE status = 'pending'",
+            )
+        self._conn.commit()
+        return cursor.rowcount
+
+    # ─── Pending Reviews ──────────────────────────────────────────────────────
+
+    def review_add(
+        self,
+        plan_hash: str,
+        plan_data: dict,
+        file_type: str,
+        file_path: str,
+        file_content: str,
+    ) -> int:
+        """Add a file to the pending review queue."""
+        cursor = self._conn.execute(
+            """INSERT INTO pending_reviews
+               (plan_hash, plan_data, file_type, file_path, file_content, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (plan_hash, json.dumps(plan_data), file_type, file_path,
+             file_content, time.time()),
+        )
+        self._conn.commit()
+        return cursor.lastrowid
+
+    def review_get_pending(self) -> list[dict]:
+        """Get all pending reviews."""
+        rows = self._conn.execute(
+            """SELECT * FROM pending_reviews
+               WHERE status = 'pending'
+               ORDER BY created_at ASC""",
+        ).fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            d["plan_data"] = json.loads(d["plan_data"])
+            results.append(d)
+        return results
+
+    def review_approve(self, review_id: int) -> None:
+        """Approve a pending review."""
+        self._conn.execute(
+            "UPDATE pending_reviews SET status = 'approved' WHERE id = ?",
+            (review_id,),
+        )
+        self._conn.commit()
+
+    def review_reject(self, review_id: int) -> None:
+        """Reject a pending review."""
+        self._conn.execute(
+            "UPDATE pending_reviews SET status = 'rejected' WHERE id = ?",
+            (review_id,),
+        )
+        self._conn.commit()
+
+    def review_clear(self) -> int:
+        """Clear all pending reviews."""
+        cursor = self._conn.execute(
+            "DELETE FROM pending_reviews WHERE status = 'pending'",
+        )
+        self._conn.commit()
+        return cursor.rowcount
+
+    # ─── Stats ────────────────────────────────────────────────────────────────
+
+    def get_stats(self) -> dict:
+        """Get content store statistics."""
+        urls = self._conn.execute(
+            "SELECT COUNT(*) as total, "
+            "SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END) as ok, "
+            "SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed "
+            "FROM urls"
+        ).fetchone()
+        content = self._conn.execute("SELECT COUNT(*) as total FROM content").fetchone()
+        dlq = self._conn.execute(
+            "SELECT COUNT(*) as total FROM dead_letter_queue WHERE status='pending'"
+        ).fetchone()
+        reviews = self._conn.execute(
+            "SELECT COUNT(*) as total FROM pending_reviews WHERE status='pending'"
+        ).fetchone()
+        return {
+            "urls_total": urls["total"] or 0,
+            "urls_ok": urls["ok"] or 0,
+            "urls_failed": urls["failed"] or 0,
+            "content_total": content["total"] or 0,
+            "dlq_pending": dlq["total"] or 0,
+            "reviews_pending": reviews["total"] or 0,
+        }
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+
+    @classmethod
+    def open(cls, extract_dir: Path) -> ContentStore:
+        """Open or create the content store in the extract directory."""
+        return cls(extract_dir / "store.db")
