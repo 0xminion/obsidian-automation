@@ -82,14 +82,10 @@ fi
 echo ""
 echo -e "${BOLD}[2/5] Copying pipeline files...${NC}"
 
-# Scripts (skip _deprecated/)
+# Scripts
 cp_count=0
 for f in "$SCRIPT_DIR"/scripts/*.sh; do
   [ -f "$f" ] || continue
-  # Skip deprecated scripts
-  case "$(basename "$f")" in
-    process-inbox.sh|stage1-extract.sh|stage2-plan.sh|stage3-create.sh|reindex.sh) continue ;;
-  esac
   dest="$VAULT_PATH/Meta/Scripts/$(basename "$f")"
   if [ ! -f "$dest" ] || ! diff -q "$f" "$dest" &>/dev/null; then
     cp "$f" "$dest"
@@ -98,7 +94,7 @@ for f in "$SCRIPT_DIR"/scripts/*.sh; do
 done
 chmod +x "$VAULT_PATH/Meta/Scripts/"*.sh 2>/dev/null || true
 
-# Clean up deprecated scripts from vault
+# Clean up any legacy scripts from vault (from pre-v2.2.0 installs)
 for f in process-inbox.sh stage1-extract.sh stage2-plan.sh stage3-create.sh reindex.sh build_batch_prompt.py; do
   [ -f "$VAULT_PATH/Meta/Scripts/$f" ] && rm "$VAULT_PATH/Meta/Scripts/$f" && cp_count=$((cp_count + 1))
 done
@@ -106,9 +102,6 @@ done
 # Python helpers
 for f in "$SCRIPT_DIR"/scripts/*.py; do
   [ -f "$f" ] || continue
-  case "$(basename "$f")" in
-    build_batch_prompt.py) continue ;;  # deprecated
-  esac
   dest="$VAULT_PATH/Meta/Scripts/$(basename "$f")"
   if [ ! -f "$dest" ] || ! diff -q "$f" "$dest" &>/dev/null; then
     cp "$f" "$dest"
